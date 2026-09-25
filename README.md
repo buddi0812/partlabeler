@@ -14,7 +14,7 @@ detector on. Labeling itself trains nothing. You click, the models outline, trac
 |---|---|
 | **Video** | Click or box each part on one frame. The boxes are tracked ahead or back (SAM 3) in the style you drew them. Frames where a box jumped, changed size or went missing are marked *to check*. You fix and confirm, then export. |
 | **Image folder** | The same screen, one image at a time. **Suggest** proposes boxes that look like parts you already labeled (DINOv3 matching). **Find similar** finds more copies of a selected part in the same image (SAM 3). |
-| **Teach & Transfer** | For a video that is already labeled: it learns those labels by training a detector (RF-DETR) on your machine and proves the result on held-out frames. It then labels other similar videos or image folders in the same format. Check the results in the annotator. |
+| **Teach & Transfer** | For a video that is already labeled: it learns those labels by training a detector (RF-DETR) on your machine and proves the result on held-out frames. It then labels other similar videos or image folders in the same format, listing frames to check (including label flips and brief misses along tracks). A *quick transfer* skips training and matches the labeled examples instead: a rough first pass (about 70% of parts found on similar frames), not a replacement. Check the results in the annotator. |
 
 The worked example throughout is a car-front lamp dataset. Nothing in the tool is specific to cars.
 User guide: [docs/GUIDE.md](docs/GUIDE.md). Design and decisions: [docs/PLAN.md](docs/PLAN.md). Measured results: [spikes/REPORT.md](spikes/REPORT.md).
@@ -106,6 +106,7 @@ python -m engine.cli new projects/line2 --video line2.mp4 --classes classes.txt 
 python -m engine.cli export projects/line2 --format cvat --reviewed-only
 python -m engine.cli teach data/line2_labeled --run projects/_teach/line2_v1 --parent "engine block"
 python -m engine.cli transfer projects/_teach/line2_v1 line3.mp4 line4.mp4 --out projects/_teach/line2_v1/labels
+python -m engine.cli quick data/line2_labeled line3.mp4 --run projects/_teach/quick_line2   # no training, rough preview
 python -m engine.cli --help
 ```
 

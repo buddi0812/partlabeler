@@ -119,14 +119,39 @@ def transfer(run: Path = typer.Argument(..., exists=True, file_okay=False, help=
              threshold: float | None = typer.Option(None, min=0.0, max=1.0, help="Confidence (default: from teach)."),
              parent: str | None = typer.Option(None, help="Override the run's parent object ('' = none)."),
              preview: bool = typer.Option(True, "--preview/--no-preview", help="Write preview.mp4 per video."),
-             max_frames: int | None = typer.Option(None, min=1, help="Only the first N frames/images of each source.")):
+             max_frames: int | None = typer.Option(None, min=1, help="Only the first N frames/images of each source."),
+             tracks: bool = typer.Option(True, "--tracks/--no-tracks",
+                                         help="Check videos along tracks: list label flips, brief misses and one-frame boxes to check.")):
     """Label other videos or image folders in the same format as the taught source."""
     from engine.transfer import transfer as run_transfer
     with _bar() as progress:
-        r = run_transfer(run, sources, out, every, threshold, parent, preview, max_frames, progress=progress)
+        r = run_transfer(run, sources, out, every, threshold, parent, preview, max_frames, tracks=tracks, progress=progress)
     for src, s in r["sources"].items():
         typer.echo(f"{Path(src).name}: {s['frames']} frames, {s['boxes']} boxes (median {s['boxes_per_frame_median']:g}"
                    f"/frame), {s['empty_frames']} empty, {len(s['frames_to_check'])} to check -> {s['folder']}")
+        if s.get("track_check"):
+            c = s["track_check"]
+            typer.echo(f"  track check: {c['label_flip']} label flips, {c['possible_miss']} possible misses, "
+                       f"{c['lone_box']} one-frame boxes (in the frames to check; labels unchanged)")
+
+
+@app.command()
+def quick(dataset: Path = typer.Argument(..., exists=True, file_okay=False,
+                                        help="Labeled dataset folder (images/, labels/, classes.txt or data.yaml)."),
+          sources: list[Path] = typer.Argument(..., exists=True, help="Videos and/or image folders."),
+          run: Path = typer.Option(..., help="Output run folder; labels go to <run>/labels/<source>."),
+          parent: str | None = typer.Option(None, help="What the parts sit on; matching runs inside it."),
+          every: int | None = typer.Option(None, min=1, help="Label 1 frame in N (default: as the source)."),
+          max_frames: int | None = typer.Option(None, min=1, help="Only the first N frames/images of each source."),
+          preview: bool = typer.Option(True, "--preview/--no-preview", help="Write preview.mp4 per video.")):
+    """Label similar videos or folders without training, by matching the dataset's examples (a quick preview:
+    expect about 70% of parts; check every frame, or use teach + transfer for accurate labels)."""
+    from engine.quick import quick_transfer
+    with _bar() as progress:
+        r = quick_transfer(dataset, sources, run, parent=parent, every=every, preview=preview, max_frames=max_frames,
+                           progress=progress)
+    for src, s in r["sources"].items():
+        typer.echo(f"{Path(src).name}: {s['frames']} frames, {s['boxes']} boxes (no training: check every frame) -> {s['folder']}")
 
 
 @app.command()

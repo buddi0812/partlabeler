@@ -380,6 +380,10 @@ def list_runs() -> list:
         if not d.is_dir():
             continue
         run = {"name": d.name, "path": str(d.resolve()), "ready": (d / "settings.json").exists()}
+        try:
+            run["mode"] = json.loads((d / "settings.json").read_text(encoding="utf-8")).get("mode", "trained")
+        except (OSError, ValueError):
+            run["mode"] = "trained"
         if (d / "report.json").exists():
             try:
                 run["report"] = json.loads((d / "report.json").read_text(encoding="utf-8"))
@@ -426,15 +430,16 @@ def teach(body: dict = Body(...)) -> dict:
 def transfer(body: dict = Body(...)) -> dict:
     from engine.transfer import transfer as run_transfer
     run = runs_dir() / safe_name(body.get("run", ""))
-    if not (run / "settings.json").exists():
+    if not (run / "settings.json").exists() or "checkpoint" not in json.loads((run / "settings.json").read_text(encoding="utf-8")):
         raise HTTPException(400, "Pick a finished Teach run")
     sources = [s for s in body.get("sources", []) if s]
     if not sources:
         raise HTTPException(400, "Add at least one video or image folder to label")
     every = int(body["every"]) if body.get("every") else None
+    tracks = body.get("tracks", True) is not False
 
     def job(progress, should_stop):
-        return run_transfer(run, sources, run / "labels", every=every, progress=progress, should_stop=should_stop)
+        return run_transfer(run, sources, run / "labels", every=every, tracks=tracks, progress=progress, should_stop=should_stop)
 
     def done(res):
         n = len((res or {}).get("sources", {})) or len(sources)
@@ -443,6 +448,33 @@ def transfer(body: dict = Body(...)) -> dict:
              action={"type": "folder", "path": str((run / "labels").resolve()), "label": "Open folder"})
 
     return {"job": start_job("transfer", job, done, "Transfer failed")}
+
+
+@app.post("/api/quick")
+def quick(body: dict = Body(...)) -> dict:
+    """Quick transfer, no training: match a labeled dataset's examples in other videos or folders."""
+    from engine.quick import quick_transfer
+    dataset = Path(body.get("dataset", ""))
+    if not (dataset / "images").is_dir():
+        raise HTTPException(400, "Pick the labeled dataset folder (with images/ and labels/)")
+    sources = [s for s in body.get("sources", []) if s]
+    if not sources:
+        raise HTTPException(400, "Add at least one video or image folder to label")
+    name = safe_name(body.get("name") or f"quick_{dataset.name}")
+    parent = (body.get("parent") or "").strip() or None
+    tracks = body.get("tracks", True) is not False
+
+    def job(progress, should_stop):
+        return quick_transfer(dataset, sources, runs_dir() / name, parent=parent, tracks=tracks,
+                              progress=progress, should_stop=should_stop)
+
+    def done(res):
+        n = len((res or {}).get("sources", {})) or len(sources)
+        note("success", f"Quick transfer finished: {n} source{'s' if n != 1 else ''} labeled (no training)",
+             "A preview: check every frame in the annotator (Review in annotator)",
+             action={"type": "folder", "path": str((runs_dir() / name / "labels").resolve()), "label": "Open folder"})
+
+    return {"job": start_job("quick", job, done, "Quick transfer failed"), "run": name}
 
 
 @app.post("/api/review")

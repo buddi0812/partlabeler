@@ -179,3 +179,43 @@ runs without it. Revisit after `agent.calibrate()` on ≥ 30 of the user's own c
 ## fp16 path (what Colab's T4 will use), checked on the 3060 with `PARTLABELER_DTYPE=fp16`
 Click-to-outline, tracking 5 frames × 6 parts (no NaN scores), find similar and suggestions all run in fp16;
 peak 3.96 GB allocated with every model loaded. Speed and quality on a real T4 still to be measured in Colab.
+
+## S8 — track clean-up vs track check in Transfer (`s8_track_check.py`, `engine/tracks.py`) — check only
+Question: Transfer labels each frame on its own; would linking detections into tracks and fixing single frames
+help? Measured on the example dataset's 143 held-out frames (the taught RF-DETR-S at its chosen threshold 0.45,
+scored against the source labels at IoU 0.5).
+
+| Along tracks | F1 | Note |
+|---|---|---|
+| nothing changed (raw detections) | 0.962 | 73 false boxes, 47 missed |
+| fill gaps of up to 2 sampled frames | 0.947 | 51 boxes added, 2 of them right |
+| vote on the class (left/right flips) | 0.962 | no flips to fix with this detector |
+| centred smoothing | 0.962 | no change at IoU 0.5 |
+| drop low-score boxes seen on one frame | 0.962 | 5 false and 3 true boxes removed |
+
+A part missing for a frame or two was usually really not labeled there (out of view or hidden), so filling is
+wrong, and the other fixes change nothing measurable. Decision: never change labels; list inconsistent frames
+instead (label flip, possible miss, lone low-score box). The check lists 24% of the frames (34 of 143); 71% of
+those hold a detector error (52% of all frames do), together 38% of all errors (45 of 120): a modest but real
+review aid. Plain box linking (greedy IoU with a velocity prediction), no new dependency; Roboflow's `trackers`
+(ByteTrack) is the upgrade if a project has many identical parts per frame.
+
+## S9 — quick transfer, no training (`s9_quick_transfer.py`, `engine/quick.py`) — a rough preview
+Up to 30 labeled images spread over the source are the examples; each new frame is matched with the annotator's
+Suggest (DINOv3), then SAM 3 fits each matched box to the part.
+
+| Test | F1 at IoU 0.5 | Found (recall) | Speed |
+|---|---|---|---|
+| held-out frames of the source video, matched boxes | 0.64 | 65% | 0.4 s/frame |
+| same, boxes fitted by SAM 3 (default) | 0.69 | 70% | 1.4 s/frame |
+| taught RF-DETR-S on the same frames, for comparison | 0.96 | 97% | |
+| another colour of the product (80 frames), against the taught detector's labels | 0.48 | 57% | 2.1 s/frame |
+
+On another colour the thresholds the examples set for themselves found nothing (the examples all come from
+one video and resemble each other far more than a part in another colour resembles them), so each new video is
+calibrated first: per class, the score reached in about as many of 24 sampled frames as the part appears in the
+source. The last row compares against the taught detector's labels, not hand labels: lamps agree in count, while
+quick transfer puts roof and bumper parts in many more frames. The source has those in 93-95% of its frames and
+the taught detector found the roof rack in only 12 of the 80, so part of the disagreement is the reference
+missing parts. Real accuracy on another colour needs hand labels to measure. Verdict: a quick first pass to
+review, not a replacement for Teach.

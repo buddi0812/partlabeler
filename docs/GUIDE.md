@@ -113,9 +113,19 @@ It is optional and is the only part of PartLabeler that trains a model.
    10-point drop when colours change. The report says whether the targets are met.
 3. **Transfer**: choose the finished Teach run, add the videos or image folders to label and click
    **Start labeling**. Each output folder looks exactly like the source dataset (same classes, same file
-   naming), plus a preview video and a list of frames to check.
+   naming), plus a preview video and a list of frames to check. With **Check along tracks (videos)** ticked
+   (the default), that list also names frames where a part's label flips (for example left to right), a part
+   vanishes for a frame or two, or a box shows up on one frame only. Labels are never changed automatically.
 4. **Review**: click **Review in annotator** next to an output. It opens as a normal project with the boxes
    imported, so you can check them, fix them, confirm and export.
+
+**Quick transfer (no training)**: in the Transfer form, set **Label with** to *No training: match a labeled
+dataset (quick preview)*, pick the labeled dataset folder, add the videos or folders and click **Start
+labeling**. About 30 of the dataset's labeled images become examples that are matched in every new frame (no
+model is trained, so it starts in seconds and runs at 1 to 2 seconds a frame). It is a rough first pass: on the
+example dataset it found about 70% of the parts on frames like its examples and fewer on another colour, with
+extra boxes to delete, so check every frame in the annotator (**Review in annotator**). For accurate labels,
+use Teach. From the command line: `python -m engine.cli quick <dataset> <video> --run <folder>`.
 
 A parent object can be given in Teach too; the model then looks only inside it. If a run stops, starting it
 again resumes from the last epoch. If Teach & Transfer is greyed out, it was not installed: run the

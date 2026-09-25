@@ -63,12 +63,11 @@ class Suggester:
             self.cache.popitem(last=False)
         return self.cache[key]
 
-    def suggest(self, project, item: int, max_refs: int = 30) -> list[tuple[int, list, float]]:
+    def _examples(self, project, item: int, max_refs: int):
+        """Per group (left/right twins share one): example vectors, per-image examples, sizes, horizontal
+        positions per class and the most instances in one image, from the labeled items other than `item`."""
         names = project.classes
-        statuses = project.statuses()
-        refs = [k for k, s in enumerate(statuses) if s >= 3 and k != item][-max_refs:]
-        if not refs:
-            return []
+        refs = [k for k, s in enumerate(project.statuses()) if s >= 3 and k != item][-max_refs:]
         vecs, per_ref, sizes, xs, counts = (defaultdict(list), defaultdict(dict), defaultdict(list),
                                             defaultdict(list), defaultdict(int))
         for k in refs:
@@ -87,11 +86,27 @@ class Suggester:
                 per_img[g] += 1
             for g, n in per_img.items():
                 counts[g] = max(counts[g], n)
+        return vecs, per_ref, sizes, xs, counts
+
+    def maxima(self, project, item: int, max_refs: int = 30) -> dict[str, float]:
+        """The best match score of each group in `item` (used to calibrate thresholds on new videos)."""
+        vecs = self._examples(project, item, max_refs)[0]
+        feats = self._feats(project, item)[0]
+        return {g: float((feats @ torch.stack(vs).T).amax()) for g, vs in vecs.items()}
+
+    def suggest(self, project, item: int, max_refs: int = 30, thresholds: dict | None = None) -> list[tuple[int, list, float]]:
+        """`thresholds` {group: score} lowers the ones derived from the examples (new videos: quick transfer)."""
+        names = project.classes
+        vecs, per_ref, sizes, xs, counts = self._examples(project, item, max_refs)
+        if not vecs:
+            return []
         feats, scale, off = self._feats(project, item)
         W = feats.shape[1] * Embedder.patch / scale[0]
         out = []
         for g, vs in vecs.items():
             thr = self._threshold(project, g, per_ref)
+            if thresholds and g in thresholds:                # a new video: only ever lower the bar
+                thr = min(thr, thresholds[g])
             smap = (feats @ torch.stack(vs).T).amax(-1)
             mw = statistics.median(s[0] for s in sizes[g]); mh = statistics.median(s[1] for s in sizes[g])
             radius = max(1, int(0.5 * max(mw * scale[0], mh * scale[1]) / Embedder.patch))

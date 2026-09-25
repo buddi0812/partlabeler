@@ -158,6 +158,9 @@ button:focus-visible, a:focus-visible, summary:focus-visible { outline:2px solid
 .h-err { color:var(--bad); font-size:12.5px; white-space:pre-wrap; }
 .h-chip { font-size:11.5px; font-weight:600; padding:2px 9px; border-radius:99px; background:var(--alu-2); color:var(--steel); vertical-align:middle; }
 .h-chip.ok { background:#dcf1e4; color:#1f7a44; } .h-chip.warn { background:var(--amber-soft); color:var(--amber-ink); }
+.h-check-row { display:grid; grid-template-columns:auto 1fr; gap:2px 8px; align-items:center; font-size:13px; font-weight:600; cursor:pointer; }
+.h-check-row input { width:16px; height:16px; accent-color:var(--teal); margin:0; }
+.h-check-row small { grid-column:2; color:var(--steel); font-weight:400; font-size:12px; }
 .h-src { display:flex; gap:8px; align-items:center; min-width:0; } .h-src span { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12.5px; }
 
 /* Teach & Transfer */
@@ -400,7 +403,7 @@ export default function home(root) {
       <ol class="h-rail">
         <li style="--i:0"><i>1</i><b>Teach</b><span>Trains a detector on your labeled video, on this computer.</span></li>
         <li style="--i:1"><i>2</i><b>Prove</b><span>Scores it on frames it never trained on. Target: mAP50 of 0.90.</span></li>
-        <li style="--i:2"><i>3</i><b>Transfer</b><span>Labels similar videos or folders with the same classes and file names.</span></li>
+        <li style="--i:2"><i>3</i><b>Transfer</b><span>Labels similar videos or folders with the same classes and file names. Or skip training with a quick preview.</span></li>
         <li style="--i:3"><i>4</i><b>Review</b><span>Opens each result in the annotator to check and export.</span></li></ol>
       <div class="h-teach-off h-err" hidden>Teach &amp; Transfer is not installed: run the installer again without -NoTeach.</div>
       <div class="h-steps">
@@ -418,9 +421,16 @@ export default function home(root) {
         </form>
         <form class="h-form h-transfer" autocomplete="off">
           <h3>Transfer to similar videos or image folders</h3>
-          <label class="h-field"><span>Teach run</span><select name="run"></select></label>
+          <label class="h-field"><span>Label with</span><select name="run"></select></label>
+          <div class="h-quick" hidden>
+            <div class="h-field"><span>Labeled dataset to match</span>
+              <div class="h-row"><input type="text" name="qdataset" aria-label="Labeled dataset to match" placeholder="Folder with images/, labels/ and classes.txt…"><button type="button" data-browse="qdataset">Browse…</button></div>
+              <small>No training: about 30 of its labeled images become examples, matched in each new frame. A fast preview that finds roughly 70% of parts; check every frame.</small></div>
+            <label class="h-field" style="margin-top:10px"><span>Parent object (optional)</span><input type="text" name="qparent" placeholder="e.g. engine block, circuit board…"></label></div>
           <div class="h-field"><span>Label these</span><div class="h-sources" style="display:grid;gap:6px"></div>
             <div class="h-row"><button type="button" data-browse="target-video">Add video…</button><button type="button" data-browse="target-folder">Add image folder…</button></div></div>
+          <label class="h-check-row"><input type="checkbox" name="tracks" checked> Check along tracks (videos)
+            <small>Lists frames where a part's label flips, a part vanishes for a frame or two, or a box shows up on one frame only. Labels are never changed.</small></label>
           <div class="h-row"><button class="primary" type="submit">Start labeling</button></div>
           <div class="h-transferjob"></div>
         </form>
@@ -627,15 +637,17 @@ export default function home(root) {
   async function loadRuns() {
     runs = await api("/api/runs").catch(() => []);
     const sel = transferForm.run, keep = sel.value;
-    const ready = runs.filter((r) => r.ready);
-    sel.innerHTML = ready.length ? ready.map((r) => `<option value="${esc(r.name)}">${esc(r.name)}</option>`).join("") : `<option value="">No finished runs yet</option>`;
+    const ready = runs.filter((r) => r.ready && r.mode !== "quick");
+    sel.innerHTML = (ready.length ? `<optgroup label="Teach runs">${ready.map((r) => `<option value="${esc(r.name)}">${esc(r.name)}</option>`).join("")}</optgroup>` : "")
+      + `<option value="${QUICK}">No training: match a labeled dataset (quick preview)</option>`;
     if (keep) sel.value = keep;
+    showQuick();
     $(".h-runs").innerHTML = runs.map((r) => {
       const k = r.report?.knowledge || r.report?.held_out || {};
       const pass = r.report?.passed;
       const outs = r.outputs.map((o) => `<div class="h-src"><span title="${esc(o.path)}">${esc(o.name)}: ${o.summary ? `${o.summary.frames ?? "?"} frames, ${o.summary.boxes ?? "?"} boxes${o.summary.frames_to_check?.length ? `, ${o.summary.frames_to_check.length} to check` : ""}` : "in progress"}</span>
         <button type="button" data-review="${esc(o.path)}">Review in annotator</button></div>`).join("");
-      return `<details><summary><b>${esc(r.name)}</b> ${pass === true ? `<span class="h-chip ok">targets met</span>` : pass === false ? `<span class="h-chip warn">below target</span>` : r.ready ? "" : `<span class="h-chip">not finished</span>`}
+      return `<details><summary><b>${esc(r.name)}</b> ${r.mode === "quick" ? `<span class="h-chip">quick, no training</span>` : pass === true ? `<span class="h-chip ok">targets met</span>` : pass === false ? `<span class="h-chip warn">below target</span>` : r.ready ? "" : `<span class="h-chip">not finished</span>`}
         ${k.mAP50 != null ? `<span class="h-sub">held-out mAP50 ${k.mAP50}</span>` : ""}</summary>
         ${r.report_md ? `<div class="h-report">${esc(r.report_md)}</div>` : ""}${outs ? `<h3 style="font:600 15px var(--display);margin:10px 0 6px">Labeled outputs</h3><div style="display:grid;gap:6px">${outs}</div>` : ""}</details>`;
     }).join("");
@@ -653,10 +665,16 @@ export default function home(root) {
       : `<span class="h-sub">Nothing added yet.</span>`;
   }
   transferForm.addEventListener("click", (e) => { const i = e.target.closest("[data-rm]")?.dataset.rm; if (i != null) { sources.splice(+i, 1); renderSources(); } });
+  const QUICK = "__quick__";
+  const showQuick = () => { $(".h-quick").hidden = transferForm.run.value !== QUICK; };
+  transferForm.run.addEventListener("change", showQuick);
   transferForm.addEventListener("submit", async (e) => {
     e.preventDefault();
     try {
-      const { job } = await api("/api/transfer", { run: transferForm.run.value, sources });
+      const f = transferForm, quick = f.run.value === QUICK;
+      const { job } = quick
+        ? await api("/api/quick", { dataset: f.qdataset.value.trim(), parent: f.qparent.value.trim(), sources, tracks: f.tracks.checked })
+        : await api("/api/transfer", { run: f.run.value, sources, tracks: f.tracks.checked });
       follow(job, $(".h-transferjob"));
     } catch (err) { $(".h-transferjob").innerHTML = `<div class="h-err">${esc(err.message)}</div>`; }
   });
@@ -692,12 +710,13 @@ export default function home(root) {
       classes: { kind: "classes", folder: false, done: async (p) => { try { newForm.classes.value = (await api(`/api/classes?path=${encodeURIComponent(p)}`)).classes.join("\n"); } catch (err) { $(".h-newmsg").innerHTML = `<span class="h-err">${esc(err.message)}</span>`; } } },
       labels: { kind: "dir", folder: true, done: (p) => (newForm.labels.value = p) },
       dataset: { kind: "dir", folder: true, done: (p) => (teachForm.dataset.value = p) },
+      qdataset: { kind: "dir", folder: true, done: (p) => (transferForm.qdataset.value = p) },
       "target-video": { kind: "video", folder: false, done: (p) => { sources.push(p); renderSources(); } },
       "target-folder": { kind: "images", folder: true, done: (p) => { sources.push(p); renderSources(); } },
     }[which];
     pick = spec;
     let last = ""; try { last = localStorage.getItem("pl-last-dir") || ""; } catch {}
-    const start = { source: newForm.source.value, labels: newForm.labels.value, dataset: teachForm.dataset.value }[which] || last;
+    const start = { source: newForm.source.value, labels: newForm.labels.value, dataset: teachForm.dataset.value, qdataset: transferForm.qdataset.value }[which] || last;
     dlg.showModal();
     show(start && !/\.[a-z0-9]{2,4}$/i.test(start) ? start : start.replace(/[\\/][^\\/]*$/, "")).catch(() => show(""));
   }
@@ -724,7 +743,8 @@ export default function home(root) {
     const dev = $(".h-device"); dev.hidden = false; dev.title = i.device;
     dev.querySelector("span").textContent = i.device; dev.classList.toggle("cpu", !/cuda|gpu|nvidia|rtx|gtx|tesla/i.test(i.device));
     $(".h-teach-off").hidden = i.teach;
-    teachForm.querySelector("button[type=submit]").disabled = transferForm.querySelector("button[type=submit]").disabled = !i.teach;
+    teachForm.querySelector("button[type=submit]").disabled = !i.teach;
+    if (!i.teach) { transferForm.run.value = QUICK; showQuick(); }                // quick transfer needs no Teach extras
   }).catch(() => ($(".h-home").textContent = "Can't reach the PartLabeler server. Restart the app (run_windows.bat) and reload this page."));
   setKind("video"); renderSources(); loadProjects(); loadRuns();
 }
