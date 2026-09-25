@@ -77,6 +77,7 @@ const CSS = `
 .pl-toast.error { background:var(--bad); } .pl-toast.warning { background:#8a5304; }
 .pl-toast button { background:transparent; color:#fff; border-color:rgba(255,255,255,.45); padding:2px 9px; margin-left:auto; }
 .pl-banner { background:#fde8e5; color:#8b2a1d; border:1px solid #f3b8ae; border-radius:8px; padding:8px 12px; font-weight:600; }
+.pl-banner.info { background:#fdf1d2; color:#6b4700; border-color:#f0d08a; font-weight:500; }
 .pl-help-dlg { border:1px solid var(--line); border-radius:12px; padding:0; width:min(720px, calc(100vw - 32px)); max-height:85vh; color:var(--ink); }
 .pl-help-dlg::backdrop { background:rgba(21,32,43,.45); }
 .pl-help-dlg header { display:flex; align-items:center; padding:14px 18px; border-bottom:1px solid var(--line); }
@@ -1050,6 +1051,7 @@ function render({ model, el }) {
       $(".pl-prog").textContent = m.finished ? "" : `${m.task} ${m.done} of ${m.total}${m.rate ? `, ${m.rate} frames/s` : ""}`;
       S.busy = !m.finished; renderTop();
     }
+    else if (m.type === "pong") S.pong = Date.now();
     else if (m.type === "notifications") center.set(m.items, m.unread);
     else if (m.type === "notify") {
       center.add(m.item, m.unread);
@@ -1073,10 +1075,20 @@ function render({ model, el }) {
   if (model.startItem) S.target = model.startItem;
   // Notebooks: messages from the kernel's job threads wait until the page asks (Colab drops them otherwise).
   // Poll often while something runs, slowly otherwise; stop when the widget is gone.
+  // Each poll is answered with a pong: no pong for 10 s means the kernel is busy with another cell or Colab
+  // disconnected. Everything up to the last change is already saved, so the banner says how to get back.
   if (!web) {
+    S.pong = Date.now();
     const poll = () => {
       if (!el.isConnected) return;
       model.send({ type: "poll" });
+      const quiet = Date.now() - S.pong > 10000, b = $(".pl-banner");
+      if (quiet !== Boolean(S.stalled)) {
+        S.stalled = quiet; b.hidden = !quiet; b.classList.toggle("info", quiet);
+        b.textContent = quiet ? "The notebook is not answering: it is busy running another cell, or Colab disconnected. "
+          + "Everything up to your last change is saved. If it disconnected: reconnect, click into Step 6, choose "
+          + "Runtime > Run before, then run Step 6 to carry on where you stopped." : "";
+      }
       setTimeout(poll, S.busy || document.querySelector(".rv-panel .rv-typing, .rv-send.stop") ? 300 : 1200);
     };
     setTimeout(poll, 500);

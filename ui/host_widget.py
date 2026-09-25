@@ -5,7 +5,8 @@
 
 Colab delivers a widget's messages only while the kernel is handling one from the page, so messages sent
 from job threads (tracking progress, suggestions, Rivet's answers) would be lost. Those wait in an outbox
-instead, and the page sends {"type": "poll"} about twice a second; each poll sends what is waiting.
+instead, and the page sends {"type": "poll"} about twice a second; each poll sends what is waiting and
+{"type": "pong"}, so the page notices when the kernel stops answering (busy, or the session disconnected).
 """
 import queue
 import threading
@@ -51,3 +52,5 @@ class Annotator(anywidget.AnyWidget):
         if msg.get("type") != "poll":
             self.session.handle(msg)
         self.outbox.flush()
+        if msg.get("type") == "poll":
+            self.send({"type": "pong"})

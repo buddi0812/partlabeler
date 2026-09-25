@@ -11,9 +11,9 @@
 Heavy modules (torch, rfdetr, SAM 3) load inside the commands, so --help stays instant.
 """
 import json
+import os
 import platform
 import shutil
-import os
 import sys
 import time
 from contextlib import contextmanager
