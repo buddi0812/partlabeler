@@ -157,7 +157,10 @@ N: notifications · ?: all shortcuts.
 The annotator also runs inside Jupyter, VS Code or Colab notebooks:
 `from ui.host_widget import Annotator` then `Annotator("projects/line2")`. On Colab, open
 `PartLabeler_Colab.ipynb`, choose *Runtime > Change runtime type > T4 GPU* and run the cells from top to
-bottom. The annotator stays inside the notebook, as Colab's free tier requires.
+bottom. The annotator stays inside the notebook, as Colab's free tier requires. On Colab, Step 6 keeps its cell
+running while you annotate: Colab disconnects a runtime about 30 minutes after the last cell finished and does
+not count clicks in the annotator, but a running cell keeps it awake. The cell stops by itself 25 minutes after
+your last action; press its stop button to run another step (the annotator keeps working).
 
 ## Install and requirements
 

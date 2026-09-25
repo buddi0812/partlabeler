@@ -26,6 +26,7 @@ dependencies = [
     "fastapi",
     "uvicorn[standard]",
     "anywidget",
+    "jupyter-ui-poll",
     "typer",
     "httpx",
     "timm>=1.0.20",
