@@ -108,8 +108,10 @@ def best_checkpoint(out_dir) -> Path | None:
 def train(dataset_dir, out_dir, size: str = "small", epochs: int = 30, resolution: int = 640, aug: str = "strong",
           resume=None, progress=None, should_stop=None) -> Path | None:
     """Fine-tune RF-DETR on a YOLO dataset (train/ and valid/ splits + data.yaml). Batch size follows the GPU
-    memory free right now; with too little free it trains on the CPU. Returns the best checkpoint, or None
-    when stopped early by should_stop."""
+    memory free right now; with too little free it trains on the CPU. If the GPU still runs out of memory
+    (the estimate comes from an RTX 3060; a T4 without bf16 needed about 3x as much), the batch is halved and
+    training starts again, with grad_accum doubled so the effective batch stays 16. Returns the best
+    checkpoint, or None when stopped early by should_stop."""
     check_resolution(resolution)
     dataset_dir, out_dir = Path(dataset_dir), Path(out_dir)
     classes = read_classes(dataset_dir / "data.yaml")
@@ -121,7 +123,6 @@ def train(dataset_dir, out_dir, size: str = "small", epochs: int = 30, resolutio
         device, free = "cpu", None
     batch, accum = batch_plan(size, resolution, free, n_train)
     import rfdetr.training as rt
-    model = _model_class(size)(device=device)
     hooks, build = _hooks(epochs, progress, should_stop), rt.build_trainer
 
     def build_with_hooks(*a, **k):
@@ -129,20 +130,38 @@ def train(dataset_dir, out_dir, size: str = "small", epochs: int = 30, resolutio
         trainer.callbacks.append(hooks)
         return trainer
 
-    rt.build_trainer = build_with_hooks          # rfdetr's train() takes no extra callbacks
-    try:
-        model.train(dataset_dir=str(dataset_dir), output_dir=str(out_dir), epochs=epochs, resolution=resolution,
-                    batch_size=batch, grad_accum_steps=accum, lr=1e-4, aug_config=aug_config(classes, aug),
-                    early_stopping=True, early_stopping_patience=8, checkpoint_interval=max(2, epochs),
-                    tensorboard=False, progress_bar=None, num_workers=_workers(), device=device,
-                    resume=str(resume) if resume else None)
-    finally:
-        rt.build_trainer = build
-        del model
-        hw.free_gpu_memory()
+    while True:
+        model = _model_class(size)(device=device)
+        rt.build_trainer = build_with_hooks      # rfdetr's train() takes no extra callbacks
+        try:
+            model.train(dataset_dir=str(dataset_dir), output_dir=str(out_dir), epochs=epochs, resolution=resolution,
+                        batch_size=batch, grad_accum_steps=accum, lr=1e-4, aug_config=aug_config(classes, aug),
+                        early_stopping=True, early_stopping_patience=8, checkpoint_interval=max(2, epochs),
+                        tensorboard=False, progress_bar=None, num_workers=_workers(), device=device,
+                        resume=str(resume) if resume else None)
+            break
+        except Exception as e:
+            if device != "cuda" or batch == 1 or not out_of_memory(e):
+                raise
+            batch, accum = batch // 2, accum * 2
+            if progress:
+                progress(0, epochs, f"Out of GPU memory: starting again with batch {batch} (x{accum} accumulation)")
+        finally:
+            rt.build_trainer = build
+            del model
+            hw.free_gpu_memory()
     if should_stop and should_stop():
         return None
     return best_checkpoint(out_dir)
+
+
+def out_of_memory(e: BaseException) -> bool:
+    """A CUDA out-of-memory error, also when a training framework wrapped it in another exception."""
+    while e is not None:
+        if "out of memory" in str(e).lower() or type(e).__name__ == "OutOfMemoryError":
+            return True
+        e = e.__cause__ or e.__context__
+    return False
 
 
 def load(checkpoint, size: str = "small", resolution: int = 640):

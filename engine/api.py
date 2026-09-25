@@ -66,6 +66,15 @@ def model(name: str, announce=None):
         return _MODELS[name]
 
 
+def release_models() -> None:
+    """Drop the loaded models (each loads again on its next use), e.g. to give the GPU to a training run in
+    another process, as the Colab notebook does before Teach and Transfer."""
+    from engine import hw
+    with _LOCKS["load"]:
+        _MODELS.clear()
+    hw.free_gpu_memory()
+
+
 def data_url(img: Image.Image, fmt: str = "JPEG") -> str:
     buf = io.BytesIO()
     img.save(buf, fmt, **({"quality": 90} if fmt == "JPEG" else {"compress_level": 1}))

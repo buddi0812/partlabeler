@@ -241,3 +241,46 @@ def test_cli_new_and_export(tmp_path, video):
     res = runner.invoke(app, ["new", str(tmp_path / "p2"), "--video", str(video), "--images", str(tmp_path),
                               "--classes", str(classes)])
     assert res.exit_code != 0
+
+
+def test_training_halves_the_batch_when_the_gpu_runs_out_of_memory(tmp_path, monkeypatch):
+    """The T4 (no bf16) needed about 3x the 3060's memory: out of memory at batch 4 -> batch 2, accum 8."""
+    from pathlib import Path
+
+    import torch
+    ds = tmp_path / "ds"
+    for split in ("train", "valid"):
+        (ds / split / "images").mkdir(parents=True)
+        for k in range(6):
+            Image.new("RGB", (32, 32)).save(ds / split / "images" / f"f{k}.jpg")
+    (ds / "data.yaml").write_text("names: [bolt, nut]\n")
+    calls, released = [], []
+
+    class FakeModel:
+        def __init__(self, device):
+            pass
+
+        def train(self, batch_size, grad_accum_steps, **kw):
+            calls.append((batch_size, grad_accum_steps))
+            if batch_size > 2:
+                raise RuntimeError("wrapped") from torch.OutOfMemoryError("CUDA out of memory. Tried to allocate 286 MiB")
+            Path(kw["output_dir"]).mkdir(parents=True, exist_ok=True)
+            (Path(kw["output_dir"]) / "checkpoint_best_total.pth").write_bytes(b"x")
+
+    monkeypatch.setattr(detector, "_model_class", lambda size: FakeModel)
+    monkeypatch.setattr(hw, "device", lambda: "cuda")
+    monkeypatch.setattr(hw, "free_memory_gb", lambda: 10.5)
+    monkeypatch.setattr(hw, "free_gpu_memory", lambda: released.append(1))
+    msgs = []
+    out = detector.train(ds, tmp_path / "out", "small", epochs=1, progress=lambda d, t, text="": msgs.append(text))
+    assert calls == [(4, 4), (2, 8)] and out.name == "checkpoint_best_total.pth" and len(released) == 2
+    assert any("Out of GPU memory: starting again with batch 2" in m for m in msgs)
+
+    def always_oom(self, batch_size, grad_accum_steps, **kw):
+        calls.append((batch_size, grad_accum_steps))
+        raise torch.OutOfMemoryError("CUDA out of memory")
+    monkeypatch.setattr(FakeModel, "train", always_oom)
+    calls.clear()
+    with pytest.raises(torch.OutOfMemoryError):
+        detector.train(ds, tmp_path / "out2", "small", epochs=1)
+    assert calls == [(4, 4), (2, 8), (1, 16)]                         # down to batch 1, then gives up
