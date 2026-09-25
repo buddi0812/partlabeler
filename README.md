@@ -1,10 +1,10 @@
 # PartLabeler
 
-<p align="center">
-  <a href="videos/partlabeler-promo/renders/video.mp4"><img src="docs/promo.gif" alt="PartLabeler in 60 seconds: click to box, find similar, track, export, compare" width="860"></a><br>
-  <sub><a href="videos/partlabeler-promo/renders/video.mp4">Watch the 56-second promo (MP4)</a> · every UI shot is a real recording of the app on public
-  <a href="https://www.pexels.com/license/">Pexels</a> footage (Video Kickstarter, Distill)</sub>
-</p>
+https://github.com/user-attachments/assets/87e7f75c-94e3-48b0-a1d5-27f3808e5875
+
+<sub>56-second promo · every UI shot is a real recording of the app on public
+<a href="https://www.pexels.com/license/">Pexels</a> footage (Video Kickstarter, Distill) ·
+<a href="videos/partlabeler-promo/renders/video.mp4">full-quality MP4</a></sub>
 
 Build labeled datasets of industrial parts (any product, any part list) from videos and image folders.
 What you get out is the dataset: YOLO, COCO, CVAT, Pascal VOC or Label Studio, ready to train your own

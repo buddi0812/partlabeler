@@ -307,5 +307,6 @@ keyMessage: it takes one command to try.
 03 10–17 · 04 17–25 · 05 25–32 · 06 32–40 · 07 40–49 · 08 49–56 (transitions overlap the next frame by 0.4–0.5 s).
 Build deltas from the sketch: hoisted videos carry baked camera moves (03 zoom, 04 pull-back, 05 spotlight) and
 follow their frames' transitions via root tweens in `index.html`; frame 01 uses a still b-roll; frame 02's start
-screen is cropped to the UI; slow background pushes removed from 02, 06, 07. README GIF: `docs/promo.gif`
-(12.0–24.5 s, 720 px, 10 fps). Re-render: `npx hyperframes render --quality high --output renders/video.mp4`.
+screen is cropped to the UI; slow background pushes removed from 02, 06, 07. README: an inline player from a
+GitHub attachment (web encode: x264 CRF 20, 4.3 MB); the full-quality render stays in `renders/video.mp4`.
+Re-render: `npx hyperframes render --quality high --output renders/video.mp4`.
