@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["engine*", "ui*"]
+
+[project]
+name = "partlabeler"
+version = "0.1.0"
+description = "Build labeled datasets of industrial parts from videos and image folders: click-to-box, tracking and matching (SAM 3, DINOv3), plus automatic Teach & Transfer (RF-DETR)"
+requires-python = ">=3.10"
+license = {text = "Apache-2.0"}
+# torch/torchvision are installed separately from the PyTorch CUDA index (see README).
+dependencies = [
+    "transformers>=5.17",
+    "accelerate",
+    "huggingface_hub",
+    "av",
+    "opencv-python-headless",
+    "numpy",
+    "pillow",
+    "pycocotools",
+    "supervision",
+    "scikit-learn",
+    "fastapi",
+    "uvicorn[standard]",
+    "anywidget",
+    "typer",
+    "timm>=1.0.20",
+]
+
+[project.optional-dependencies]
+teach = ["rfdetr[train]==1.11.0", "albumentations", "faster-coco-eval"]
+dev = ["pytest", "playwright", "jupyterlab"]
+
+[project.scripts]
+partlabeler = "engine.cli:app"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

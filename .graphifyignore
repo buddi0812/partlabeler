@@ -1,0 +1,7 @@
+data/
+.venv/
+spikes/out/
+graphify-out/
+*.egg-info/
+.pytest_cache/
+videos/

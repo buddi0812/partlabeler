@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "partlabeler-app",
+      "runtimeExecutable": ".venv/Scripts/python.exe",
+      "runtimeArgs": ["-m", "ui.host_fastapi", "--home", "data/projects", "--port", "8765", "--no-browser"],
+      "port": 8765
+    }
+  ]
+}

@@ -1,0 +1,321 @@
+<template>
+  <div data-hf-id="hf-bxht" id="root" data-composition-id="03-click" data-width="1920" data-height="1080" data-duration="7.5">
+    <style>
+      #root {
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+        container-type: size;
+        color: #15202B;
+        font-family: "Inter", sans-serif;
+      }
+
+      /* ---- full-frame layers (each one a timed clip) ---- */
+      [id="03-click-bg"],
+      [id="03-click-window"],
+      [id="03-click-copy"],
+      [id="03-click-foot"] {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+      }
+
+      [id="03-click-bg"] {
+        background: #F3F5F7;
+      }
+
+      /* White app-window card: 8px larger than the hoisted video box
+         (video: x 80, y 140, 1200 x 675). The video draws above it. */
+      [id="03-click-card"] {
+        position: absolute;
+        left: 72px;
+        top: 132px;
+        width: 1216px;
+        height: 691px;
+        box-sizing: border-box;
+        background: #FFFFFF;
+        border: 1.5px solid rgba(10, 124, 120, 0.2);
+        border-radius: 14px;
+      }
+
+      /* ---- right text column: x 1344 to 1856 ---- */
+      [id="03-click-col"] {
+        position: absolute;
+        left: 1344px;
+        top: 232px;
+        width: 512px;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+      }
+
+      [id="03-click-rule"] {
+        width: 60px;
+        height: 4px;
+        border-radius: 2px;
+        background: #0A7C78;
+        margin-bottom: 22px;
+        transform-origin: 0% 50%;
+      }
+
+      [id="03-click-eyebrow"] {
+        font-weight: 700;
+        font-size: 1.25cqw;
+        line-height: 1;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #0A7C78;
+        margin-bottom: 18px;
+      }
+
+      [id="03-click-h2"] {
+        margin: 0 0 22px;
+        font-weight: 700;
+        font-size: 3.125cqw;
+        line-height: 1.1;
+        letter-spacing: -0.02em;
+        color: #15202B;
+      }
+
+      /* mask for the line rise; padding keeps ascenders/descenders unclipped */
+      [id="03-click-h2-mask"] {
+        display: block;
+        overflow: hidden;
+        padding: 0.12em 0 0.16em;
+        margin: -0.12em 0 -0.16em;
+      }
+
+      [id="03-click-h2-line"] {
+        display: block;
+      }
+
+      [id="03-click-body"] {
+        margin: 0 0 44px;
+        width: 512px;
+        font-weight: 400;
+        font-size: 1.875cqw;
+        line-height: 1.4;
+        color: #5B6874;
+      }
+
+      [id="03-click-body"] > span {
+        display: inline-block;
+      }
+
+      /* metric card (card-tinted: 4% fill, 20% border, 14px, no shadow) */
+      [id="03-click-metric"] {
+        box-sizing: border-box;
+        max-width: 512px;
+        padding: 26px 32px;
+        background: rgba(10, 124, 120, 0.04);
+        border: 1.5px solid rgba(10, 124, 120, 0.2);
+        border-radius: 14px;
+        transform-origin: 50% 50%;
+      }
+
+      [id="03-click-stat"] {
+        display: flex;
+        align-items: baseline;
+        font-weight: 700;
+        font-size: 4.6875cqw;
+        line-height: 1;
+        letter-spacing: -0.03em;
+        color: #0A7C78;
+        font-variant-numeric: tabular-nums;
+        font-feature-settings: "tnum" 1;
+        white-space: nowrap;
+        transform-origin: 0% 60%;
+      }
+
+      [id="03-click-value"] {
+        display: inline-block;
+      }
+
+      [id="03-click-unit"] {
+        font-size: 0.55em;
+        font-weight: 700;
+        letter-spacing: -0.01em;
+        margin-left: 0.14em;
+        color: #0A7C78;
+      }
+
+      [id="03-click-label"] {
+        margin-top: 12px;
+        font-weight: 400;
+        font-size: 1.40625cqw;
+        line-height: 1.4;
+        color: #5B6874;
+      }
+
+      /* ---- caption under the window (below the 823px card edge, above 900) ---- */
+      [id="03-click-caption"] {
+        position: absolute;
+        left: 80px;
+        top: 846px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      [id="03-click-dot"] {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: #0A7C78;
+        flex: 0 0 auto;
+      }
+
+      [id="03-click-caption-text"] {
+        font-weight: 400;
+        font-size: 1.4cqw;
+        line-height: 1.3;
+        color: #5B6874;
+      }
+    </style>
+
+    <!-- ground -->
+    <div data-hf-id="hf-elig" id="03-click-bg" class="clip" data-start="0" data-duration="7.5" data-track-index="0"></div>
+
+    <!-- app-window card, sits behind the hoisted recording -->
+    <div data-hf-id="hf-9ak2" id="03-click-window" class="clip" data-start="0" data-duration="7.5" data-track-index="1">
+      <div data-hf-id="hf-rd84" id="03-click-card"></div>
+    </div>
+
+    <!-- approved real UI recording (hoisted by the assembler; never animated) -->
+    <!-- approved frame video hoisted by assemble-index -->
+
+    <!-- right column copy -->
+    <div data-hf-id="hf-lcic" id="03-click-copy" class="clip" data-start="0" data-duration="7.5" data-track-index="2">
+      <div data-hf-id="hf-j0t0" id="03-click-col">
+        <div data-hf-id="hf-gwow" id="03-click-rule"></div>
+        <div data-hf-id="hf-kytm" id="03-click-eyebrow">STEP 1</div>
+        <h2 data-hf-id="hf-pv1n" id="03-click-h2"><span data-hf-id="hf-fziu" id="03-click-h2-mask"><span data-hf-id="hf-84qi" id="03-click-h2-line">Click a part.</span></span></h2>
+        <p data-hf-id="hf-pvbl" id="03-click-body"><span data-hf-id="hf-sn4h">SAM&#160;3</span> <span data-hf-id="hf-tuh2">outlines</span> <span data-hf-id="hf-jsck">it</span> <span data-hf-id="hf-kyh6">and</span> <span data-hf-id="hf-epfq">boxes</span> <span data-hf-id="hf-b2e6">it.</span></p>
+        <div data-hf-id="hf-czqu" id="03-click-metric">
+          <div data-hf-id="hf-xydw" id="03-click-stat"><span data-hf-id="hf-4dow" id="03-click-value">0.00</span><span data-hf-id="hf-72gu" id="03-click-unit">s</span></div>
+          <div data-hf-id="hf-jif4" id="03-click-label">per click, after the model loads</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- provenance caption under the window -->
+    <div data-hf-id="hf-2vus" id="03-click-foot" class="clip" data-start="0" data-duration="7.5" data-track-index="3">
+      <div data-hf-id="hf-vok8" id="03-click-caption">
+        <span data-hf-id="hf-2y24" id="03-click-dot"></span>
+        <span data-hf-id="hf-r0xx" id="03-click-caption-text">Real recording · public footage (Pexels)</span>
+      </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      (function () {
+        "use strict";
+
+        function byId(id) {
+          return document.getElementById(id);
+        }
+
+        var rule = byId("03-click-rule");
+        var eyebrow = byId("03-click-eyebrow");
+        var h2Line = byId("03-click-h2-line");
+        var bodyWords = byId("03-click-body").querySelectorAll("span");
+        var metric = byId("03-click-metric");
+        var stat = byId("03-click-stat");
+        var value = byId("03-click-value");
+        var label = byId("03-click-label");
+        var dot = byId("03-click-dot");
+        var captionText = byId("03-click-caption-text");
+
+        var tl = gsap.timeline({ paused: true });
+
+        // Scene 1 (0.0-2.3s): recording plays, cursor glides to the bolt.
+        // "STEP 1" + "Click a part." reveal as the cursor starts moving.
+        tl.fromTo(rule, { scaleX: 0 }, { scaleX: 1, duration: 0.5, ease: "power3.out" }, 0.2);
+        tl.fromTo(
+          eyebrow,
+          { opacity: 0, x: -16 },
+          { opacity: 1, x: 0, duration: 0.5, ease: "power3.out" },
+          0.3,
+        );
+        tl.fromTo(
+          h2Line,
+          { yPercent: 110 },
+          { yPercent: 0, duration: 0.7, ease: "power3.out" },
+          0.5,
+        );
+
+        // Scene 2 (2.3-3.4s): the click lands, the clip zooms in (baked),
+        // mask + box appear. The explanation line rises word by word.
+        for (var i = 0; i < bodyWords.length; i += 1) {
+          tl.fromTo(
+            bodyWords[i],
+            { opacity: 0, y: 18 },
+            { opacity: 1, y: 0, duration: 0.5, ease: "power3.out" },
+            2.35 + i * 0.06,
+          );
+        }
+
+        // Scene 3 (3.4-5.0s): the 0.08 s card pops (spring-pop, smooth settle),
+        // the numeral counts up (count-up block rows), lands with one pulse.
+        tl.fromTo(
+          metric,
+          { opacity: 0, scale: 0, y: 24 },
+          { opacity: 1, scale: 1, y: 0, duration: 0.6, ease: "power3.out" },
+          3.5,
+        );
+        tl.fromTo(
+          label,
+          { opacity: 0, y: 10 },
+          { opacity: 1, y: 0, duration: 0.45, ease: "power2.out" },
+          3.7,
+        );
+
+        var COUNT_AT = 3.62;
+        var COUNT = 0.9;
+        var FPS = 30;
+        var END = 0.08;
+        var lastFrame = Math.max(1, Math.round(COUNT * FPS));
+        var countEase = gsap.parseEase("sine.inOut");
+        var prevText = value.textContent;
+        for (var f = 0; f <= lastFrame; f += 1) {
+          var text = (END * countEase(f / lastFrame)).toFixed(2);
+          if (f === lastFrame) text = END.toFixed(2);
+          if (text !== prevText) {
+            tl.set(value, { textContent: text }, COUNT_AT + COUNT * (f / lastFrame));
+            prevText = text;
+          }
+        }
+
+        var PULSE_HALF = 0.165;
+        tl.to(stat, { scale: 1.07, duration: PULSE_HALF, ease: "power3.out" }, COUNT_AT + COUNT);
+        tl.to(
+          stat,
+          { scale: 1, duration: PULSE_HALF, ease: "power2.out" },
+          COUNT_AT + COUNT + PULSE_HALF,
+        );
+
+        // Scene 4 (5.0-7.0s): the recording accepts all three; provenance
+        // caption arrives under the window, then hold.
+        tl.fromTo(
+          dot,
+          { opacity: 0, scale: 0 },
+          { opacity: 1, scale: 1, duration: 0.4, ease: "power3.out" },
+          5.05,
+        );
+        tl.fromTo(
+          captionText,
+          { opacity: 0, y: 12 },
+          { opacity: 1, y: 0, duration: 0.5, ease: "power2.out" },
+          5.1,
+        );
+
+        // hold to the fixed 7 s duration
+        tl.set({}, {}, 7);
+
+        tl.seek(0);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["03-click"] = tl;
+      })();
+    </script>
+  </div>
+</template>

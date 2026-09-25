@@ -1,0 +1,181 @@
+<template>
+  <style>
+    /* Frame 05 · It follows the part. Root styled by #root only; descendants by prefixed ids. */
+    #root {
+      position: absolute;
+      inset: 0;
+      width: 1920px;
+      height: 1080px;
+      overflow: hidden;
+      font-family: "Inter", sans-serif;
+      color: #15202B;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Full-frame layers (each is a timed clip) */
+    [id="05-track-bg"],
+    [id="05-track-window"],
+    [id="05-track-copy"],
+    [id="05-track-caption"] {
+      position: absolute;
+      inset: 0;
+    }
+    [id="05-track-bg"] {
+      background: #F3F5F7;
+    }
+
+    /* White app-window card: 8px larger than the hoisted video box (80,140 1200x675) on every side */
+    [id="05-track-card"] {
+      position: absolute;
+      left: 72px;
+      top: 132px;
+      width: 1216px;
+      height: 691px;
+      box-sizing: border-box;
+      background: #FFFFFF;
+      border: 1.5px solid rgba(10, 124, 120, 0.2);
+      border-radius: 14px;
+    }
+
+    /* Right-hand text column: x 1344 to 1856 */
+    [id="05-track-eyebrow"] {
+      position: absolute;
+      left: 1344px;
+      top: 192px;
+      width: 512px;
+      margin: 0;
+      font-family: "Inter", sans-serif;
+      font-weight: 700;
+      font-size: 24px;
+      line-height: 1;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #0A7C78;
+    }
+    [id="05-track-h2"] {
+      position: absolute;
+      left: 1344px;
+      top: 269px;
+      width: 512px;
+      margin: 0;
+      font-family: "Inter", sans-serif;
+      font-weight: 700;
+      font-size: 50px;
+      line-height: 1.1;
+      letter-spacing: -0.02em;
+      color: #15202B;
+    }
+    [id="05-track-body"] {
+      position: absolute;
+      left: 1344px;
+      top: 499px;
+      width: 512px;
+      margin: 0;
+      font-family: "Inter", sans-serif;
+      font-weight: 400;
+      font-size: 36px;
+      line-height: 1.45;
+      color: #5B6874;
+    }
+    [id="05-track-h2"] .word,
+    [id="05-track-body"] .word {
+      display: inline-block;
+    }
+    [id="05-track-body"] .flag {
+      white-space: nowrap;
+    }
+    /* The one amber element in the film: the to-check square */
+    [id="05-track-body"] .sq {
+      display: inline-block;
+      width: 0.5em;
+      height: 0.5em;
+      margin-right: 0.3em;
+      border-radius: 4px;
+      background: #E09A2C;
+      vertical-align: middle;
+    }
+    [id="05-track-body"] .lbl {
+      display: inline-block;
+      font-weight: 700;
+      color: #15202B;
+    }
+
+    /* Caption under the window, from y 842 (bottom ~883, above the 900px keep-out) */
+    [id="05-track-caption-line"] {
+      position: absolute;
+      left: 80px;
+      top: 842px;
+      width: 1200px;
+      margin: 0;
+      font-family: "Inter", sans-serif;
+      font-weight: 400;
+      font-size: 28px;
+      line-height: 1.45;
+      color: #5B6874;
+    }
+  </style>
+
+  <div data-hf-id="hf-tnhy" id="root" data-composition-id="05-track" data-start="0" data-duration="7.5" data-width="1920" data-height="1080">
+    <div data-hf-id="hf-o10l" id="05-track-bg" class="clip" data-start="0" data-duration="7.5" data-track-index="0"></div>
+
+    <div data-hf-id="hf-ohwf" id="05-track-window" class="clip" data-start="0" data-duration="7.5" data-track-index="1">
+      <div data-hf-id="hf-ukkp" id="05-track-card"></div>
+    </div>
+
+    <!-- approved frame video hoisted by assemble-index -->
+
+    <div data-hf-id="hf-9gtl" id="05-track-copy" class="clip" data-start="0" data-duration="7.5" data-track-index="2">
+      <div data-hf-id="hf-6b73" id="05-track-eyebrow">Step 3</div>
+      <h2 data-hf-id="hf-6tyi" id="05-track-h2"><span data-hf-id="hf-ytoo" class="word">Track</span> <span data-hf-id="hf-sfry" class="word">forward</span> <span data-hf-id="hf-bs3c" class="word">or</span> <span data-hf-id="hf-ohe8" class="word">back.</span></h2>
+      <p data-hf-id="hf-eeno" id="05-track-body"><span data-hf-id="hf-xaqr" class="word">Frames</span> <span data-hf-id="hf-aiu0" class="word">that</span> <span data-hf-id="hf-6e6o" class="word">drift</span> <span data-hf-id="hf-ntcp" class="word">are</span> <span data-hf-id="hf-zis5" class="word">flagged</span> <span data-hf-id="hf-8v3o" class="word">for</span> <span data-hf-id="hf-ytm2" class="word">you.</span> <span data-hf-id="hf-8fqz" class="flag"><span data-hf-id="hf-21ul" class="sq" id="05-track-sq"></span><span data-hf-id="hf-708s" class="lbl" id="05-track-lbl">to check</span></span></p>
+    </div>
+
+    <div data-hf-id="hf-lhsl" id="05-track-caption" class="clip" data-start="0" data-duration="7.5" data-track-index="3">
+      <p data-hf-id="hf-9p47" id="05-track-caption-line">Real recording · forward + back, 40 frames in 23 s</p>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <script>
+    (function () {
+      var byId = function (id) { return document.getElementById(id); };
+
+      var eyebrow = byId("05-track-eyebrow");
+      var h2Words = byId("05-track-h2").querySelectorAll(".word");
+      var bodyWords = byId("05-track-body").querySelectorAll(".word");
+      var sq = byId("05-track-sq");
+      var lbl = byId("05-track-lbl");
+      var caption = byId("05-track-caption-line");
+
+      var tl = gsap.timeline({ paused: true });
+
+      // Scene 1 (0.0-1.6s): the recording plays in the held window; the side headline reveals.
+      tl.fromTo(eyebrow,
+        { opacity: 0, y: 14 },
+        { opacity: 1, y: 0, duration: 0.5, ease: "power3.out" }, 0.2);
+      tl.fromTo(h2Words,
+        { opacity: 0, y: 34 },
+        { opacity: 1, y: 0, duration: 0.65, ease: "power3.out", stagger: 0.09 }, 0.4);
+
+      // Scene 2 (1.6-4.6s): the recording's beat. The box tracks the bundle and the baked
+      // spotlight isolates the timeline strip; the column holds, nothing new enters.
+
+      // Scene 3 (4.6-7.0s): spotlight releases; the flag line, the amber square and the caption land, then hold.
+      tl.fromTo(bodyWords,
+        { opacity: 0, y: 22 },
+        { opacity: 1, y: 0, duration: 0.55, ease: "power3.out", stagger: 0.06 }, 4.7);
+      tl.fromTo(sq,
+        { scale: 0, rotation: -90 },
+        { scale: 1, rotation: 0, duration: 0.5, ease: "back.out(2.4)" }, 5.35);
+      tl.fromTo(lbl,
+        { opacity: 0, x: -10 },
+        { opacity: 1, x: 0, duration: 0.4, ease: "power3.out" }, 5.45);
+      tl.fromTo(caption,
+        { opacity: 0, y: 12 },
+        { opacity: 1, y: 0, duration: 0.6, ease: "power2.out" }, 5.75);
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["05-track"] = tl;
+    })();
+  </script>
+</template>

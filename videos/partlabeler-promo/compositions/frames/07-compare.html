@@ -1,0 +1,532 @@
+<template>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <style>
+    #root {
+      position: absolute;
+      inset: 0;
+      width: 1920px;
+      height: 1080px;
+      overflow: hidden;
+      font-family: "Inter", sans-serif;
+      color: #15202b;
+    }
+
+    /* Full-bleed ground (lowest track). */
+    [class~="07-compare-bg"] {
+      position: absolute;
+      inset: 0;
+      width: 1920px;
+      height: 1080px;
+      background: #f3f5f7;
+    }
+
+    [class~="07-compare-stage"] {
+      position: absolute;
+      inset: 0;
+      width: 1920px;
+      height: 1080px;
+      container-type: size;
+    }
+
+    /* Camera wrapper: faint push-in underneath the build. */
+    [class~="07-compare-cam"] {
+      position: absolute;
+      inset: 0;
+      transform-origin: 50% 45%;
+    }
+
+    [class~="07-compare-title"] {
+      position: absolute;
+      left: 96px;
+      top: 84px;
+      margin: 0;
+      font-family: "Inter", sans-serif;
+      font-size: 50px;
+      font-weight: 700;
+      line-height: 1.1;
+      letter-spacing: -0.02em;
+      color: #15202b;
+    }
+
+    /* Table: 72px to 1848px (label column 608px + 5 x 233.6px). */
+    [class~="07-compare-table"] {
+      position: absolute;
+      left: 72px;
+      top: 188px;
+      width: 1776px;
+    }
+
+    /* PartLabeler column tint: grows down row by row via clip-path. */
+    [class~="07-compare-band"] {
+      position: absolute;
+      left: 608px;
+      top: 0;
+      width: 233.6px;
+      height: 632px;
+      background: #e1f0ef;
+      border-radius: 14px;
+      clip-path: inset(0px 0px 528px 0px round 14px);
+      z-index: 0;
+    }
+
+    [class~="07-compare-row"] {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      grid-template-columns: 608px repeat(5, 233.6px);
+      height: 88px;
+      align-items: center;
+    }
+
+    [class~="07-compare-head"] {
+      height: 104px;
+      align-items: start;
+    }
+
+    [class~="07-compare-rule"] {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: -1px;
+      height: 2px;
+      border-radius: 1px;
+      background: #d7dde3;
+      transform-origin: 0% 50%;
+    }
+
+    [class~="07-compare-label"] {
+      padding: 0 12px 0 24px;
+    }
+
+    [class~="07-compare-label-text"] {
+      display: inline-block;
+      max-width: 100%;
+      font-size: 28px;
+      font-weight: 700;
+      line-height: 1.2;
+      letter-spacing: -0.01em;
+      color: #15202b;
+      text-wrap: balance;
+    }
+
+    [class~="07-compare-hcell"] {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      padding: 26px 6px 0;
+      text-align: center;
+    }
+
+    [class~="07-compare-name"] {
+      font-size: 28px;
+      font-weight: 700;
+      line-height: 1.15;
+      letter-spacing: -0.01em;
+      color: #5b6874;
+      white-space: nowrap;
+    }
+
+    [class~="07-compare-hcell-us"] [class~="07-compare-name"] {
+      color: #0a7c78;
+    }
+
+    [class~="07-compare-sub"] {
+      font-size: 24px;
+      font-weight: 400;
+      line-height: 1.2;
+      color: #5b6874;
+    }
+
+    [class~="07-compare-cell"] {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 6px;
+      text-align: center;
+      font-size: 26px;
+      font-weight: 400;
+      line-height: 1.2;
+      color: #5b6874;
+      font-variant-numeric: tabular-nums;
+    }
+
+    [class~="07-compare-pair"] {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    [class~="07-compare-us"] [class~="07-compare-pair"] {
+      gap: 12px;
+    }
+
+    /* Muted tick for competitor cells. */
+    [class~="07-compare-tick"] {
+      flex: none;
+      width: 26px;
+      height: 26px;
+      fill: none;
+      stroke: #5b6874;
+      stroke-width: 2.4;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    /* success-check block, adapted: teal mark on a white halo, sized to the row. */
+    [class~="07-compare-check"] {
+      flex: none;
+      display: grid;
+      place-items: center;
+      width: 50px;
+      height: 50px;
+      border-radius: 999px;
+      background: #ffffff;
+      color: #0a7c78;
+    }
+
+    [class~="07-compare-check"] svg {
+      width: 42px;
+      height: 42px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 5.5;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    [class~="07-compare-check"] circle {
+      stroke-width: 3.5;
+      opacity: 0.28;
+    }
+
+    [class~="07-compare-strong"] {
+      display: inline-block;
+      font-size: 28px;
+      font-weight: 700;
+      line-height: 1.2;
+      color: #0a7c78;
+    }
+
+    [class~="07-compare-foot"] {
+      position: absolute;
+      left: 96px;
+      bottom: 64px;
+      max-width: 1760px;
+      margin: 0;
+      font-size: 26px;
+      font-weight: 400;
+      line-height: 1.3;
+      color: #5b6874;
+    }
+  </style>
+
+  <div data-hf-id="hf-e95s" id="root" data-composition-id="07-compare" data-width="1920" data-height="1080" data-duration="9.5">
+    <div data-hf-id="hf-7lvr" class="clip 07-compare-bg" data-start="0" data-duration="9.5" data-track-index="0"></div>
+
+    <div data-hf-id="hf-p5nd" class="clip 07-compare-stage" data-start="0" data-duration="9.5" data-track-index="1">
+      <div data-hf-id="hf-eqjb" class="07-compare-cam">
+        <h2 data-hf-id="hf-aaug" class="07-compare-title">How it compares</h2>
+
+        <div data-hf-id="hf-su9a" class="07-compare-table">
+          <div data-hf-id="hf-lr7z" class="07-compare-band"></div>
+
+          <!-- Header row -->
+          <div data-hf-id="hf-bewm" class="07-compare-row 07-compare-head">
+            <div data-hf-id="hf-5xto" class="07-compare-label"></div>
+            <div data-hf-id="hf-nzxt" class="07-compare-hcell 07-compare-hcell-us">
+              <span data-hf-id="hf-jh1m" class="07-compare-name">PartLabeler</span>
+            </div>
+            <div data-hf-id="hf-x10u" class="07-compare-hcell">
+              <span data-hf-id="hf-yta4" class="07-compare-name">CVAT</span>
+              <span data-hf-id="hf-qbh9" class="07-compare-sub">self-hosted</span>
+            </div>
+            <div data-hf-id="hf-zywi" class="07-compare-hcell">
+              <span data-hf-id="hf-0ay4" class="07-compare-name">Label Studio</span>
+              <span data-hf-id="hf-t6zm" class="07-compare-sub">open source</span>
+            </div>
+            <div data-hf-id="hf-0d7j" class="07-compare-hcell">
+              <span data-hf-id="hf-ti3x" class="07-compare-name">X-AnyLabeling</span>
+            </div>
+            <div data-hf-id="hf-0rik" class="07-compare-hcell">
+              <span data-hf-id="hf-kae8" class="07-compare-name">Roboflow</span>
+            </div>
+          </div>
+
+          <!-- Row 1 -->
+          <div data-hf-id="hf-90yr" class="07-compare-row 07-compare-body-row">
+            <div data-hf-id="hf-ti8o" class="07-compare-rule"></div>
+            <div data-hf-id="hf-arqs" class="07-compare-label">
+              <span data-hf-id="hf-e4dl" class="07-compare-label-text">SAM 3 click + video tracking, built in</span>
+            </div>
+            <div data-hf-id="hf-6fc8" class="07-compare-cell 07-compare-us">
+              <span data-hf-id="hf-vrgp" class="07-compare-check" role="img" aria-label="✓">
+                <svg data-hf-id="hf-l6o9" viewBox="0 0 64 64"><circle data-hf-id="hf-mb9z" cx="32" cy="32" r="27" /><path data-hf-id="hf-n9ew" d="M20 33.5l8 8L45 23" /></svg>
+              </span>
+            </div>
+            <div data-hf-id="hf-ck3g" class="07-compare-cell 07-compare-them">add-on server</div>
+            <div data-hf-id="hf-qgor" class="07-compare-cell 07-compare-them">ML backend</div>
+            <div data-hf-id="hf-0vaw" class="07-compare-cell 07-compare-them">server add-on</div>
+            <div data-hf-id="hf-xw96" class="07-compare-cell 07-compare-them">
+              <span data-hf-id="hf-mlql" class="07-compare-pair">
+                <svg data-hf-id="hf-lfbn" class="07-compare-tick" viewBox="0 0 24 24" role="img" aria-label="✓"><path data-hf-id="hf-s5bw" d="M5 12.5l4.5 4.5L19 7.5" /></svg>
+                <span data-hf-id="hf-a4m3">(cloud)</span>
+              </span>
+            </div>
+          </div>
+
+          <!-- Row 2 -->
+          <div data-hf-id="hf-3y1v" class="07-compare-row 07-compare-body-row">
+            <div data-hf-id="hf-4oa8" class="07-compare-rule"></div>
+            <div data-hf-id="hf-9ktp" class="07-compare-label">
+              <span data-hf-id="hf-2bgl" class="07-compare-label-text">Runs inside a notebook (Colab-friendly)</span>
+            </div>
+            <div data-hf-id="hf-a1pc" class="07-compare-cell 07-compare-us">
+              <span data-hf-id="hf-ryd9" class="07-compare-check" role="img" aria-label="✓">
+                <svg data-hf-id="hf-tsl9" viewBox="0 0 64 64"><circle data-hf-id="hf-h47r" cx="32" cy="32" r="27" /><path data-hf-id="hf-517k" d="M20 33.5l8 8L45 23" /></svg>
+              </span>
+            </div>
+            <div data-hf-id="hf-kwje" class="07-compare-cell 07-compare-them">—</div>
+            <div data-hf-id="hf-pkda" class="07-compare-cell 07-compare-them">—</div>
+            <div data-hf-id="hf-pyob" class="07-compare-cell 07-compare-them">—</div>
+            <div data-hf-id="hf-qczc" class="07-compare-cell 07-compare-them">—</div>
+          </div>
+
+          <!-- Row 3 -->
+          <div data-hf-id="hf-3jqu" class="07-compare-row 07-compare-body-row">
+            <div data-hf-id="hf-3hd5" class="07-compare-rule"></div>
+            <div data-hf-id="hf-9z4q" class="07-compare-label">
+              <span data-hf-id="hf-6su7" class="07-compare-label-text">Native Windows install, no Docker</span>
+            </div>
+            <div data-hf-id="hf-8us9" class="07-compare-cell 07-compare-us">
+              <span data-hf-id="hf-t5ac" class="07-compare-check" role="img" aria-label="✓">
+                <svg data-hf-id="hf-uzic" viewBox="0 0 64 64"><circle data-hf-id="hf-gpwq" cx="32" cy="32" r="27" /><path data-hf-id="hf-3uah" d="M20 33.5l8 8L45 23" /></svg>
+              </span>
+            </div>
+            <div data-hf-id="hf-h1xl" class="07-compare-cell 07-compare-them">Docker / WSL2</div>
+            <div data-hf-id="hf-5kjy" class="07-compare-cell 07-compare-them">
+              <svg data-hf-id="hf-8nqr" class="07-compare-tick" viewBox="0 0 24 24" role="img" aria-label="✓"><path data-hf-id="hf-ceb8" d="M5 12.5l4.5 4.5L19 7.5" /></svg>
+            </div>
+            <div data-hf-id="hf-5yuz" class="07-compare-cell 07-compare-them">
+              <svg data-hf-id="hf-89fq" class="07-compare-tick" viewBox="0 0 24 24" role="img" aria-label="✓"><path data-hf-id="hf-b7e5" d="M5 12.5l4.5 4.5L19 7.5" /></svg>
+            </div>
+            <div data-hf-id="hf-281b" class="07-compare-cell 07-compare-them">cloud</div>
+          </div>
+
+          <!-- Row 4 -->
+          <div data-hf-id="hf-35ft" class="07-compare-row 07-compare-body-row">
+            <div data-hf-id="hf-3vo6" class="07-compare-rule"></div>
+            <div data-hf-id="hf-bynv" class="07-compare-label">
+              <span data-hf-id="hf-3ll4" class="07-compare-label-text">Learns your labeled video, labels the next</span>
+            </div>
+            <div data-hf-id="hf-993a" class="07-compare-cell 07-compare-us">
+              <span data-hf-id="hf-wdkx" class="07-compare-pair">
+                <span data-hf-id="hf-sqzb" class="07-compare-check" role="img" aria-label="✓">
+                  <svg data-hf-id="hf-ul7b" viewBox="0 0 64 64"><circle data-hf-id="hf-gblp" cx="32" cy="32" r="27" /><path data-hf-id="hf-48li" d="M20 33.5l8 8L45 23" /></svg>
+                </span>
+                <span data-hf-id="hf-p37f" class="07-compare-strong">local</span>
+              </span>
+            </div>
+            <div data-hf-id="hf-9lc0" class="07-compare-cell 07-compare-them">bring your model</div>
+            <div data-hf-id="hf-4hsy" class="07-compare-cell 07-compare-them">write a backend</div>
+            <div data-hf-id="hf-6d60" class="07-compare-cell 07-compare-them">
+              <span data-hf-id="hf-xki0" class="07-compare-pair">
+                <svg data-hf-id="hf-7v4p" class="07-compare-tick" viewBox="0 0 24 24" role="img" aria-label="✓"><path data-hf-id="hf-blp6" d="M5 12.5l4.5 4.5L19 7.5" /></svg>
+                <span data-hf-id="hf-qlhw">local</span>
+              </span>
+            </div>
+            <div data-hf-id="hf-3l0t" class="07-compare-cell 07-compare-them">
+              <span data-hf-id="hf-x66z" class="07-compare-pair">
+                <svg data-hf-id="hf-7gto" class="07-compare-tick" viewBox="0 0 24 24" role="img" aria-label="✓"><path data-hf-id="hf-dl8b" d="M5 12.5l4.5 4.5L19 7.5" /></svg>
+                <span data-hf-id="hf-3bt4">cloud credits</span>
+              </span>
+            </div>
+          </div>
+
+          <!-- Row 5 -->
+          <div data-hf-id="hf-2r4s" class="07-compare-row 07-compare-body-row">
+            <div data-hf-id="hf-2or3" class="07-compare-rule"></div>
+            <div data-hf-id="hf-ccyw" class="07-compare-label">
+              <span data-hf-id="hf-r70y" class="07-compare-label-text">Exports YOLO · COCO · CVAT · VOC · LS</span>
+            </div>
+            <div data-hf-id="hf-8267" class="07-compare-cell 07-compare-us">
+              <span data-hf-id="hf-rl9x" class="07-compare-strong">5 / 5</span>
+            </div>
+            <div data-hf-id="hf-k250" class="07-compare-cell 07-compare-them">4 / 5</div>
+            <div data-hf-id="hf-avos" class="07-compare-cell 07-compare-them">4 / 5</div>
+            <div data-hf-id="hf-3e6p" class="07-compare-cell 07-compare-them">3 / 5</div>
+            <div data-hf-id="hf-dzwl" class="07-compare-cell 07-compare-them">3 / 5</div>
+          </div>
+
+          <!-- Row 6 -->
+          <div data-hf-id="hf-2ctr" class="07-compare-row 07-compare-body-row">
+            <div data-hf-id="hf-3324" class="07-compare-rule"></div>
+            <div data-hf-id="hf-b61t" class="07-compare-label">
+              <span data-hf-id="hf-tq3y" class="07-compare-label-text">Free, data stays on your machine</span>
+            </div>
+            <div data-hf-id="hf-8gh8" class="07-compare-cell 07-compare-us">
+              <span data-hf-id="hf-txwe" class="07-compare-check" role="img" aria-label="✓">
+                <svg data-hf-id="hf-vs4e" viewBox="0 0 64 64"><circle data-hf-id="hf-j3qw" cx="32" cy="32" r="27" /><path data-hf-id="hf-31of" d="M20 33.5l8 8L45 23" /></svg>
+              </span>
+            </div>
+            <div data-hf-id="hf-3zbu" class="07-compare-cell 07-compare-them">
+              <svg data-hf-id="hf-72in" class="07-compare-tick" viewBox="0 0 24 24" role="img" aria-label="✓"><path data-hf-id="hf-dzjc" d="M5 12.5l4.5 4.5L19 7.5" /></svg>
+            </div>
+            <div data-hf-id="hf-4dmv" class="07-compare-cell 07-compare-them">
+              <svg data-hf-id="hf-6o7m" class="07-compare-tick" viewBox="0 0 24 24" role="img" aria-label="✓"><path data-hf-id="hf-csm9" d="M5 12.5l4.5 4.5L19 7.5" /></svg>
+            </div>
+            <div data-hf-id="hf-4rxw" class="07-compare-cell 07-compare-them">
+              <svg data-hf-id="hf-69wl" class="07-compare-tick" viewBox="0 0 24 24" role="img" aria-label="✓"><path data-hf-id="hf-d6xa" d="M5 12.5l4.5 4.5L19 7.5" /></svg>
+            </div>
+            <div data-hf-id="hf-1pv8" class="07-compare-cell 07-compare-them">paid · cloud</div>
+          </div>
+        </div>
+      </div>
+
+      <p data-hf-id="hf-b6f6" class="07-compare-foot">As of Sep 2026 · sources in the README · CVAT, Label Studio and Roboflow lead on team workflows and annotation types.</p>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      var ID = "07-compare";
+      var root = document.querySelector('[data-composition-id="07-compare"]') || document;
+
+      // Class names start with a digit, so select them by attribute (no CSS escaping needed).
+      function c(name) {
+        return '[class~="' + ID + "-" + name + '"]';
+      }
+      function one(sel, scope) {
+        return (scope || root).querySelector(sel);
+      }
+      function all(sel, scope) {
+        return Array.prototype.slice.call((scope || root).querySelectorAll(sel));
+      }
+
+      var ROW_START = 1.2; // Scene 2 begins
+      var ROW_GAP = 1.0; // ~1 row per second
+      var ROW_H = 88;
+      var BODY_H = 528; // 6 rows x 88px
+      var FOOT_AT = 7.2; // Scene 3 begins
+
+      function bandInset(bottom) {
+        return "inset(0px 0px " + bottom + "px 0px round 14px)";
+      }
+
+      var tl = gsap.timeline({ paused: true });
+
+      var cam = one(c("cam"));
+      var band = one(c("band"));
+
+      // Macro camera: a faint push-in under the whole build (edges stay >= 64px from the frame).
+      // (no camera push: the video direction bans slow back-half pushes)
+
+      // Scene 1 (0.0-1.2s): headline + header row arrive together; PartLabeler column pre-tinted.
+      tl.fromTo(
+        one(c("title")),
+        { opacity: 0, y: 22 },
+        { opacity: 1, y: 0, duration: 0.6, ease: "power3.out" },
+        0.08
+      );
+      tl.fromTo(band, { opacity: 0 }, { opacity: 1, duration: 0.5, ease: "power1.out" }, 0.22);
+      tl.fromTo(
+        all(c("hcell")),
+        { opacity: 0, y: 14 },
+        { opacity: 1, y: 0, duration: 0.5, ease: "power2.out", stagger: 0.07 },
+        0.3
+      );
+
+      // Scene 2 (1.2-7.2s): six rows, one per second. Rule draws + label mask-wipes from the left,
+      // competitor cells fade in left to right, the teal column extends, PartLabeler's cell lands last.
+      all(c("body-row")).forEach(function (row, i) {
+        var t = ROW_START + i * ROW_GAP;
+
+        tl.fromTo(
+          one(c("rule"), row),
+          { scaleX: 0 },
+          { scaleX: 1, duration: 0.6, ease: "power2.out" },
+          t
+        );
+        tl.fromTo(
+          one(c("label-text"), row),
+          { clipPath: "inset(-25% 100% -25% 0%)", x: -14 },
+          { clipPath: "inset(-25% 0% -25% 0%)", x: 0, duration: 0.5, ease: "power3.out" },
+          t
+        );
+        tl.fromTo(
+          all(c("them"), row),
+          { opacity: 0, y: 12 },
+          { opacity: 1, y: 0, duration: 0.4, ease: "power2.out", stagger: 0.09 },
+          t + 0.18
+        );
+        tl.fromTo(
+          band,
+          { clipPath: bandInset(BODY_H - ROW_H * i) },
+          {
+            clipPath: bandInset(BODY_H - ROW_H * (i + 1)),
+            duration: 0.45,
+            ease: "power2.inOut",
+            immediateRender: false,
+          },
+          t + 0.4
+        );
+
+        // PartLabeler cell: success-check draw (smooth, no overshoot) and/or bold teal text.
+        var us = one(c("us"), row);
+        var tUs = t + 0.56;
+        var check = one(c("check"), us);
+        var strong = one(c("strong"), us);
+
+        if (check) {
+          tl.fromTo(
+            check,
+            { opacity: 0, scale: 0.72, filter: "blur(6px)" },
+            { opacity: 1, scale: 1, filter: "blur(0px)", duration: 0.34, ease: "power2.out" },
+            tUs
+          );
+          var tick = one("path", check);
+          var len = 36.5;
+          try {
+            len = tick.getTotalLength() || len;
+          } catch (e) {}
+          tick.style.strokeDasharray = len + " " + len;
+          tl.fromTo(
+            tick,
+            { strokeDashoffset: len },
+            { strokeDashoffset: 0, duration: 0.42, ease: "power2.out" },
+            tUs + 0.12
+          );
+        }
+
+        if (strong) {
+          if (check) {
+            tl.fromTo(
+              strong,
+              { opacity: 0, x: -10 },
+              { opacity: 1, x: 0, duration: 0.4, ease: "power2.out" },
+              tUs + 0.22
+            );
+          } else {
+            tl.fromTo(
+              strong,
+              { opacity: 0, scale: 0.8, filter: "blur(6px)" },
+              { opacity: 1, scale: 1, filter: "blur(0px)", duration: 0.4, ease: "power2.out" },
+              tUs
+            );
+          }
+        }
+      });
+
+      // Scene 3 (7.2-9.0s): the footnote fades in bottom-left, then the table holds.
+      tl.fromTo(
+        one(c("foot")),
+        { opacity: 0, y: 10 },
+        { opacity: 1, y: 0, duration: 0.7, ease: "power2.out" },
+        FOOT_AT
+      );
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["07-compare"] = tl;
+    })();
+  </script>
+</template>

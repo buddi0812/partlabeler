@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=1920, height=1080">
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js" integrity="sha384-sG0Hv1tP1lZCk9KQmrIbY/XNwi+OY84GQqhMscbnsoBFqAz8KNCil1kvfL3Hbbk2" crossorigin="anonymous"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #000;
+      }
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #F3F5F7;
+      }
+      .scene {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+      }
+    </style>
+  </head>
+  <body>
+    <div data-hf-id="hf-tx7r" id="root" data-composition-id="main" data-start="0" data-duration="56" data-width="1920" data-height="1080">
+      <div data-hf-id="hf-8pmx" id="el-01-hook" class="scene" data-composition-id="01-hook" data-composition-src="compositions/frames/01-hook.html" data-start="0" data-duration="5.4" data-track-index="0"></div>
+
+      <div data-hf-id="hf-wxnq" id="el-02-intro" class="scene" data-composition-id="02-intro" data-composition-src="compositions/frames/02-intro.html" data-start="5" data-duration="5.5" data-track-index="1"></div>
+
+      <div data-hf-id="hf-4vqw" id="el-03-click" class="scene" data-composition-id="03-click" data-composition-src="compositions/frames/03-click.html" data-start="10" data-duration="7.5" data-track-index="0"></div>
+
+      <div data-hf-id="hf-mhqx" id="el-04-find-similar" class="scene" data-composition-id="04-find-similar" data-composition-src="compositions/frames/04-find-similar.html" data-start="17" data-duration="8.5" data-track-index="1"></div>
+
+      <div data-hf-id="hf-ud2f" id="el-05-track" class="scene" data-composition-id="05-track" data-composition-src="compositions/frames/05-track.html" data-start="25" data-duration="7.5" data-track-index="0"></div>
+
+      <div data-hf-id="hf-xw0y" id="el-06-export-transfer" class="scene" data-composition-id="06-export-transfer" data-composition-src="compositions/frames/06-export-transfer.html" data-start="32" data-duration="8.4" data-track-index="1"></div>
+
+      <div data-hf-id="hf-ea7o" id="el-07-compare" class="scene" data-composition-id="07-compare" data-composition-src="compositions/frames/07-compare.html" data-start="40" data-duration="9.5" data-track-index="0"></div>
+
+      <div data-hf-id="hf-w4m7" id="el-08-cta" class="scene" data-composition-id="08-cta" data-composition-src="compositions/frames/08-cta.html" data-start="49" data-duration="7" data-track-index="1"></div>
+
+      <video data-hf-id="hf-fxlp" id="el-03-click-video-2" src="assets/clip03_click.mp4" muted playsinline class="clip" style="position:absolute;left:80px;top:140px;width:1200px;height:675px;object-fit:cover" data-start="10" data-duration="7.5" data-track-index="3005"></video>
+
+      <video data-hf-id="hf-3m4w" id="el-04-find-similar-video-3" src="assets/clip04_pcb.mp4" muted playsinline class="clip" style="position:absolute;left:80px;top:150px;width:1120px;height:630px;object-fit:cover" data-start="17" data-duration="8.5" data-track-index="4005"></video>
+
+      <video data-hf-id="hf-soh5" id="el-05-track-video-4" src="assets/clip05_track.mp4" muted playsinline class="clip" style="position:absolute;left:80px;top:140px;width:1200px;height:675px;object-fit:cover" data-start="25" data-duration="7.5" data-track-index="5005"></video>
+
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines["main"] = gsap.timeline({ paused: true });
+      // ── frame transitions (injected by transitions.mjs) ──
+      (function () { var tl = window.__timelines["main"];
+        tl.to("#el-01-hook", { scale: 2.5, opacity: 0, filter: "blur(8px)", duration: 0.4, ease: "power3.in" }, 5);
+        tl.fromTo("#el-02-intro", { scale: 0.5, opacity: 0, filter: "blur(8px)" }, { scale: 1, opacity: 1, filter: "blur(0px)", duration: 0.4, ease: "power3.out" }, 5);
+        tl.to("#el-02-intro", { opacity: 0, duration: 0.5, ease: "power2.inOut" }, 10);
+        tl.fromTo("#el-03-click", { opacity: 0 }, { opacity: 1, duration: 0.5, ease: "power2.inOut" }, 10);
+        tl.to("#el-03-click", { x: -1920, duration: 0.5, ease: "power3.inOut" }, 17);
+        tl.fromTo("#el-04-find-similar", { x: 1920, opacity: 1 }, { x: 0, opacity: 1, duration: 0.5, ease: "power3.inOut" }, 17);
+        tl.to("#el-04-find-similar", { x: -1920, duration: 0.5, ease: "power3.inOut" }, 25);
+        tl.fromTo("#el-05-track", { x: 1920, opacity: 1 }, { x: 0, opacity: 1, duration: 0.5, ease: "power3.inOut" }, 25);
+        tl.to("#el-05-track", { opacity: 0, duration: 0.5, ease: "power2.inOut" }, 32);
+        tl.fromTo("#el-06-export-transfer", { opacity: 0 }, { opacity: 1, duration: 0.5, ease: "power2.inOut" }, 32);
+        tl.to("#el-06-export-transfer", { scale: 2.5, opacity: 0, filter: "blur(8px)", duration: 0.4, ease: "power3.in" }, 40);
+        tl.fromTo("#el-07-compare", { scale: 0.5, opacity: 0, filter: "blur(8px)" }, { scale: 1, opacity: 1, filter: "blur(0px)", duration: 0.4, ease: "power3.out" }, 40);
+        tl.to("#el-07-compare", { opacity: 0, duration: 0.5, ease: "power2.inOut" }, 49);
+        tl.fromTo("#el-08-cta", { opacity: 0 }, { opacity: 1, duration: 0.5, ease: "power2.inOut" }, 49);
+        // hoisted videos follow their frames through the transitions (they sit on the root, outside the frame wrappers)
+        tl.fromTo("#el-03-click-video-2", { opacity: 0 }, { opacity: 1, duration: 0.5, ease: "power2.inOut" }, 10);
+        tl.to("#el-03-click-video-2", { x: -1920, duration: 0.5, ease: "power3.inOut" }, 17);
+        tl.fromTo("#el-04-find-similar-video-3", { x: 1920 }, { x: 0, duration: 0.5, ease: "power3.inOut" }, 17);
+        tl.to("#el-04-find-similar-video-3", { x: -1920, duration: 0.5, ease: "power3.inOut" }, 25);
+        tl.fromTo("#el-05-track-video-4", { x: 1920 }, { x: 0, duration: 0.5, ease: "power3.inOut" }, 25);
+        tl.fromTo("#el-05-track-video-4", { opacity: 1 }, { opacity: 0, duration: 0.5, ease: "power2.inOut", immediateRender: false }, 32);
+        tl.to({}, { duration: 56 }, 0); // full-span anchor — main.duration() == composition total (Studio master duration)
+      })();
+    </script>
+  </body>
+</html>

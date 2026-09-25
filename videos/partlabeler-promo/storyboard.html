@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PartLabeler promo · storyboard v1</title>
+<style>
+  :root {
+    --canvas: #F3F5F7; --panel: #FFFFFF; --ink: #15202B; --muted: #5B6874; --line: #D7DDE3;
+    --teal: #0A7C78; --teal-soft: #E1F0EF; --ok: #2F9E5B; --amber: #E09A2C; --sheet: #E9EDF0;
+    --display: "Space Grotesk", "Segoe UI", system-ui, sans-serif;
+    --body: "Inter", "Segoe UI", system-ui, sans-serif;
+    --mono: "JetBrains Mono", "Cascadia Mono", Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--sheet); color: var(--ink); font: 14px/1.5 var(--body); }
+  header { max-width: 1500px; margin: 0 auto; padding: 28px 24px 8px; display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: baseline; }
+  header h1 { margin: 0; font: 700 26px/1.1 var(--display); letter-spacing: -.02em; }
+  header .dek { color: var(--muted); flex: 1 1 420px; }
+  .tag { font: 600 12px/1 var(--mono); background: var(--ink); color: #fff; padding: 6px 10px; border-radius: 100px; }
+  .act { max-width: 1500px; margin: 18px auto 8px; padding: 0 24px; font: 600 12px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--teal); }
+  .grid { max-width: 1500px; margin: 0 auto; padding: 0 24px 16px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 22px; }
+  @media (max-width: 1100px) { .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (max-width: 700px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+  figure { margin: 0; display: grid; gap: 8px; }
+  .cell { aspect-ratio: 16 / 9; container-type: inline-size; position: relative; overflow: hidden; border-radius: 8px;
+          background: var(--canvas); box-shadow: 0 0 0 1px var(--line); }
+  .label { display: flex; justify-content: space-between; font: 600 12px/1 var(--mono); color: var(--ink); }
+  .label span:last-child { color: var(--muted); font-weight: 500; }
+  .note { margin: 0; font-size: 13px; color: var(--muted); }
+  .note b { color: var(--ink); }
+  .chip { justify-self: start; font: 600 11px/1 var(--mono); padding: 5px 9px; border-radius: 100px; background: var(--teal-soft); color: var(--teal); }
+
+  /* ---- shared cell pieces (sizes in cqw so the sheet matches 1920x1080) ---- */
+  .abs { position: absolute; }
+  .h1 { font: 700 4.2cqw/1.08 var(--display); letter-spacing: -.02em; color: var(--ink); }
+  .h2 { font: 600 2.6cqw/1.1 var(--display); letter-spacing: -.02em; color: var(--ink); }
+  .h3 { font: 500 2cqw/1.25 var(--display); color: var(--ink); }
+  .eyebrow { font: 600 1.25cqw/1 var(--display); letter-spacing: .08em; text-transform: uppercase; color: var(--teal); }
+  .body { font: 400 1.5cqw/1.45 var(--body); color: var(--muted); }
+  .stat { font: 700 7cqw/1 var(--display); color: var(--teal); letter-spacing: -.03em; }
+  .pill { display: inline-block; font: 600 1.7cqw/1 var(--display); padding: 1cqw 1.8cqw; border-radius: 100px; border: .12cqw solid rgba(10,124,120,.3); background: rgba(10,124,120,.06); color: var(--teal); }
+  .card { background: rgba(10,124,120,.04); border: .12cqw solid rgba(10,124,120,.2); border-radius: 1cqw; }
+  .shot { position: absolute; border-radius: .8cqw; overflow: hidden; background: #0d1217; border: .12cqw solid var(--line); }
+  .shot img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .ph { position: absolute; display: grid; place-items: center; text-align: center; color: #fff; font: 500 1.1cqw/1.3 var(--mono); background: repeating-linear-gradient(135deg, #1b2530 0 1.2cqw, #16202a 1.2cqw 2.4cqw); }
+  .bracket { position: absolute; border: .35cqw solid var(--teal); border-radius: .4cqw; }
+  .toast { position: absolute; background: var(--ink); color: #fff; font: 500 1cqw/1 var(--body); padding: .8cqw 1.1cqw; border-radius: .5cqw; }
+
+  /* comparison table */
+  table.cmp { position: absolute; left: 4cqw; right: 4cqw; top: 10cqw; border-collapse: collapse; font: 500 1.45cqw/1.2 var(--body); color: var(--ink); }
+  .cmp th { font: 600 1.5cqw/1.1 var(--display); text-align: center; padding: .9cqw .5cqw; color: var(--muted); }
+  .cmp th.us { color: var(--teal); background: var(--teal-soft); border-radius: .6cqw .6cqw 0 0; }
+  .cmp td { padding: 1.25cqw .5cqw; border-top: .1cqw solid var(--line); text-align: center; color: var(--muted); }
+  .cmp td:first-child { text-align: left; color: var(--ink); font-weight: 600; width: 27%; }
+  .cmp td.us { background: var(--teal-soft); color: var(--teal); font-weight: 700; }
+  .foot { position: absolute; left: 4cqw; bottom: 2.4cqw; font: 400 1.3cqw/1.3 var(--body); color: var(--muted); }
+
+  /* closing cells */
+  .seams { position: absolute; inset: 7cqw 4cqw auto; display: grid; grid-template-columns: repeat(8, 1fr); gap: .6cqw; }
+  .seams div { font: 600 1cqw/1.2 var(--mono); text-align: center; padding: 1cqw .3cqw; border-radius: .6cqw; background: #fff; border: .12cqw solid var(--line); }
+  .seams small { display: block; margin-top: .5cqw; font: 500 .85cqw/1.2 var(--mono); color: var(--teal); }
+  .swatches { display: flex; gap: .8cqw; }
+  .swatches i { width: 5cqw; height: 5cqw; border-radius: .8cqw; border: .12cqw solid var(--line); display: block; }
+  .legend { max-width: 1500px; margin: 8px auto 40px; padding: 0 24px; color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>PartLabeler promo · storyboard v1</h1>
+  <p class="dek">Raw factory video to a training dataset in minutes: free, local, runs in Colab. Workflow first, then a fair comparison. Every UI shot is a real recording of the app on public Pexels footage.</p>
+  <span class="tag">1920×1080 · ~56 s · 8 frames · silent</span>
+</header>
+
+<div class="act">Act 1 · the pain and the promise</div>
+<div class="grid">
+  <figure>
+    <div class="cell" id="frame-01" style="background:#1a232c">
+      <div class="ph" style="inset:0;opacity:.55;place-items:end start;padding:1.6cqw">conveyor b-roll (Pexels 852388), darkened + blurred</div>
+      <div class="abs h1" style="left:7cqw;top:24cqw;color:#fff;width:70cqw">Your detector needs thousands of labeled frames.</div>
+      <div class="abs h2" style="left:7cqw;top:37cqw;color:#cfe8e6;width:70cqw">Drawing every box by hand takes <span style="position:relative;display:inline-block;padding:0 .6cqw">weeks.<span class="bracket" style="inset:-.4cqw -.2cqw"></span></span></div>
+    </div>
+    <div class="label"><span>01 · WEEKS OF BOXES</span><span>frame-01 · 0–5 s</span></div>
+    <p class="note"><b>Line one types in at 0.2 s, line two lands at 2.4 s</b>; the teal bracket snaps around "weeks." at 3.6 s. It is the spine that becomes every box later.</p>
+    <span class="chip">in: cut · out: zoom-through</span>
+  </figure>
+
+  <figure>
+    <div class="cell" id="frame-02">
+      <div class="shot" style="left:44cqw;top:14cqw;width:54cqw;height:30.4cqw;opacity:.95;background:#fff"><img src="capture/assets/app/home.png" alt="PartLabeler start screen"></div>
+      <div class="abs eyebrow" style="left:6cqw;top:13cqw">Open source · for industrial parts</div>
+      <div class="abs h1" style="left:6cqw;top:17cqw;font-size:5.4cqw">PartLabeler</div>
+      <div class="abs h2" style="left:6cqw;top:26cqw;width:36cqw;font-size:3cqw">Raw factory video → training dataset.</div>
+      <div class="abs" style="left:6cqw;top:38cqw;display:flex;gap:1cqw;flex-wrap:wrap;width:36cqw"><span class="pill">In minutes</span><span class="pill">Free</span><span class="pill">Local</span></div>
+    </div>
+    <div class="label"><span>02 · PARTLABELER</span><span>frame-02 · 5–10 s</span></div>
+    <p class="note"><b>The bracket from 01 collapses into the wordmark's underline</b>; the value line and three pills land in order; the real start screen slides up from the right behind them.</p>
+    <span class="chip">in: zoom-through · out: crossfade</span>
+  </figure>
+
+  <figure>
+    <div class="cell" id="frame-03">
+      <div class="shot" style="left:4cqw;top:6cqw;width:64cqw;height:36cqw"><img src="capture/assets/app/click_mask.png" alt="bolt clicked, teal mask and box"></div>
+      <div class="abs eyebrow" style="left:71cqw;top:10cqw">Step 1</div>
+      <div class="abs h2" style="left:71cqw;top:14cqw;width:25cqw">Click a part.</div>
+      <div class="abs body" style="left:71cqw;top:20.5cqw;width:25cqw;font-size:1.9cqw">SAM 3 outlines it and boxes it.</div>
+      <div class="abs card" style="left:71cqw;top:29cqw;padding:1.2cqw 1.6cqw"><div class="stat" style="font-size:4cqw">0.08 s</div><div class="body">per click, after the model loads</div></div>
+      <div class="abs body" style="left:4cqw;top:43.5cqw">Real recording · public footage (Pexels)</div>
+    </div>
+    <div class="label"><span>03 · ONE CLICK, ONE BOX</span><span>frame-03 · 10–17 s</span></div>
+    <p class="note"><b>The recording plays; the cursor glides to the bolt at 1.2 s, clicks at 2.2 s</b>, and the teal mask blooms. The copy reveals on the click, and the 0.08 s card pops at 3.5 s.</p>
+    <span class="chip">in: crossfade · out: push-slide LEFT</span>
+  </figure>
+</div>
+
+<div class="act">Act 2 · the proof, on one surface</div>
+<div class="grid">
+  <figure>
+    <div class="cell" id="frame-04">
+      <div class="shot" style="left:4cqw;top:6cqw;width:52cqw;height:29.25cqw"><img src="capture/assets/app/pcb_found.png" alt="68 chip pairs boxed"></div>
+      <div class="abs h2" style="left:4cqw;top:38cqw">Box one. <span style="color:var(--teal)">Find the rest.</span></div>
+      <div class="abs" style="left:60cqw;top:10cqw;width:36cqw">
+        <div class="stat" style="font-size:12cqw">67</div>
+        <div class="h3" style="margin-top:.6cqw">found from one example</div>
+        <div class="body" style="margin-top:.8cqw;font-size:1.9cqw">in 0.7 s · press F</div>
+      </div>
+    </div>
+    <div class="label"><span>04 · ONE EXAMPLE, 67 FOUND</span><span>frame-04 · 17–24 s</span></div>
+    <p class="note"><b>The clip starts full-width, one chip pair is clicked, F fills the panel</b>, then the clip slides left to half-width as "67" counts up on the right. The held frame is ~1.5 s still after the count lands.</p>
+    <span class="chip">in: push-slide LEFT · out: push-slide LEFT</span>
+  </figure>
+
+  <figure>
+    <div class="cell" id="frame-05">
+      <div class="shot" style="left:4cqw;top:6cqw;width:64cqw;height:36cqw"><img src="capture/assets/app/tracked.png" alt="carton bundle tracked, timeline"></div>
+      <div class="abs eyebrow" style="left:71cqw;top:10cqw">Step 3</div>
+      <div class="abs h2" style="left:71cqw;top:14cqw;width:25cqw">Track forward or back.</div>
+      <div class="abs body" style="left:71cqw;top:26cqw;width:25cqw;font-size:1.9cqw">Frames that drift are flagged for you. <span style="color:var(--amber);font-weight:600">■ to check</span></div>
+      <div class="abs body" style="left:4cqw;top:43.5cqw">Real recording · forward + back, 40 frames in 23 s</div>
+    </div>
+    <div class="label"><span>05 · IT FOLLOWS THE PART</span><span>frame-05 · 24–31 s</span></div>
+    <p class="note"><b>The recording steps frame by frame; the box follows the bundle</b>, and the timeline strip under the video is spotlighted as it fills blue with amber flags. The copy reveals as the strip fills.</p>
+    <span class="chip">in: push-slide LEFT · out: crossfade</span>
+  </figure>
+
+  <figure>
+    <div class="cell" id="frame-06">
+      <div class="abs eyebrow" style="left:6cqw;top:7cqw">Your format</div>
+      <div class="abs" style="left:6cqw;top:11cqw;display:flex;gap:1cqw;flex-wrap:wrap;width:88cqw">
+        <span class="pill">YOLO</span><span class="pill">COCO</span><span class="pill">CVAT</span><span class="pill">Pascal VOC</span><span class="pill">Label Studio</span></div>
+      <div class="abs eyebrow" style="left:6cqw;top:20.5cqw">Teach &amp; Transfer · your next videos</div>
+      <div class="abs" style="left:6cqw;top:24.5cqw;display:grid;grid-template-columns:1fr auto 1fr auto 1fr;gap:1.2cqw;align-items:stretch;width:88cqw">
+        <div class="card" style="padding:1.4cqw"><div class="h3">One labeled video</div><div class="body">yours, any YOLO dataset</div></div>
+        <div class="h2" style="color:var(--teal)">→</div>
+        <div class="card" style="padding:1.4cqw"><div class="h3">Teach</div><div class="body">trains on your GPU, proves on held-out frames</div></div>
+        <div class="h2" style="color:var(--teal)">→</div>
+        <div class="card" style="padding:1.4cqw;background:var(--teal-soft)"><div class="h3">Similar videos, labeled</div><div class="body">same classes, same format</div></div>
+      </div>
+      <div class="abs" style="left:6cqw;top:44cqw;display:flex;gap:1.4cqw;align-items:baseline"><span class="stat" style="font-size:5cqw">0.94</span><span class="h3">held-out mAP50 on a real factory dataset</span></div>
+    </div>
+    <div class="label"><span>06 · YOUR FORMAT, YOUR NEXT VIDEOS</span><span>frame-06 · 31–39 s</span></div>
+    <p class="note"><b>The five pills pop in left to right (0.15 s stagger)</b>, then the three-card strip draws its arrows. 0.94 counts up last. No product UI here: typography and cards only.</p>
+    <span class="chip">in: crossfade · out: zoom-through</span>
+  </figure>
+</div>
+
+<div class="act">Act 3 · why this one, and how to try it</div>
+<div class="grid">
+  <figure>
+    <div class="cell" id="frame-07">
+      <div class="abs h2" style="left:5cqw;top:4.5cqw">How it compares</div>
+      <table class="cmp">
+        <tr><th></th><th class="us">PartLabeler</th><th>CVAT<br><small>self-hosted</small></th><th>Label Studio<br><small>open source</small></th><th>X-AnyLabeling</th><th>Roboflow</th></tr>
+        <tr><td>SAM 3 click + tracking, built in</td><td class="us">✓</td><td>add-on server</td><td>ML backend</td><td>server add-on</td><td>✓ cloud</td></tr>
+        <tr><td>Runs inside a notebook</td><td class="us">✓</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+        <tr><td>Native Windows, no Docker</td><td class="us">✓</td><td>Docker / WSL2</td><td>✓</td><td>✓</td><td>cloud</td></tr>
+        <tr><td>Learns your labeled video</td><td class="us">✓ local</td><td>bring your model</td><td>write a backend</td><td>✓ local</td><td>✓ cloud credits</td></tr>
+        <tr><td>Exports YOLO·COCO·CVAT·VOC·LS</td><td class="us">5 / 5</td><td>4 / 5</td><td>4 / 5</td><td>3 / 5</td><td>3 / 5</td></tr>
+        <tr><td>Free, data stays on your machine</td><td class="us">✓</td><td>✓</td><td>✓</td><td>✓</td><td>paid · cloud</td></tr>
+      </table>
+      <div class="foot">As of Sep 2026 · sources in the README · CVAT, Label Studio and Roboflow lead on team workflows and annotation types.</div>
+    </div>
+    <div class="label"><span>07 · FAIR COMPARISON</span><span>frame-07 · 39–49 s</span></div>
+    <p class="note"><b>Header and column names land first; rows build top to bottom (~1.1 s each)</b>, and PartLabeler's teal column fills as each row lands. The footnote fades in with the last row and stays. Names only, no competitor logos.</p>
+    <span class="chip">in: zoom-through · out: crossfade</span>
+  </figure>
+
+  <figure>
+    <div class="cell" id="frame-08">
+      <div class="abs h1" style="left:6cqw;top:8cqw;font-size:3.4cqw;width:88cqw">Try it on your own parts.</div>
+      <div class="abs" style="left:6cqw;top:17cqw;background:var(--ink);color:#e8f4f3;border-radius:100px;padding:1.4cqw 2.4cqw;font:500 1.8cqw/1 var(--mono)">&gt; install_windows.bat<span style="color:var(--teal)">▌</span></div>
+      <div class="abs body" style="left:6cqw;top:26cqw;font-size:1.9cqw">Linux: <b style="font-family:var(--mono);color:var(--ink)">bash install.sh</b> · Colab: open <b style="color:var(--ink)">PartLabeler_Colab.ipynb</b></div>
+      <div class="abs" style="left:6cqw;top:34cqw;display:flex;align-items:center;gap:1.4cqw"><span class="bracket" style="position:relative;display:inline-block;width:3.4cqw;height:2.6cqw"></span><span class="h1" style="font-size:4.4cqw">PartLabeler</span></div>
+      <div class="abs body" style="left:6cqw;bottom:2.5cqw;font-size:1.3cqw">Footage: Pexels · Video Kickstarter, Distill</div>
+    </div>
+    <div class="label"><span>08 · INSTALL IN ONE CLICK</span><span>frame-08 · 49–56 s</span></div>
+    <p class="note"><b>The headline lands; the terminal pill springs in and types the command</b>; the Linux/Colab line follows; the bracket returns as the logo mark and the wordmark locks up, then holds to the end.</p>
+    <span class="chip">in: crossfade · out: hold to end</span>
+  </figure>
+
+  <figure>
+    <div class="cell" id="seam-map" style="background:#fff">
+      <div class="abs eyebrow" style="left:4cqw;top:3.5cqw">Seam map · leftward</div>
+      <div class="seams">
+        <div>01<small>cut</small></div><div>02<small>zoom</small></div><div>03<small>xfade</small></div><div>04<small>push ←</small></div>
+        <div>05<small>push ←</small></div><div>06<small>xfade</small></div><div>07<small>zoom</small></div><div>08<small>xfade</small></div>
+      </div>
+      <div class="abs eyebrow" style="left:4cqw;top:22cqw">Tokens</div>
+      <div class="abs swatches" style="left:4cqw;top:26cqw">
+        <i style="background:#F3F5F7"></i><i style="background:#FFFFFF"></i><i style="background:#15202B"></i><i style="background:#5B6874"></i><i style="background:#0A7C78"></i><i style="background:#E1F0EF"></i><i style="background:#E09A2C"></i></div>
+      <div class="abs body" style="left:4cqw;top:33cqw;width:90cqw;font-size:1.05cqw">Space Grotesk display / numbers · Inter body · mono for commands · 14px cards · 100px pills · no shadows.<br><b>Bans:</b> no fake UI · no competitor logos · no glow · no claims beyond the sourced table · no slideshow, no screensaver.</div>
+    </div>
+    <div class="label"><span>SEAMS + TOKENS</span><span>closing cell</span></div>
+    <p class="note"><b>One accent means "labeled":</b> teal only on boxes, checks, stats and the logo mark. Amber appears once (the to-check flag in 05).</p>
+  </figure>
+</div>
+<p class="legend">Sketch fidelity: layout, hierarchy and copy are what's being approved. Recordings play in the build; stills stand in here.</p>
+</body>
+</html>

@@ -1,0 +1,241 @@
+<template>
+  <div data-hf-id="hf-5gyi" id="root" data-composition-id="04-find-similar" data-width="1920" data-height="1080" data-duration="8.5">
+    <style>
+      #root {
+        position: absolute;
+        inset: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        container-type: size;
+        font-family: "Inter", sans-serif;
+        color: #15202B;
+      }
+
+      [id="04-find-similar-bg"] {
+        position: absolute;
+        inset: 0;
+        background: #F3F5F7;
+      }
+
+      [id="04-find-similar-stage"] {
+        position: absolute;
+        inset: 0;
+      }
+
+      /* White app-window card: 8px larger than the hoisted video box (80,150 1120x630) on every side. */
+      [id="04-find-similar-window"] {
+        position: absolute;
+        left: 72px;
+        top: 142px;
+        width: 1136px;
+        height: 646px;
+        box-sizing: border-box;
+        background: #FFFFFF;
+        border: 1.5px solid rgba(10, 124, 120, 0.2);
+        border-radius: 14px;
+      }
+
+      /* Headline under the window, left-aligned with the video edge. */
+      [id="04-find-similar-headline"] {
+        position: absolute;
+        left: 80px;
+        top: 820px;
+        margin: 0;
+        font-family: "Inter", sans-serif;
+        font-weight: 700;
+        font-size: 2.9cqw;
+        line-height: 1.1;
+        letter-spacing: -0.02em;
+        color: #15202B;
+        white-space: nowrap;
+      }
+
+      [class~="04-find-similar-word"] {
+        display: inline-block;
+      }
+
+      [class~="04-find-similar-accent"] {
+        color: #0A7C78;
+      }
+
+      /* Stat column: x 1260 to 1856, centred on the window. */
+      [id="04-find-similar-stat"] {
+        position: absolute;
+        left: 1260px;
+        top: 280px;
+        width: 596px;
+      }
+
+      [id="04-find-similar-num"] {
+        display: block;
+        font-family: "Inter", sans-serif;
+        font-weight: 700;
+        font-size: 220px;
+        line-height: 1;
+        letter-spacing: -0.035em;
+        color: #0A7C78;
+        font-variant-numeric: tabular-nums;
+        font-feature-settings: "tnum" 1;
+        white-space: nowrap;
+        transform-origin: 0% 58%;
+      }
+
+      [id="04-find-similar-label"] {
+        margin-top: 10px;
+        font-family: "Inter", sans-serif;
+        font-weight: 400;
+        font-size: 2cqw;
+        line-height: 1.3;
+        letter-spacing: -0.01em;
+        color: #15202B;
+        white-space: nowrap;
+      }
+
+      [id="04-find-similar-sub"] {
+        margin-top: 14px;
+        font-family: "Inter", sans-serif;
+        font-weight: 400;
+        font-size: 1.9cqw;
+        line-height: 1.45;
+        color: #5B6874;
+        white-space: nowrap;
+      }
+
+      [class~="04-find-similar-em"] {
+        font-weight: 700;
+        color: #15202B;
+      }
+
+      [class~="04-find-similar-key"] {
+        display: inline-block;
+        margin-left: 0.08em;
+        padding: 0.2em 0.5em 0.22em;
+        font-family: "JetBrains Mono", monospace;
+        font-weight: 700;
+        font-size: 0.8em;
+        line-height: 1;
+        color: #0A7C78;
+        background: rgba(10, 124, 120, 0.08);
+        border: 1.5px solid rgba(10, 124, 120, 0.3);
+        border-radius: 10px;
+      }
+    </style>
+
+    <!-- Full-bleed ground on the lowest content track. -->
+    <div data-hf-id="hf-elcf" id="04-find-similar-bg" class="clip" data-start="0" data-duration="8.5" data-track-index="0"></div>
+
+    <div data-hf-id="hf-o8ej" id="04-find-similar-stage" class="clip" data-start="0" data-duration="8.5" data-track-index="1">
+      <!-- App-window card sits behind the hoisted video; nothing is drawn inside the video box. -->
+      <div data-hf-id="hf-lmdk" id="04-find-similar-window"></div>
+
+      <h2 data-hf-id="hf-o4dt" id="04-find-similar-headline"><span data-hf-id="hf-zhyr" id="04-find-similar-w-box" class="04-find-similar-word">Box</span> <span data-hf-id="hf-3xub" id="04-find-similar-w-one" class="04-find-similar-word">one.</span> <span data-hf-id="hf-auge" id="04-find-similar-w-find" class="04-find-similar-word 04-find-similar-accent">Find</span> <span data-hf-id="hf-yd8g" id="04-find-similar-w-the" class="04-find-similar-word 04-find-similar-accent">the</span> <span data-hf-id="hf-618y" id="04-find-similar-w-rest" class="04-find-similar-word 04-find-similar-accent">rest.</span></h2>
+
+      <div data-hf-id="hf-uszm" id="04-find-similar-stat">
+        <span data-hf-id="hf-2mi3" id="04-find-similar-num">0</span>
+        <div data-hf-id="hf-sivg" id="04-find-similar-label">found from one example</div>
+        <div data-hf-id="hf-6wvl" id="04-find-similar-sub">in <span data-hf-id="hf-685s" class="04-find-similar-em">0.7 s</span> · press <span data-hf-id="hf-ml5p" class="04-find-similar-key">F</span></div>
+      </div>
+    </div>
+
+    <!-- Approved recording, hoisted by the assembler to the host root at fixed geometry. Never animated. -->
+    <!-- approved frame video hoisted by assemble-index -->
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      (function () {
+        "use strict";
+
+        function byId(name) {
+          return document.getElementById("04-find-similar-" + name);
+        }
+
+        var wordsLead = [byId("w-box"), byId("w-one")];
+        var wordsTeal = [byId("w-find"), byId("w-the"), byId("w-rest")];
+        var num = byId("num");
+        var label = byId("label");
+        var sub = byId("sub");
+
+        var tl = gsap.timeline({ paused: true });
+
+        // Scene 1 (0.0-2.4s): recording plays tight on the panel; "Box one." rises in under the window.
+        tl.fromTo(
+          wordsLead,
+          { opacity: 0, y: 28 },
+          { opacity: 1, y: 0, duration: 0.6, ease: "power3.out", stagger: 0.1 },
+          0.3
+        );
+
+        // Scene 2 (2.4-3.9s): teal box lands on the clicked pair in the recording; "Find the rest." streams in, per-word x-stagger.
+        tl.fromTo(
+          wordsTeal,
+          { opacity: 0, x: 26 },
+          { opacity: 1, x: 0, duration: 0.55, ease: "power3.out", stagger: 0.09 },
+          2.55
+        );
+
+        // Scene 3 (3.9-5.3s): count-up block adapted. The stat arrives as the baked pull-back starts,
+        // counts 0 -> 67 on a sine.inOut row table, and lands with one restrained pulse as the pull-back lands.
+        var ARRIVE_AT = 3.9;
+        var ARRIVAL = 0.38;
+        var COUNT_START = 3.95;
+        var COUNT = 1.05;
+        var PULSE_HALF = 0.165;
+        var FPS = 30;
+        var START_VALUE = 0;
+        var END_VALUE = 67;
+        var lastFrame = Math.max(1, Math.round(COUNT * FPS));
+        var countEase = gsap.parseEase("sine.inOut");
+        var rows = [];
+        for (var frame = 0; frame <= lastFrame; frame += 1) {
+          rows.push(String(Math.round(START_VALUE + (END_VALUE - START_VALUE) * countEase(frame / lastFrame))));
+        }
+        num.textContent = rows[0];
+
+        tl.fromTo(
+          num,
+          { opacity: 0, y: 24, scale: 0.96 },
+          { opacity: 1, y: 0, scale: 1, duration: ARRIVAL, ease: "power3.out" },
+          ARRIVE_AT
+        );
+
+        rows.forEach(function (row, index) {
+          tl.set(num, { textContent: row }, COUNT_START + COUNT * (index / lastFrame));
+        });
+
+        var LAND_AT = COUNT_START + COUNT;
+        tl.fromTo(
+          num,
+          { scale: 1 },
+          { scale: 1.07, duration: PULSE_HALF, ease: "power3.out", immediateRender: false },
+          LAND_AT
+        );
+        tl.fromTo(
+          num,
+          { scale: 1.07 },
+          { scale: 1, duration: PULSE_HALF, ease: "power2.out", immediateRender: false },
+          LAND_AT + PULSE_HALF
+        );
+
+        tl.fromTo(
+          label,
+          { opacity: 0, y: 18 },
+          { opacity: 1, y: 0, duration: 0.5, ease: "power3.out" },
+          4.45
+        );
+        tl.fromTo(
+          sub,
+          { opacity: 0, y: 18 },
+          { opacity: 1, y: 0, duration: 0.5, ease: "power3.out" },
+          4.85
+        );
+
+        // Scene 4 (5.3-8.0s): held beat. Everything still while the recording holds the filled panel.
+        tl.set({}, {}, 8);
+
+        window.__timelines = window.__timelines || {};
+        window.__timelines["04-find-similar"] = tl;
+      })();
+    </script>
+  </div>
+</template>

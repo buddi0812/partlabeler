@@ -1,0 +1,389 @@
+<template>
+  <div data-hf-id="hf-cyka" id="root" data-composition-id="06-export-transfer" data-width="1920" data-height="1080" data-duration="8.4">
+    <style>
+      /* Root: styled by #root only (never a class on the composition root). */
+      #root {
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+        container-type: size;
+        font-family: Inter, sans-serif;
+        color: #15202b;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      #root *,
+      #root *::before,
+      #root *::after {
+        box-sizing: border-box;
+      }
+
+      /* Full-bleed ground on its own clip (never painted on #root). */
+      [id="06-export-transfer-bg"] {
+        position: absolute;
+        inset: 0;
+        background: #f3f5f7;
+      }
+
+      [id="06-export-transfer-stage"] {
+        position: absolute;
+        inset: 0;
+      }
+
+      /* Camera wrapper: slow steady push-in underneath the whole shot. */
+      [id="06-export-transfer-cam"] {
+        position: absolute;
+        inset: 0;
+        transform-origin: 50% 50%;
+        will-change: transform;
+      }
+
+      [class~="06-export-transfer-abs"] {
+        position: absolute;
+        left: 6cqw;
+      }
+
+      /* Eyebrows: teal, uppercase, 0.08em (h4-eyebrow, 600 -> 700). */
+      [class~="06-export-transfer-eyebrow"] {
+        font-family: Inter, sans-serif;
+        font-weight: 700;
+        font-size: 1.45cqw;
+        line-height: 1;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #0a7c78;
+        white-space: nowrap;
+      }
+
+      [id="06-export-transfer-eyebrow-format"] {
+        top: 7cqw;
+      }
+
+      [id="06-export-transfer-eyebrow-teach"] {
+        top: 20.5cqw;
+      }
+
+      /* Scene 1: five format pills in one row, upper third. */
+      [id="06-export-transfer-pills"] {
+        top: 11cqw;
+        width: 88cqw;
+        display: flex;
+        flex-wrap: nowrap;
+        gap: 1cqw;
+        align-items: center;
+      }
+
+      [class~="06-export-transfer-pill"] {
+        display: inline-block;
+        flex: 0 0 auto;
+        font-family: Inter, sans-serif;
+        font-weight: 700;
+        font-size: 1.8cqw;
+        line-height: 1;
+        padding: 0.95cqw 1.9cqw;
+        border-radius: 100px;
+        border: 2px solid rgba(10, 124, 120, 0.3);
+        background: rgba(10, 124, 120, 0.06);
+        color: #0a7c78;
+        white-space: nowrap;
+        will-change: transform, opacity;
+      }
+
+      /* Scene 2: triptych strip, full width. */
+      [id="06-export-transfer-strip"] {
+        top: 24.5cqw;
+        width: 88cqw;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 5.4cqw minmax(0, 1fr) 5.4cqw minmax(0, 1fr);
+        align-items: stretch;
+      }
+
+      [class~="06-export-transfer-card"] {
+        padding: 1.5cqw 1.7cqw;
+        border-radius: 14px;
+        border: 2px solid rgba(10, 124, 120, 0.2);
+        background: rgba(10, 124, 120, 0.04);
+        will-change: transform, opacity;
+      }
+
+      [class~="06-export-transfer-card-payoff"] {
+        background: #e1f0ef;
+      }
+
+      [class~="06-export-transfer-card-title"] {
+        font-family: Inter, sans-serif;
+        font-weight: 400;
+        font-size: 2.1cqw;
+        line-height: 1.2;
+        letter-spacing: -0.02em;
+        color: #15202b;
+      }
+
+      [class~="06-export-transfer-card-body"] {
+        margin-top: 0.6cqw;
+        font-family: Inter, sans-serif;
+        font-weight: 400;
+        font-size: 1.56cqw;
+        line-height: 1.4;
+        color: #5b6874;
+      }
+
+      [class~="06-export-transfer-arrow"] {
+        display: block;
+        align-self: center;
+        width: 5.4cqw;
+        height: 2.5cqw;
+        overflow: visible;
+      }
+
+      [class~="06-export-transfer-arrow"] path {
+        fill: none;
+        stroke: #0a7c78;
+        stroke-width: 5;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+
+      /* Scene 3: count-up result, lower third. */
+      [id="06-export-transfer-result"] {
+        top: 44cqw;
+        display: flex;
+        align-items: baseline;
+        gap: 1.4cqw;
+        white-space: nowrap;
+      }
+
+      [id="06-export-transfer-stat"] {
+        display: inline-block;
+        font-family: Inter, sans-serif;
+        font-weight: 700;
+        font-size: 5.75cqw;
+        line-height: 1;
+        letter-spacing: -0.03em;
+        color: #0a7c78;
+        font-variant-numeric: tabular-nums;
+        font-feature-settings: "tnum" 1;
+        transform-origin: 50% 58%;
+        will-change: transform, opacity;
+      }
+
+      [id="06-export-transfer-stat-label"] {
+        display: inline-block;
+        font-family: Inter, sans-serif;
+        font-weight: 400;
+        font-size: 2cqw;
+        line-height: 1.25;
+        letter-spacing: -0.01em;
+        color: #15202b;
+      }
+    </style>
+
+    <div data-hf-id="hf-15nr" id="06-export-transfer-bg" class="clip" data-start="0" data-duration="8.4" data-track-index="0"></div>
+
+    <div data-hf-id="hf-cyu9" id="06-export-transfer-stage" class="clip" data-start="0" data-duration="8.4" data-track-index="1">
+      <div data-hf-id="hf-5820" id="06-export-transfer-cam">
+        <div data-hf-id="hf-qz5g" id="06-export-transfer-eyebrow-format" class="06-export-transfer-abs 06-export-transfer-eyebrow">
+          Your format
+        </div>
+
+        <div data-hf-id="hf-zanm" id="06-export-transfer-pills" class="06-export-transfer-abs">
+          <span data-hf-id="hf-uxvv" id="06-export-transfer-pill-0" class="06-export-transfer-pill">YOLO</span>
+          <span data-hf-id="hf-hr1n" id="06-export-transfer-pill-1" class="06-export-transfer-pill">COCO</span>
+          <span data-hf-id="hf-gyok" id="06-export-transfer-pill-2" class="06-export-transfer-pill">CVAT</span>
+          <span data-hf-id="hf-ja8l" id="06-export-transfer-pill-3" class="06-export-transfer-pill">Pascal VOC</span>
+          <span data-hf-id="hf-cpjq" id="06-export-transfer-pill-4" class="06-export-transfer-pill">Label Studio</span>
+        </div>
+
+        <div data-hf-id="hf-m03r" id="06-export-transfer-eyebrow-teach" class="06-export-transfer-abs 06-export-transfer-eyebrow">
+          Teach &amp; Transfer · your next videos
+        </div>
+
+        <div data-hf-id="hf-42rk" id="06-export-transfer-strip" class="06-export-transfer-abs">
+          <div data-hf-id="hf-rlk8" id="06-export-transfer-card-1" class="06-export-transfer-card">
+            <div data-hf-id="hf-ukal" class="06-export-transfer-card-title">One labeled video</div>
+            <div data-hf-id="hf-uune" class="06-export-transfer-card-body">yours, any YOLO dataset</div>
+          </div>
+
+          <svg data-hf-id="hf-xhyz" class="06-export-transfer-arrow" viewBox="0 0 104 48" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <path data-hf-id="hf-cx0o" id="06-export-transfer-arrow-1-shaft" d="M 8 24 L 94 24" />
+            <path data-hf-id="hf-o287" id="06-export-transfer-arrow-1-head" d="M 80 11 L 95 24 L 80 37" />
+          </svg>
+
+          <div data-hf-id="hf-09g3" id="06-export-transfer-card-2" class="06-export-transfer-card">
+            <div data-hf-id="hf-upzc" class="06-export-transfer-card-title">Teach</div>
+            <div data-hf-id="hf-ko9y" class="06-export-transfer-card-body">
+              trains on your GPU, proves on held-out frames
+            </div>
+          </div>
+
+          <svg data-hf-id="hf-jldn" class="06-export-transfer-arrow" viewBox="0 0 104 48" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <path data-hf-id="hf-xsmn" id="06-export-transfer-arrow-2-shaft" d="M 8 24 L 94 24" />
+            <path data-hf-id="hf-oz22" id="06-export-transfer-arrow-2-head" d="M 80 11 L 95 24 L 80 37" />
+          </svg>
+
+          <div data-hf-id="hf-j00s" id="06-export-transfer-card-3" class="06-export-transfer-card 06-export-transfer-card-payoff">
+            <div data-hf-id="hf-spm3" class="06-export-transfer-card-title">Similar videos, labeled</div>
+            <div data-hf-id="hf-zame" class="06-export-transfer-card-body">same classes, same format</div>
+          </div>
+        </div>
+
+        <div data-hf-id="hf-vjc5" id="06-export-transfer-result" class="06-export-transfer-abs">
+          <span data-hf-id="hf-yj7c" id="06-export-transfer-stat" role="img" aria-label="0.94"><span data-hf-id="hf-k6la" id="06-export-transfer-stat-value">0.00</span></span>
+          <span data-hf-id="hf-psu8" id="06-export-transfer-stat-label">held-out mAP50 on a real factory dataset</span>
+        </div>
+      </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      (function () {
+        "use strict";
+
+        var ID = "06-export-transfer";
+        function el(name) {
+          return document.getElementById(ID + "-" + name);
+        }
+
+        var tl = gsap.timeline({ paused: true });
+
+        /* ---------- Camera: steady slow push-in across the whole 8 s ---------- */
+        // (no camera push: the video direction bans slow back-half pushes)
+
+        /* ---------- Scene 1 (0.0-2.2s): eyebrow, then pills assemble ---------- */
+        tl.fromTo(
+          el("eyebrow-format"),
+          { opacity: 0, y: 14 },
+          { opacity: 1, y: 0, duration: 0.5, ease: "power2.out" },
+          0.05,
+        );
+
+        // center-outward-expansion, direct-into-slot (partially-spread) form:
+        // each pill starts START_PROGRESS of the way out from the row's center
+        // and expands to its own flex slot (x: 0). Offsets are index-based so
+        // the start state is deterministic and independent of font timing.
+        var PILL_COUNT = 5;
+        var CENTER_INDEX = (PILL_COUNT - 1) / 2;
+        var SLOT_PITCH = 230; // approx. px between pill slot centers
+        var START_PROGRESS = 0.35;
+        var EXPAND_DUR = 1.1;
+        var EXPAND_EASE = "power3.out";
+        var PILLS_AT = 0.3;
+        var PILL_STAGGER = 0.15;
+
+        for (var i = 0; i < PILL_COUNT; i += 1) {
+          var startX = (CENTER_INDEX - i) * SLOT_PITCH * (1 - START_PROGRESS);
+          tl.fromTo(
+            el("pill-" + i),
+            { x: startX, y: 0, scale: 0.6, opacity: 0 },
+            { x: 0, y: 0, scale: 1, opacity: 1, duration: EXPAND_DUR, ease: EXPAND_EASE },
+            PILLS_AT + i * PILL_STAGGER,
+          );
+        }
+
+        /* ---------- Scene 2 (2.2-4.6s): triptych + drawn arrows ---------- */
+        tl.fromTo(
+          el("eyebrow-teach"),
+          { opacity: 0, y: 14 },
+          { opacity: 1, y: 0, duration: 0.5, ease: "power2.out" },
+          2.2,
+        );
+
+        var CARD_AT = [2.4, 3.1, 3.8];
+        var CARD_DUR = 0.7;
+        for (var c = 0; c < CARD_AT.length; c += 1) {
+          tl.fromTo(
+            el("card-" + (c + 1)),
+            { opacity: 0, y: 36, scale: 0.97 },
+            { opacity: 1, y: 0, scale: 1, duration: CARD_DUR, ease: "power3.out" },
+            CARD_AT[c],
+          );
+        }
+
+        // svg-path-draw: dasharray = measured length, dashoffset length -> 0.
+        function measure(path, fallback) {
+          var len = 0;
+          try {
+            len = path.getTotalLength();
+          } catch (e) {
+            len = 0;
+          }
+          if (!(len > 0)) len = fallback;
+          path.style.strokeDasharray = String(len);
+          path.style.strokeDashoffset = String(len);
+          return len;
+        }
+
+        var SHAFT_DUR = 0.4;
+        var HEAD_DUR = 0.18;
+        var SHAFT_AT = [2.85, 3.55];
+        for (var a = 0; a < SHAFT_AT.length; a += 1) {
+          var shaft = el("arrow-" + (a + 1) + "-shaft");
+          var head = el("arrow-" + (a + 1) + "-head");
+          var shaftLen = measure(shaft, 86);
+          var headLen = measure(head, 40);
+          tl.fromTo(
+            shaft,
+            { strokeDashoffset: shaftLen },
+            { strokeDashoffset: 0, duration: SHAFT_DUR, ease: "power2.out" },
+            SHAFT_AT[a],
+          );
+          // head starts at ~75% of the shaft draw so the stroke reads continuous
+          tl.fromTo(
+            head,
+            { strokeDashoffset: headLen },
+            { strokeDashoffset: 0, duration: HEAD_DUR, ease: "power2.out" },
+            SHAFT_AT[a] + SHAFT_DUR * 0.75,
+          );
+        }
+
+        /* ---------- Scene 3 (4.6-6.4s): 0.94 count-up + label ---------- */
+        // Adapted from the count-up block: arrival, frame-row count on a
+        // sine.inOut curve (tl.set per 30 fps row, seek-safe), one landing pulse.
+        var stat = el("stat");
+        var statValue = el("stat-value");
+        var STAT_AT = 4.6;
+        var ARRIVAL = 0.38;
+        var COUNT = 1.3;
+        var PULSE_HALF = 0.165;
+        var FPS = 30;
+        var END_VALUE = 0.94;
+        var DECIMALS = 2;
+
+        tl.fromTo(
+          stat,
+          { opacity: 0, y: 24, scale: 0.98 },
+          { opacity: 1, y: 0, scale: 1, duration: ARRIVAL, ease: "power3.out" },
+          STAT_AT,
+        );
+
+        var lastFrame = Math.max(1, Math.round(COUNT * FPS));
+        var countEase = gsap.parseEase("sine.inOut");
+        statValue.textContent = (0).toFixed(DECIMALS);
+        for (var f = 0; f <= lastFrame; f += 1) {
+          var p = f / lastFrame;
+          var row = (END_VALUE * countEase(p)).toFixed(DECIMALS);
+          tl.set(statValue, { textContent: row }, STAT_AT + COUNT * p);
+        }
+
+        tl.to(stat, { scale: 1.07, duration: PULSE_HALF, ease: "power3.out" }, STAT_AT + COUNT);
+        tl.to(
+          stat,
+          { scale: 1, duration: PULSE_HALF, ease: "power2.out" },
+          STAT_AT + COUNT + PULSE_HALF,
+        );
+
+        tl.fromTo(
+          el("stat-label"),
+          { opacity: 0, x: -16 },
+          { opacity: 1, x: 0, duration: 0.55, ease: "power2.out" },
+          4.85,
+        );
+
+        /* ---------- Scene 4 (6.4-8.0s): hold; only the camera push continues ---------- */
+
+        window.__timelines = window.__timelines || {};
+        window.__timelines["06-export-transfer"] = tl;
+      })();
+    </script>
+  </div>
+</template>

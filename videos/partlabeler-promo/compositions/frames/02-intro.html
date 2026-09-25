@@ -1,0 +1,300 @@
+<template>
+  <style>
+    #root {
+      position: absolute;
+      inset: 0;
+      width: 1920px;
+      height: 1080px;
+      overflow: hidden;
+      font-family: "Inter", sans-serif;
+      color: #15202B;
+    }
+
+    /* full-bleed ground: its own clip, never on #root */
+    [id="02-intro-bg"] {
+      position: absolute;
+      inset: 0;
+      background: #F3F5F7;
+    }
+
+    /* camera layer: a slow push runs underneath the whole shot */
+    [id="02-intro-stage"] {
+      position: absolute;
+      inset: 0;
+      transform-origin: 35% 45%;
+    }
+
+    /* ---- right 55%: the real start screen in a white app window ---- */
+    [id="02-intro-window"] {
+      position: absolute;
+      left: 864px;
+      top: 262px;
+      width: 1100px; /* bleeds 44px past the right edge: visible part = 55% of the frame */
+      height: 620px;
+      box-sizing: border-box;
+      background: #FFFFFF;
+      border: 1.5px solid rgba(10, 124, 120, 0.2);
+      border-radius: 14px;
+      overflow: hidden;
+    }
+    [id="02-intro-chrome"] {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 0;
+      height: 40px;
+      box-sizing: border-box;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding-left: 18px;
+      background: #FFFFFF;
+      border-bottom: 1.5px solid rgba(10, 124, 120, 0.2);
+    }
+    [id="02-intro-chrome"] i {
+      display: block;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: rgba(91, 104, 116, 0.28);
+    }
+    [id="02-intro-shot"] {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 40px;
+      bottom: 0;
+      overflow: hidden;
+      background: #FFFFFF;
+    }
+    [id="02-intro-img"] {
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      object-position: 50% 0%;
+      transform-origin: 50% 0%;
+    }
+
+    /* ---- left 45%: eyebrow, wordmark, value line, pills ---- */
+    [id="02-intro-eyebrow"] {
+      position: absolute;
+      left: 115px;
+      top: 250px;
+      font: 700 24px/1 "Inter", sans-serif;
+      letter-spacing: 0.08em;
+      color: #0A7C78;
+      white-space: nowrap;
+    }
+
+    [id="02-intro-mark"] {
+      position: absolute;
+      left: 115px;
+      top: 326px;
+    }
+    [id="02-intro-word"] {
+      display: block;
+      font: 700 104px/1.08 "Inter", sans-serif;
+      letter-spacing: -0.02em;
+      color: #15202B;
+      white-space: nowrap;
+      transform-origin: 0% 50%;
+    }
+    /* the bracket from 01: four 4px bars framing the wordmark; the bottom bar becomes the underline */
+    [id="02-intro-bracket"] {
+      position: absolute;
+      left: -24px;
+      right: -24px;
+      top: -6px;
+      height: 120px;
+      transform-origin: 50% 50%;
+    }
+    [id="02-intro-bk-top"],
+    [id="02-intro-bk-bottom"] {
+      position: absolute;
+      left: 0;
+      right: 0;
+      height: 4px;
+      border-radius: 2px;
+      background: #0A7C78;
+    }
+    [id="02-intro-bk-top"] { top: 0; }
+    [id="02-intro-bk-bottom"] { bottom: 0; }
+    [id="02-intro-bk-left"],
+    [id="02-intro-bk-right"] {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 4px;
+      border-radius: 2px;
+      background: #0A7C78;
+      transform-origin: 50% 100%;
+    }
+    [id="02-intro-bk-left"] { left: 0; }
+    [id="02-intro-bk-right"] { right: 0; }
+
+    [id="02-intro-line"] {
+      position: absolute;
+      left: 115px;
+      top: 499px;
+      width: 700px;
+      font: 700 58px/1.1 "Inter", sans-serif;
+      letter-spacing: -0.02em;
+      color: #15202B;
+    }
+    [id="02-intro-line"] span {
+      display: inline-block;
+    }
+    [id="02-intro-w3"] {
+      color: #0A7C78;
+    }
+
+    [id="02-intro-pills"] {
+      position: absolute;
+      left: 115px;
+      top: 730px;
+      display: flex;
+      gap: 20px;
+    }
+    [id="02-intro-pills"] span {
+      display: block;
+      padding: 19px 34px;
+      border-radius: 100px;
+      border: 1.5px solid rgba(10, 124, 120, 0.2);
+      background: rgba(10, 124, 120, 0.08);
+      color: #0A7C78;
+      font: 700 32px/1 "Inter", sans-serif;
+      white-space: nowrap;
+      transform-origin: 50% 50%;
+    }
+  </style>
+
+  <div data-hf-id="hf-rzn8" id="root" data-composition-id="02-intro" data-start="0" data-duration="5.5" data-width="1920" data-height="1080">
+    <div data-hf-id="hf-jxu3" id="02-intro-bg" class="clip" data-start="0" data-duration="5.5" data-track-index="0"></div>
+
+    <div data-hf-id="hf-4pa7" id="02-intro-stage">
+      <div data-hf-id="hf-f1on" id="02-intro-window">
+        <div data-hf-id="hf-sfq9" id="02-intro-chrome"><i data-hf-id="hf-wt6k"></i><i data-hf-id="hf-zeb8"></i><i data-hf-id="hf-y7e5"></i></div>
+        <div data-hf-id="hf-exgn" id="02-intro-shot">
+          <img data-hf-id="hf-xx47" id="02-intro-img" src="assets/home.png" alt="PartLabeler start screen">
+        </div>
+      </div>
+
+      <div data-hf-id="hf-4x20" id="02-intro-eyebrow">OPEN SOURCE · FOR INDUSTRIAL PARTS</div>
+
+      <div data-hf-id="hf-qohk" id="02-intro-mark">
+        <div data-hf-id="hf-tsxj" id="02-intro-word">PartLabeler</div>
+        <div data-hf-id="hf-6nwx" id="02-intro-bracket">
+          <div data-hf-id="hf-pe10" id="02-intro-bk-top"></div>
+          <div data-hf-id="hf-3fp2" id="02-intro-bk-bottom"></div>
+          <div data-hf-id="hf-z5lc" id="02-intro-bk-left"></div>
+          <div data-hf-id="hf-lqnz" id="02-intro-bk-right"></div>
+        </div>
+      </div>
+
+      <div data-hf-id="hf-c7et" id="02-intro-line"><span data-hf-id="hf-a9wz" id="02-intro-w0">Raw</span> <span data-hf-id="hf-5784" id="02-intro-w1">factory</span> <span data-hf-id="hf-21f4" id="02-intro-w2">video</span> <span data-hf-id="hf-jhri" id="02-intro-w3">→</span> <span data-hf-id="hf-cds9" id="02-intro-w4">training</span> <span data-hf-id="hf-nhjk" id="02-intro-w5">dataset.</span></div>
+
+      <div data-hf-id="hf-n2xt" id="02-intro-pills">
+        <span data-hf-id="hf-3rg4" id="02-intro-p0">In minutes</span>
+        <span data-hf-id="hf-nwkx" id="02-intro-p1">Free</span>
+        <span data-hf-id="hf-r3jv" id="02-intro-p2">Local</span>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <script>
+    (function () {
+      var el = function (id) {
+        return document.getElementById("02-intro-" + id);
+      };
+      var tl = gsap.timeline({ paused: true });
+
+      // Camera: slow push under the whole 5s shot (keeps the held beats alive).
+      // (no camera push: the video direction bans slow back-half pushes)
+
+      // ---- Scene 1 (0.0-1.2s): eyebrow, then the wordmark resolves; the bracket collapses into its underline ----
+      tl.fromTo(
+        el("eyebrow"),
+        { opacity: 0, y: 14 },
+        { opacity: 1, y: 0, duration: 0.5, ease: "power3.out" },
+        0,
+      );
+      // bracket carried over from 01 lands around the incoming name
+      tl.fromTo(
+        el("bracket"),
+        { opacity: 0, scale: 1.4 },
+        { opacity: 1, scale: 1, duration: 0.5, ease: "power3.out" },
+        0,
+      );
+      // brand-name resolve: oversized + soft -> exact size + sharp
+      tl.fromTo(
+        el("word"),
+        { opacity: 0, scale: 1.3, filter: "blur(12px)" },
+        { opacity: 1, scale: 1, filter: "blur(0px)", duration: 0.8, ease: "expo.out" },
+        0.15,
+      );
+      // collapse: top edge drops exactly onto the bottom edge (116 = 120 box - 4px bar),
+      // the sides fold down to 4px stubs that sit inside the bottom edge's ends
+      tl.fromTo(el("bk-top"), { y: 0 }, { y: 116, duration: 0.4, ease: "power3.inOut" }, 0.6);
+      tl.fromTo(
+        [el("bk-left"), el("bk-right")],
+        { scaleY: 1 },
+        { scaleY: 4 / 120, duration: 0.4, ease: "power3.inOut" },
+        0.6,
+      );
+      // the merged line tightens to the exact width of the wordmark: the 4px teal underline
+      // (the 24px clip on each end also removes the folded side stubs)
+      tl.fromTo(
+        el("bracket"),
+        { clipPath: "inset(0px 0px 0px 0px)" },
+        { clipPath: "inset(0px 24px 0px 24px)", duration: 0.35, ease: "power3.out" },
+        1.0,
+      );
+
+      // ---- Scene 2 (1.2-2.8s): the value claim builds word by word ----
+      for (var i = 0; i < 6; i++) {
+        var w = el("w" + i);
+        var at = 1.25 + i * 0.2;
+        if (i === 3) {
+          // the arrow travels in its own direction
+          tl.fromTo(
+            w,
+            { opacity: 0, x: -28, filter: "blur(6px)" },
+            { opacity: 1, x: 0, filter: "blur(0px)", duration: 0.55, ease: "power3.out" },
+            at,
+          );
+        } else {
+          tl.fromTo(
+            w,
+            { opacity: 0, y: 26, filter: "blur(8px)" },
+            { opacity: 1, y: 0, filter: "blur(0px)", duration: 0.55, ease: "power3.out" },
+            at,
+          );
+        }
+      }
+
+      // ---- Scene 3 (2.8-3.8s): three pills pop in left to right (spring-pop-entrance, smooth settle) ----
+      for (var p = 0; p < 3; p++) {
+        tl.fromTo(
+          el("p" + p),
+          { scale: 0, opacity: 0, y: 16 },
+          { scale: 1, opacity: 1, y: 0, duration: 0.55, ease: "power3.out" },
+          2.85 + p * 0.12,
+        );
+      }
+
+      // ---- Scene 4 (3.8-5.0s): the real start screen slides in from the right edge and settles; hold ----
+      tl.fromTo(
+        el("window"),
+        { x: 1080, y: 40 },
+        { x: 0, y: 0, duration: 1.0, ease: "expo.out" },
+        3.8,
+      );
+      tl.fromTo(el("img"), { scale: 1.06 }, { scale: 1, duration: 1.1, ease: "power3.out" }, 3.8);
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["02-intro"] = tl;
+    })();
+  </script>
+</template>

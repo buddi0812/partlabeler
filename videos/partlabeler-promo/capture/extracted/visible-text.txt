@@ -1,0 +1,53 @@
+[h1] PartLabeler
+[span] NVIDIA GeForce RTX 3060, 12 GB, bfloat16 · projects in C:\PartLabelerDemo\projects
+[h2] Projects
+[b] pcb_panel
+[span] 0 / 66 confirmed
+[span] Video · 2 classes · C:\PartLabelerDemo\videos\pcb_panel.mp4
+[span] 1 min ago
+[b] conveyor_line
+[span] 2 / 89 confirmed
+[span] Video · 3 classes · C:\PartLabelerDemo\videos\conveyor_line.mp4
+[span] 1 min ago
+[h2] New project
+[span] Name
+[span] Source
+[button] Video
+[button] Image folder
+[button] Browse…
+[small] Every Nth frame is kept for labeling.
+[span] Keep every Nth frame
+[span] Classes
+[button] Load from classes.txt / data.yaml…
+[small] Names starting left_ / right_ are treated as mirror twins.
+[summary] More options
+[span] Existing YOLO labels to import (optional)
+[button] Browse…
+[span] Parent object (optional)
+[small] Suggestions then search inside it. Can be changed later in the annotator.
+[button] Create project
+[h2] Teach & Transfer
+[span] automatic
+[p] Already have one video labeled? Teach learns those labels (it trains a detector on this machine, which takes time), proves on held-out frames that it reproduces them, then Transfer labels other similar videos or image folders in the same format. Check the results in the annotator before using them.
+[h3] 1 · Teach from a labeled dataset
+[span] Labeled dataset folder
+[button] Browse…
+[span] Run name
+[span] Model size
+[option] Nano (fastest)
+[option] Small
+[option] Medium (best)
+[span] Epochs
+[span] Parent object (optional)
+[button] Start teaching
+[h3] 2 · Transfer to similar videos or image folders
+[span] Teach run
+[option] No finished runs yet
+[span] Label these
+[span] Nothing added yet.
+[button] Add video…
+[button] Add image folder…
+[button] Start labeling
+[button] Places
+[button] Cancel
+[button] Use this folder

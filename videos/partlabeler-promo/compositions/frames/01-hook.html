@@ -1,0 +1,229 @@
+<template id="01-hook-template">
+  <style>
+    /* Frame root: styled via #root only (never a class on the composition element). */
+    #root {
+      position: absolute;
+      inset: 0;
+      width: 1920px;
+      height: 1080px;
+      overflow: hidden;
+      container-type: size;
+      font-family: "Inter", sans-serif;
+      color: #ffffff;
+    }
+
+    /* ---- full-bleed ground: the b-roll still on its own clip layer ---- */
+    [id="01-hook-bg"] {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      background: #1a232c;
+    }
+    [id="01-hook-bg-img"] {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    /* 25% ink overlay (legibility), per the frame roles */
+    [id="01-hook-bg-shade"] {
+      position: absolute;
+      inset: 0;
+      background: rgba(21, 32, 43, 0.25);
+    }
+    /* gentle left-weighted ink scrim under the copy column (total dim stays under ~50%) */
+    [id="01-hook-bg-scrim"] {
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(
+        90deg,
+        rgba(21, 32, 43, 0.34) 0%,
+        rgba(21, 32, 43, 0.22) 50%,
+        rgba(21, 32, 43, 0) 82%
+      );
+    }
+
+    /* ---- copy layer: sketch placement (left 7cqw, tops 24cqw / 37cqw) ---- */
+    [id="01-hook-copy"] {
+      position: absolute;
+      inset: 0;
+    }
+    [id="01-hook-line1"] {
+      position: absolute;
+      left: 134px;
+      top: 461px;
+      font-weight: 700;
+      font-size: 96px;
+      line-height: 1.08;
+      letter-spacing: -0.02em;
+      color: #ffffff;
+    }
+    [class~="01-hook-row"] {
+      display: block;
+      white-space: nowrap;
+    }
+    [id="01-hook-line2"] {
+      position: absolute;
+      left: 134px;
+      top: 710px;
+      font-weight: 700;
+      font-size: 64px;
+      line-height: 1.1;
+      letter-spacing: -0.02em;
+      color: #cfe8e6;
+      white-space: nowrap;
+    }
+    [class~="01-hook-word"] {
+      display: inline-block;
+    }
+
+    /* "weeks." target: padded box the bracket hugs */
+    [id="01-hook-target"] {
+      position: relative;
+      display: inline-block;
+      padding: 0 15px;
+    }
+    [id="01-hook-target-text"] {
+      position: relative; /* paints above the bracket fill */
+    }
+    [id="01-hook-bracket"] {
+      position: absolute;
+      top: -10px;
+      bottom: -10px;
+      left: -5px;
+      right: -5px;
+      display: block;
+      transform-origin: 50% 50%;
+    }
+    [id="01-hook-bracket-svg"] {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      overflow: visible;
+      display: block;
+    }
+    /* svg-path-draw: pathLength="1" normalises the dash math to the rect's real
+       perimeter, so the draw is exact whatever width "weeks." lays out at.
+       Dash 1 / gap 2 with offset 1.02 = fully hidden, no zero-length cap dot. */
+    [id="01-hook-bracket-rect"] {
+      fill: #0a7c78;
+      fill-opacity: 0;
+      stroke: #0a7c78;
+      stroke-width: 4;
+      stroke-linejoin: miter;
+      stroke-linecap: square;
+      stroke-dasharray: 1 2;
+      stroke-dashoffset: 1.02;
+    }
+  </style>
+
+  <div data-hf-id="hf-ur7f" id="root" data-composition-id="01-hook" data-duration="5.4" data-width="1920" data-height="1080">
+    <!-- Track 0: full-bleed b-roll ground (static: no pan, no push) -->
+    <div data-hf-id="hf-3yia" id="01-hook-bg" class="clip" data-start="0" data-duration="5.4" data-track-index="0">
+      <img data-hf-id="hf-a5ad" id="01-hook-bg-img" src="assets/hook_broll.jpg" alt="">
+      <div data-hf-id="hf-jvzc" id="01-hook-bg-shade"></div>
+      <div data-hf-id="hf-npm5" id="01-hook-bg-scrim"></div>
+    </div>
+
+    <!-- Track 1: the two lines + the bracket payoff -->
+    <div data-hf-id="hf-hrrp" id="01-hook-copy" class="clip" data-start="0" data-duration="5.4" data-track-index="1">
+      <div data-hf-id="hf-lwq0" id="01-hook-line1">
+        <div data-hf-id="hf-n5lw" class="01-hook-row"><span data-hf-id="hf-3ryy" class="01-hook-word">Your</span> <span data-hf-id="hf-4xhb" class="01-hook-word">detector</span> <span data-hf-id="hf-yqui" class="01-hook-word">needs</span></div>
+        <div data-hf-id="hf-glb0" class="01-hook-row"><span data-hf-id="hf-alo8" class="01-hook-word">thousands</span> <span data-hf-id="hf-l5eg" class="01-hook-word">of</span> <span data-hf-id="hf-ywic" class="01-hook-word">labeled</span> <span data-hf-id="hf-bb7n" class="01-hook-word">frames.</span></div>
+      </div>
+      <div data-hf-id="hf-uklv" id="01-hook-line2"><span data-hf-id="hf-tjp1" class="01-hook-word">Drawing</span> <span data-hf-id="hf-tj5g" class="01-hook-word">every</span> <span data-hf-id="hf-9c2q" class="01-hook-word">box</span> <span data-hf-id="hf-39k4" class="01-hook-word">by</span> <span data-hf-id="hf-caog" class="01-hook-word">hand</span> <span data-hf-id="hf-s2rz" class="01-hook-word">takes</span> <span data-hf-id="hf-mk1h" id="01-hook-target"><span data-hf-id="hf-crc9" id="01-hook-bracket" aria-hidden="true"><svg data-hf-id="hf-wuzd" id="01-hook-bracket-svg" xmlns="http://www.w3.org/2000/svg"><rect data-hf-id="hf-9wto" id="01-hook-bracket-rect" x="0" y="0" width="100%" height="100%" pathLength="1" /></svg></span><span data-hf-id="hf-124x" id="01-hook-target-text" class="01-hook-word">weeks.</span></span></div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <script>
+    (function () {
+      var DURATION = 5.0;
+      var tl = gsap.timeline({ paused: true });
+
+      /* ------------------------------------------------------------------
+       * dynamic-content-sequencing (per word): each word's start is computed
+       * ONCE from its content length, BASE + chars * SEC_PER_CHAR (+ an
+       * optional per-entry hold). Longer words earn more dwell before the
+       * next arrives; no hand-typed per-word offsets.
+       * ------------------------------------------------------------------ */
+      var BASE_DURATION = 0.07; // per-word floor
+      var SEC_PER_CHAR = 0.017; // uniform across both lines: one engine
+      var WORD_ENTER = 0.45; // per-word fade / blur / rise
+
+      function schedule(words, start, holds) {
+        var cumulative = start;
+        return words.map(function (el, i) {
+          var at = cumulative;
+          var chars = el.textContent.trim().length;
+          cumulative += BASE_DURATION + chars * SEC_PER_CHAR + (holds[i] || 0);
+          return { el: el, at: at };
+        });
+      }
+
+      function reveal(entries, rise, blur) {
+        entries.forEach(function (entry) {
+          tl.fromTo(
+            entry.el,
+            { opacity: 0, y: rise, filter: "blur(" + blur + "px)" },
+            { opacity: 1, y: 0, filter: "blur(0px)", duration: WORD_ENTER, ease: "power3.out" },
+            entry.at,
+          );
+        });
+      }
+
+      var line1Words = Array.prototype.slice.call(
+        document.getElementById("01-hook-line1").querySelectorAll('[class~="01-hook-word"]'),
+      );
+      var line2Words = Array.prototype.slice.call(
+        document.getElementById("01-hook-line2").querySelectorAll('[class~="01-hook-word"]'),
+      );
+
+      // Scene 1 (0.0-2.2s): line 1 builds word by word from 0.2s (lands ~1.67s), then reads.
+      reveal(schedule(line1Words, 0.2, {}), 28, 10);
+
+      // Scene 2 (2.2-3.6s): line 2, same engine; a micro-hold after "takes" (index 5)
+      // lets "weeks." land as its own beat (~3.14s, settled by ~3.59s).
+      reveal(schedule(line2Words, 2.2, { 5: 0.08 }), 20, 8);
+
+      // Scene 3 (3.6-5.0s): payoff. The teal bracket traces clockwise from the
+      // top-left corner (svg-path-draw, pen ease) while the box snaps in around
+      // "weeks." from 1.14x (spring settle on the box scale, not on the stroke).
+      // Then the draw-then-fill variation: a faint teal tint marks it labeled.
+      var bracket = document.getElementById("01-hook-bracket");
+      var rect = document.getElementById("01-hook-bracket-rect");
+      var DRAW_AT = 3.6;
+      var DRAW_DUR = 0.45;
+
+      tl.fromTo(bracket, { opacity: 0 }, { opacity: 1, duration: 0.06, ease: "none" }, DRAW_AT);
+      tl.fromTo(
+        bracket,
+        { scale: 1.14 },
+        { scale: 1, duration: 0.55, ease: "back.out(2.2)" },
+        DRAW_AT,
+      );
+      tl.fromTo(
+        rect,
+        { strokeDashoffset: 1.02 },
+        { strokeDashoffset: 0, duration: DRAW_DUR, ease: "power2.out" },
+        DRAW_AT,
+      );
+      tl.fromTo(
+        rect,
+        { fillOpacity: 0 },
+        { fillOpacity: 0.22, duration: 0.3, ease: "power1.out" },
+        DRAW_AT + DRAW_DUR,
+      );
+
+      // Everything holds still (~4.35-5.0s); the root zoom-through is the exit.
+      tl.set({}, {}, DURATION);
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["01-hook"] = tl;
+    })();
+  </script>
+</template>

@@ -1,0 +1,188 @@
+{
+  "typography": [
+    {
+      "role": "display",
+      "fontFamily": "system-ui",
+      "fontSize": "22px",
+      "fontWeight": "700",
+      "lineHeight": "31.9px",
+      "letterSpacing": "normal",
+      "color": "#15202B",
+      "sampleText": "PartLabeler"
+    },
+    {
+      "role": "heading",
+      "fontFamily": "system-ui",
+      "fontSize": "15px",
+      "fontWeight": "700",
+      "lineHeight": "21.75px",
+      "letterSpacing": "normal",
+      "color": "#15202B",
+      "sampleText": "Projects"
+    },
+    {
+      "role": "label",
+      "fontFamily": "system-ui",
+      "fontSize": "14px",
+      "fontWeight": "400",
+      "lineHeight": "20.3px",
+      "letterSpacing": "normal",
+      "color": "#15202B",
+      "sampleText": "Name"
+    },
+    {
+      "role": "heading-3",
+      "fontFamily": "system-ui",
+      "fontSize": "13px",
+      "fontWeight": "600",
+      "lineHeight": "18.85px",
+      "letterSpacing": "normal",
+      "color": "#5B6874",
+      "sampleText": "1 · Teach from a labeled dataset"
+    },
+    {
+      "role": "body",
+      "fontFamily": "system-ui",
+      "fontSize": "12.5px",
+      "fontWeight": "400",
+      "lineHeight": "18.125px",
+      "letterSpacing": "normal",
+      "color": "#5B6874",
+      "sampleText": "Already have one video labeled? Teach learns those labels (i"
+    },
+    {
+      "role": "body-small",
+      "fontFamily": "system-ui",
+      "fontSize": "11.5px",
+      "fontWeight": "400",
+      "lineHeight": "16.675px",
+      "letterSpacing": "normal",
+      "color": "#5B6874",
+      "sampleText": "Every Nth frame is kept for labeling."
+    }
+  ],
+  "spacing": {
+    "observed": [
+      4,
+      6,
+      8,
+      10,
+      12,
+      16,
+      18
+    ],
+    "baseUnit": 4
+  },
+  "radius": [
+    "6px",
+    "8px",
+    "10px"
+  ],
+  "shadows": [],
+  "buttons": [
+    {
+      "label": "Video",
+      "background": "#15202B",
+      "backgroundImage": "",
+      "backdropFilter": "",
+      "color": "#FFFFFF",
+      "padding": "6px 12px",
+      "borderRadius": "0px",
+      "border": "0px none rgb(255, 255, 255)",
+      "boxShadow": "none",
+      "fontSize": "14px",
+      "fontWeight": "400",
+      "height": "32.2969px"
+    },
+    {
+      "label": "Image folder",
+      "background": "#FFFFFF",
+      "backgroundImage": "",
+      "backdropFilter": "",
+      "color": "#15202B",
+      "padding": "6px 12px",
+      "borderRadius": "0px",
+      "border": "0px none rgb(21, 32, 43)",
+      "boxShadow": "none",
+      "fontSize": "14px",
+      "fontWeight": "400",
+      "height": "32.2969px"
+    },
+    {
+      "label": "Browse…",
+      "background": "#FFFFFF",
+      "backgroundImage": "",
+      "backdropFilter": "",
+      "color": "#15202B",
+      "padding": "6px 12px",
+      "borderRadius": "6px",
+      "border": "1px solid rgb(215, 221, 227)",
+      "boxShadow": "none",
+      "fontSize": "14px",
+      "fontWeight": "400",
+      "height": "34.2969px"
+    },
+    {
+      "label": "Create project",
+      "background": "#0A7C78",
+      "backgroundImage": "",
+      "backdropFilter": "",
+      "color": "#FFFFFF",
+      "padding": "6px 12px",
+      "borderRadius": "6px",
+      "border": "1px solid rgb(10, 124, 120)",
+      "boxShadow": "none",
+      "fontSize": "14px",
+      "fontWeight": "400",
+      "height": "34.2969px"
+    }
+  ],
+  "cards": [
+    {
+      "label": "card",
+      "background": "#FFFFFF",
+      "backgroundImage": "",
+      "backdropFilter": "",
+      "color": "#15202B",
+      "padding": "16px",
+      "borderRadius": "10px",
+      "border": "1px solid rgb(215, 221, 227)",
+      "boxShadow": "none",
+      "fontSize": "14px",
+      "fontWeight": "400",
+      "height": "224.594px"
+    }
+  ],
+  "nav": {
+    "label": "navigation",
+    "background": "transparent",
+    "backgroundImage": "",
+    "backdropFilter": "",
+    "color": "#15202B",
+    "padding": "0px",
+    "borderRadius": "0px",
+    "border": "0px none rgb(21, 32, 43)",
+    "boxShadow": "none",
+    "fontSize": "14px",
+    "fontWeight": "400",
+    "height": "31.8906px"
+  },
+  "chips": [
+    {
+      "label": "automatic",
+      "background": "#E4E9ED",
+      "color": "#5B6874",
+      "padding": "1px 8px",
+      "borderRadius": "99px",
+      "border": "0px none rgb(91, 104, 116)",
+      "boxShadow": "none",
+      "fontSize": "11px",
+      "fontWeight": "600",
+      "height": "auto"
+    }
+  ],
+  "statCells": [],
+  "tabs": [],
+  "backgrounds": [],
+  "glass": []
+}

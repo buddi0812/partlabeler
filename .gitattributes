@@ -1,0 +1,37 @@
+# Normalise line endings in the repository; check files out with the right ones per platform.
+* text=auto
+
+# Windows scripts need CRLF (cmd.exe misreads LF-only batch files); shell scripts must stay LF,
+# or bash fails on Linux and Colab with "$'\r': command not found".
+*.bat    text eol=crlf
+*.cmd    text eol=crlf
+*.ps1    text eol=crlf
+*.sh     text eol=lf
+
+# Notebooks are JSON text
+*.ipynb  text
+
+# Images and video
+*.png    binary
+*.jpg    binary
+*.jpeg   binary
+*.gif    binary
+*.bmp    binary
+*.tif    binary
+*.tiff   binary
+*.webp   binary
+*.ico    binary
+*.mp4    binary
+*.avi    binary
+*.mov    binary
+*.mkv    binary
+*.webm   binary
+*.m4v    binary
+
+# Model weights and archives (normally not committed; see .gitignore)
+*.pt           binary
+*.pth          binary
+*.safetensors  binary
+*.onnx         binary
+*.zip          binary
+*.pdf          binary
