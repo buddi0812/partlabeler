@@ -1071,6 +1071,16 @@ function render({ model, el }) {
   el.focus();
   model.send({ type: "ready", item: model.startItem || 0 });
   if (model.startItem) S.target = model.startItem;
+  // Notebooks: messages from the kernel's job threads wait until the page asks (Colab drops them otherwise).
+  // Poll often while something runs, slowly otherwise; stop when the widget is gone.
+  if (!web) {
+    const poll = () => {
+      if (!el.isConnected) return;
+      model.send({ type: "poll" });
+      setTimeout(poll, S.busy || document.querySelector(".rv-panel .rv-typing, .rv-send.stop") ? 300 : 1200);
+    };
+    setTimeout(poll, 500);
+  }
 }
 
 export default { render };

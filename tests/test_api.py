@@ -102,3 +102,23 @@ def test_notifications_record_events_merge_repeats_and_persist(tmp_path, video):
     assert last(msgs, "notify")["item"]["level"] == "error"
     s.handle({"type": "notifications_clear"})
     assert last(msgs, "notifications")["items"] == []
+
+
+def test_notebook_outbox_holds_thread_messages_until_a_poll():
+    """Colab drops widget messages sent from threads: the widget host queues them and flushes on each poll."""
+    import threading
+
+    from ui.host_widget import Outbox
+    sent = []
+    out = Outbox(sent.append)
+    t = threading.Thread(target=lambda: [out({"n": i}) for i in range(3)])
+    t.start()
+    t.join()
+    assert sent == []                                            # waiting for the page to ask
+    out({"n": "main"})                                           # a main-thread send flushes first, keeps order
+    assert sent == [{"n": 0}, {"n": 1}, {"n": 2}, {"n": "main"}]
+    threading.Thread(target=lambda: out({"n": 4})).start()
+    import time
+    time.sleep(0.05)
+    out.flush()
+    assert sent[-1] == {"n": 4}

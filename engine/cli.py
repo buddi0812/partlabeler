@@ -13,6 +13,7 @@ Heavy modules (torch, rfdetr, SAM 3) load inside the commands, so --help stays i
 import json
 import platform
 import shutil
+import os
 import sys
 import time
 from contextlib import contextmanager
@@ -169,7 +170,10 @@ def review(project: Path = typer.Argument(..., help="New project folder."),
     st = p.import_yolo(labels)
     typer.echo(f"{p.folder}: {len(p.items)} frames (1 in {every}), {st['boxes']} boxes from {st['files_matched']} "
                f"label files" + (f", {st['files_unmatched']} unmatched" if st["files_unmatched"] else ""))
-    typer.echo(f"open it with: partlabeler app --home {p.folder.parent}")
+    if os.environ.get("COLAB_RELEASE_TAG"):                  # no web app on Colab: the notebook shows it
+        typer.echo(f"open it in the notebook's Step 6 with PROJECT_NAME = {p.folder.name}")
+    else:
+        typer.echo(f"open it with: partlabeler app --home {p.folder.parent}")
 
 
 @app.command()
