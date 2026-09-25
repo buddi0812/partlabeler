@@ -74,7 +74,9 @@ vnum() { local major="${1%%.*}" minor="${1#*.}"; [ "$minor" = "$1" ] && minor=0;
 [ -f pyproject.toml ] || die "pyproject.toml not found next to install.sh." "Run the installer from the PartLabeler folder."
 
 # Colab sets COLAB_RELEASE_TAG; a /content folder alone could exist elsewhere, so it also needs google.colab.
+# PARTLABELER_NO_COLAB=1 forces the Linux .venv install even on Colab (to test the Linux path there).
 is_colab() {
+  [ -n "${PARTLABELER_NO_COLAB:-}" ] && return 1
   [ -n "${COLAB_RELEASE_TAG:-}" ] && return 0
   [ -d /content ] && python3 -c "import google.colab" >/dev/null 2>&1
 }

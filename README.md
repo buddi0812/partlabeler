@@ -118,7 +118,8 @@ Annotator("projects/line2")          # the annotator, inside the notebook
 ```
 
 On Colab, open [PartLabeler_Colab.ipynb](PartLabeler_Colab.ipynb). The annotator runs inside the notebook,
-as Colab's free tier requires, and the T4 GPU uses fp16 automatically.
+as Colab's free tier requires, and the T4 GPU uses fp16 automatically. To try it without your own footage, Step 6
+uses a small sample video of circuit boards ([samples/](samples/README.md), from Pexels).
 
 ## How it compares
 
