@@ -980,7 +980,7 @@ function render({ model, el }) {
     S.big = on; el.classList.toggle("big", on);
     const colab = globalThis.google?.colab?.output;
     if (on) {
-      const h = Math.max(560, (window.outerHeight || screen.availHeight || 900) - 190);
+      const h = Math.max(560, (window.outerHeight || screen.availHeight || 900) - 240);   // minus browser + Colab bars
       el.style.setProperty("--plh", `${h}px`);
       try { colab?.setIframeHeight?.(h + 16, true); } catch {}
       el.scrollIntoView?.({ block: "start" });
