@@ -122,3 +122,37 @@ def test_notebook_outbox_holds_thread_messages_until_a_poll():
     time.sleep(0.05)
     out.flush()
     assert sent[-1] == {"n": 4}
+
+
+def test_colab_run_keeps_the_cell_running_until_the_annotator_sits_idle(tmp_path, video, monkeypatch):
+    """Colab only counts a running cell as activity: run() loops while the annotator is used and returns after
+    idle_minutes without a message from it (automatic polls do not count)."""
+    import sys
+    import types
+    from contextlib import contextmanager
+
+    import ui.host_widget as hw_
+    clock = {"t": 1000.0}
+    monkeypatch.setattr(hw_.time, "time", lambda: clock["t"])
+    monkeypatch.setattr(hw_.time, "sleep", lambda s: None)
+    monkeypatch.setenv("COLAB_RELEASE_TAG", "test")
+    w = hw_.Annotator(Project.create(tmp_path / "proj", CLASSES, video=video))
+    monkeypatch.setattr(w, "send", lambda *a, **k: None)
+    w.outbox = hw_.Outbox(lambda m: None)
+    calls = []
+
+    def poll(n):                                     # each poll call: one minute passes
+        calls.append(clock["t"])
+        clock["t"] += 60
+        if len(calls) == 3:
+            w._on_msg(w, {"type": "goto", "item": 1}, [])   # the user does something at minute 3
+        else:
+            w._on_msg(w, {"type": "poll"}, [])              # automatic polls keep coming
+
+    @contextmanager
+    def ui_events():
+        yield poll
+    monkeypatch.setitem(sys.modules, "jupyter_ui_poll", types.SimpleNamespace(ui_events=ui_events))
+    monkeypatch.setattr("IPython.display.display", lambda *a, **k: None)
+    w.run(idle_minutes=10)
+    assert len(calls) == 3 + 10                     # 10 idle minutes after the last real action, then it returns
