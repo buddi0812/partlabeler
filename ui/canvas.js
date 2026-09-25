@@ -10,6 +10,10 @@ const CSS = `
   display:grid; grid-template-rows:auto auto minmax(0,1fr) auto; gap:8px; padding:0 12px 10px; outline:none; position:relative;
   -webkit-tap-highlight-color:transparent; }
 .pl.web { min-height:100vh; }
+.pl:fullscreen { overflow:auto; }
+.pl.big { height:var(--plh); }
+.pl.big .pl-stage canvas { max-height:calc(var(--plh) - 230px); }
+.pl.big .pl-side { max-height:calc(var(--plh) - 150px); }
 .pl * { box-sizing:border-box; }
 .pl [hidden] { display:none !important; }
 .pl-head { display:flex; align-items:center; gap:12px; margin:0 -12px; padding:8px 12px; background:var(--panel); border-bottom:1px solid var(--line); min-width:0; }
@@ -650,6 +654,7 @@ function render({ model, el }) {
       <span class="pl-sp"></span>
       <span class="pl-saved" role="status" aria-live="polite"></span>
       <span class="pl-bellmount"></span><span class="pl-rivetmount"></span>
+      <button type="button" class="icon pl-full" data-a="full" aria-label="Full screen" title="Full screen">⤢</button>
       <button type="button" class="icon" data-a="help" aria-label="Keyboard shortcuts" title="Keyboard shortcuts (?)">?</button>
     </header>
     <div class="pl-bar-tools" role="toolbar" aria-label="Frame actions">
@@ -737,6 +742,7 @@ function render({ model, el }) {
         <div><span>Notifications</span><kbd>N</kbd></div>
         <div><span>Ask Rivet, the helper</span><kbd>H</kbd></div>
         <div><span>This list</span><kbd>?</kbd></div>
+        <div><span>Full screen (top bar)</span><span>⤢</span></div>
       </div></dialog>`;
   const $ = (s) => el.querySelector(s);
   const cv = $(".pl-cv"), ctx = cv.getContext("2d"), strip = $(".pl-strip"), sctx = strip.getContext("2d");
@@ -948,6 +954,7 @@ function render({ model, el }) {
     export: () => send({ type: "export", format: $(".pl-fmt").value, reviewed_only: $(".pl-revonly").checked }),
     exportJump: () => { flash($(".pl-export")); $(".pl-fmt").focus(); },   // the controls sit below a possibly long class list
     saveSettings: () => send({ type: "settings", parent: $(".pl-parent").value }),
+    full: () => toggleFull(),
     help: () => $(".pl-help-dlg").showModal(),
     closeHelp: () => $(".pl-help-dlg").close(),
     hideHint: () => { S.hintHidden = true; try { localStorage.setItem("pl-hint-hidden", "1"); } catch {} renderSide(); el.focus(); },
@@ -964,6 +971,40 @@ function render({ model, el }) {
   });
   $(".pl-filter").addEventListener("input", (e) => { S.filter = e.target.value; renderSide(); });
   strip.addEventListener("click", (e) => { const r = strip.getBoundingClientRect(); goto(Math.floor((e.clientX - r.left) / r.width * S.statuses.length)); });
+
+  // ---- full screen --------------------------------------------------------------------------
+  // The web app and Jupyter/VS Code can use the browser's full screen. Colab's output frames may not (their
+  // iframe does not allow it), so there the annotator grows to the height of the window instead; the browser's
+  // own full screen (F11) around it gives the rest.
+  function setBig(on) {
+    S.big = on; el.classList.toggle("big", on);
+    const colab = globalThis.google?.colab?.output;
+    if (on) {
+      const h = Math.max(560, (window.outerHeight || screen.availHeight || 900) - 190);
+      el.style.setProperty("--plh", `${h}px`);
+      try { colab?.setIframeHeight?.(h + 16, true); } catch {}
+      el.scrollIntoView?.({ block: "start" });
+      if (!S.bigHint) { S.bigHint = true; toast({ title: "Filled the window height", detail: "For a true full screen, press F11 in your browser as well. Click ⤡ to go back." }); }
+    } else {
+      el.style.removeProperty("--plh");
+      try { colab?.resizeIframeToContent?.(); } catch {}
+    }
+    renderFull();
+  }
+  function renderFull() {
+    const on = Boolean(document.fullscreenElement) || S.big, b = $(".pl-full");
+    b.textContent = on ? "⤡" : "⤢";
+    b.setAttribute("aria-label", on ? "Leave full screen" : "Full screen"); b.title = b.getAttribute("aria-label");
+  }
+  async function toggleFull() {
+    if (document.fullscreenElement) { await document.exitFullscreen().catch(() => {}); return; }
+    if (S.big) { setBig(false); return; }
+    try {
+      if (!document.fullscreenEnabled) throw new Error("not allowed here");
+      await (web ? document.documentElement : el).requestFullscreen();
+    } catch { setBig(true); }
+  }
+  document.addEventListener("fullscreenchange", () => { renderFull(); drawStrip(); });
 
   // ---- mouse on the image ----------------------------------------------------------------
   const toImage = (e) => { const r = cv.getBoundingClientRect(); return [(e.clientX - r.left) * cv.width / r.width, (e.clientY - r.top) * cv.height / r.height]; };

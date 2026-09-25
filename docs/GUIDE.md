@@ -33,7 +33,8 @@ restore projects from the Trash. Each project card has a ⋯ menu with Open, Sho
 
 Top bar: ← Projects (back to the start screen), the project name, the frame number, chips that say whether
 this frame is *Confirmed* or *To check*, the save status (*All changes saved*), the bell and **?**
-(keyboard shortcuts). Below it: frame buttons, the **Track** controls (videos), **Undo**, **Export** and
+(keyboard shortcuts) and ⤢ (full screen; on Colab it fills the window height, press F11 too for a
+true full screen). Below it: frame buttons, the **Track** controls (videos), **Undo**, **Export** and
 **Confirm frame**. The image is in the middle, the side panel on the right has Tool, Class, Boxes on this
 frame, Find parts, Export dataset and Settings. The timeline at the bottom shows every frame; click it to jump.
 
