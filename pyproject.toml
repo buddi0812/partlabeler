@@ -27,6 +27,7 @@ dependencies = [
     "uvicorn[standard]",
     "anywidget",
     "typer",
+    "httpx",
     "timm>=1.0.20",
 ]
 

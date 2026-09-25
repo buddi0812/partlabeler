@@ -10,4 +10,7 @@
   - Laya / Laya Vision / openjev were measured as box checkers and are not used (S4b, S4c in `spikes/REPORT.md`); review flags come from `Project.flags` (area vs the person's box, jumps, lost parts). PyPI `laya` and the laya-vision fork share a package name: never install both.
   - Chunk video sessions (~180 frames), offload state to CPU, fully tear down sessions (VRAM leak, sam3 issue #305).
 - Refresh the knowledge graph with `/graphify` after each milestone.
+- Rivet, the in-app helper (`engine/assistant.py`, UI in `ui/canvas.js`): Gemini Flash-Lite, answers from `docs/GUIDE.md`
+  (keep the guide accurate when features change). The API key comes only from `GEMINI_API_KEY` or `~/.partlabeler/assistant.json`:
+  never write a key into the repo, and scan for `AIza` before any public push. Tips and the pros are fixed text, not model calls.
 - Layout: `engine/` (no UI code; `api.py` is the one message protocol), `ui/` (`canvas.js` annotator, `home.js` start screen, two hosts), `engine/cli.py` (`partlabeler` CLI). User data lives in `data/` and `projects/`, both gitignored: never commit them.

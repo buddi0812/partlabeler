@@ -3,14 +3,18 @@
     python -m engine.cli app [--home projects] [--port 8765]      # or double-click run_windows.bat
     python -m ui.host_fastapi --project projects/my_run            # open one project directly
 
-Everything lives in the home folder: one sub-folder per project, `_teach/<run>` per Teach run.
+Everything lives in the home folder: one sub-folder per project, `_teach/<run>` per Teach run,
+`_trash/` for projects moved to the trash, `.partlabeler/notifications.json` for the notification history.
 The server listens on 127.0.0.1 only; the file browser shows this computer's folders to this computer.
 """
 import argparse
 import asyncio
 import json
 import os
+import shutil
 import string
+import subprocess
+import sys
 import threading
 import time
 import traceback
@@ -21,31 +25,35 @@ from pathlib import Path
 
 import uvicorn
 from fastapi import Body, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
+from engine import assistant
 from engine.api import Session
+from engine.notify import Notifications
 from engine.project import IMAGE_EXTS, Project, read_classes
 
 UI_DIR = Path(__file__).parent
 VIDEO_EXTS = {".mp4", ".avi", ".mov", ".mkv", ".webm", ".m4v", ".mpg", ".mpeg", ".wmv"}
 CLASS_EXTS = {".txt", ".yaml", ".yml"}
-HEAD = """<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+HEAD = """<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#ffffff">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect x='2' y='3' width='12' height='10' rx='2' fill='none' stroke='%230a7c78' stroke-width='2'/></svg>">"""
 ANNOTATOR = HEAD + """<title>{name} · PartLabeler</title>
-<body style="margin:0;background:#f3f5f7"><div id="app"></div>
+<body style="margin:0;background:#eef1f4"><div id="app"></div>
 <script type="module">
 import canvas from "/ui/canvas.js";
 const handlers = [], queue = [];
 const ws = new WebSocket(`ws://${{location.host}}/ws/{name_js}`);
 const model = {{
   homeUrl: "/",
+  startItem: Math.max(0, parseInt(new URLSearchParams(location.search).get("item") || "0", 10) || 0),
   send: (m) => (ws.readyState === 1 ? ws.send(JSON.stringify(m)) : queue.push(m)),
   on: (evt, fn) => {{ if (evt === "msg:custom") handlers.push(fn); }},
 }};
 ws.onopen = () => queue.splice(0).forEach((m) => ws.send(JSON.stringify(m)));
 ws.onmessage = (e) => {{ const m = JSON.parse(e.data); handlers.forEach((fn) => fn(m)); }};
-ws.onclose = () => document.title = "PartLabeler (disconnected: restart the app and reload)";
+ws.onclose = () => {{ document.title = "Disconnected · PartLabeler"; handlers.forEach((fn) => fn({{ type: "disconnected" }})); }};
 canvas.render({{ model, el: document.getElementById("app") }});
 </script>"""
 HOME = HEAD + """<title>PartLabeler</title>
@@ -68,13 +76,37 @@ def session(name: str) -> Session:
         p = Project(project_dir(name))
         state["clients"].setdefault(name, set())
         state["sessions"][name] = Session(p, lambda m, n=name: broadcast(n, m),
-                                          image_src=lambda item, n=name: f"/items/{n}/{item}.jpg")
+                                          image_src=lambda item, n=name: f"/items/{n}/{item}.jpg", notes=notes())
     return state["sessions"][name]
+
+
+def notes() -> Notifications:
+    """The notification history of the current projects folder, shared by the start screen and every tab."""
+    home = state["home"].resolve()
+    if state.get("notes_home") != home:
+        state["notes"] = Notifications(home / ".partlabeler" / "notifications.json", on_change=broadcast_all)
+        state["notes_home"] = home
+    return state["notes"]
+
+
+def note(level: str, title: str, detail: str = "", project: str | None = None, action: dict | None = None) -> dict:
+    return notes().add(level, title, detail, project=project, action=action)
+
+
+def open_action(name: str) -> dict:
+    return {"type": "open", "project": name, "label": "Open project"}
+
+
+def broadcast_all(msg: dict) -> None:
+    for name in list(state["clients"]):
+        broadcast(name, msg)
 
 
 def broadcast(name: str, msg: dict) -> None:
     """Thread-safe: background jobs call this; each open tab has its own outgoing queue."""
-    loop = state["loop"]
+    loop = state.get("loop")
+    if loop is None:
+        return
     for q in list(state["clients"].get(name, ())):
         loop.call_soon_threadsafe(q.put_nowait, msg)
 
@@ -96,8 +128,9 @@ def summary(folder: Path) -> dict:
 
 
 # ---- background jobs for the start screen ----------------------------------------------
-def start_job(kind: str, fn) -> str:
-    """Run fn(job) in a thread; job is a dict the page polls: done/total/text/log/result/error."""
+def start_job(kind: str, fn, on_done=None, fail_title: str | None = None) -> str:
+    """Run fn(progress, should_stop) in a thread; the page polls the job dict (done/total/text/log/result/error).
+    on_done(result) records the success notification; a failure is recorded as `fail_title`."""
     jid = uuid.uuid4().hex[:10]
     job = {"id": jid, "kind": kind, "done": 0, "total": 0, "text": "Starting…", "log": [], "finished": False,
            "error": None, "result": None, "stop": False, "started": time.time()}
@@ -113,9 +146,12 @@ def start_job(kind: str, fn) -> str:
     def run():
         try:
             job["result"] = fn(progress, lambda: job["stop"])
+            if on_done:
+                on_done(job["result"])
         except Exception as e:
             traceback.print_exc()
             job["error"] = f"{type(e).__name__}: {e}"
+            note("error", fail_title or f"{kind.capitalize()} failed", job["error"])
         finally:
             job["finished"] = True
 
@@ -152,6 +188,15 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 app.mount("/ui", StaticFiles(directory=UI_DIR), name="ui")
+
+
+@app.middleware("http")
+async def revalidate_ui(request, call_next):
+    """UI files change with every update: browsers must check (cheap 304s) instead of running a stale copy."""
+    response = await call_next(request)
+    if request.url.path.startswith("/ui/") or request.url.path == "/" or request.url.path.startswith("/p/"):
+        response.headers["Cache-Control"] = "no-cache"
+    return response
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -220,7 +265,8 @@ def _has_teach() -> bool:
 @app.get("/api/projects")
 def list_projects() -> list:
     home = state["home"]
-    found = [f for f in home.iterdir() if (f / "project.json").exists()] if home.exists() else []
+    found = [f for f in home.iterdir() if (f / "project.json").exists() and not f.name.startswith((".", "_trash"))] \
+        if home.exists() else []
     return sorted((summary(f) for f in found), key=lambda s: -s["modified"])
 
 
@@ -252,7 +298,13 @@ def create_project(body: dict = Body(...)) -> dict:
         p.db.close()
         return res
 
-    return {"job": start_job("create", job)}
+    def done(res):
+        detail = f"{res['items']} {'frames' if video else 'images'}"
+        if res.get("imported"):
+            detail += f", {res['imported']['boxes']} boxes imported"
+        note("success", f"Created project {name}", detail, name, open_action(name))
+
+    return {"job": start_job("create", job, done, f"Could not create project {name}")}
 
 
 @app.get("/api/jobs")
@@ -357,7 +409,17 @@ def teach(body: dict = Body(...)) -> dict:
         return run_teach(dataset, runs_dir() / name, parent=parent, progress=progress, should_stop=should_stop,
                          **{k: (int(v) if k != "size" else v) for k, v in kw.items()})
 
-    return {"job": start_job("teach", job), "run": name}
+    def done(res):
+        res = res or {}
+        if res.get("status") == "stopped":
+            note("warning", f"Teach run {name} stopped", "Start it again to resume from the last epoch")
+            return
+        held = (res.get("held_out") or {}).get("mAP50")
+        note("success" if res.get("passed", True) else "warning", f"Teach run {name} finished",
+             (f"Held-out mAP50 {held:.2f}. " if isinstance(held, (int, float)) else "") + "Next: Transfer it to similar videos.",
+             action={"type": "folder", "path": str((runs_dir() / name).resolve()), "label": "Open folder"})
+
+    return {"job": start_job("teach", job, done, f"Teach run {name} failed"), "run": name}
 
 
 @app.post("/api/transfer")
@@ -374,7 +436,13 @@ def transfer(body: dict = Body(...)) -> dict:
     def job(progress, should_stop):
         return run_transfer(run, sources, run / "labels", every=every, progress=progress, should_stop=should_stop)
 
-    return {"job": start_job("transfer", job)}
+    def done(res):
+        n = len((res or {}).get("sources", {})) or len(sources)
+        note("success", f"Transfer finished: {n} source{'s' if n != 1 else ''} labeled",
+             "Review them in the annotator from the Teach & Transfer panel",
+             action={"type": "folder", "path": str((run / "labels").resolve()), "label": "Open folder"})
+
+    return {"job": start_job("transfer", job, done, "Transfer failed")}
 
 
 @app.post("/api/review")
@@ -402,13 +470,119 @@ def review(body: dict = Body(...)) -> dict:
         progress(1, 1, f"Imported {res['boxes']} boxes into {name}")
         return {"name": name, **res}
 
-    return {"job": start_job("review", job), "name": name}
+    def done(res):
+        note("success", f"Created review project {name}", f"{res['boxes']} boxes imported to check", name, open_action(name))
+
+    return {"job": start_job("review", job, done, f"Could not create review project {name}"), "name": name}
+
+
+# ---- notifications, trash, folders ----------------------------------------------------------
+@app.get("/api/notifications")
+def get_notifications() -> dict:
+    return notes().snapshot()
+
+
+@app.post("/api/notifications/read")
+def read_notifications() -> dict:
+    notes().mark_read()
+    return {"ok": True}
+
+
+@app.post("/api/notifications/clear")
+def clear_notifications() -> dict:
+    notes().clear()
+    return {"ok": True}
+
+
+def trash_dir() -> Path:
+    return state["home"] / "_trash"
+
+
+@app.post("/api/projects/{name}/trash")
+def trash_project(name: str) -> dict:
+    """Move a project to <home>/_trash (recoverable from the notification or the Trash list)."""
+    folder = project_dir(name)
+    sess = state["sessions"].pop(name, None)
+    if sess:
+        sess.p.db.close()
+    entry = f"{name}__{time.strftime('%Y%m%d_%H%M%S')}"
+    trash_dir().mkdir(parents=True, exist_ok=True)
+    try:
+        shutil.move(str(folder), str(trash_dir() / entry))
+    except OSError as e:
+        raise HTTPException(409, f"Could not move {name} to the trash ({e}). Close other programs using it and try again.")
+    note("warning", f"Moved {name} to the trash", "Restore it from here or from Trash on the start screen",
+         action={"type": "restore", "entry": entry, "label": "Restore"})
+    return {"entry": entry}
+
+
+@app.get("/api/trash")
+def list_trash() -> list:
+    d = trash_dir()
+    items = [e for e in d.iterdir() if (e / "project.json").exists()] if d.exists() else []
+    return [{"entry": e.name, "name": e.name.rsplit("__", 1)[0], "trashed": e.stat().st_mtime}
+            for e in sorted(items, key=lambda e: -e.stat().st_mtime)]
+
+
+@app.post("/api/trash/{entry}/restore")
+def restore_project(entry: str) -> dict:
+    src = (trash_dir() / entry).resolve()
+    if src.parent != trash_dir().resolve() or not (src / "project.json").exists():
+        raise HTTPException(404, "That project is no longer in the trash")
+    name = entry.rsplit("__", 1)[0]
+    target, k = state["home"] / name, 2
+    while target.exists():
+        target, k = state["home"] / f"{name}_{k}", k + 1
+    shutil.move(str(src), str(target))
+    note("success", f"Restored {target.name}", "", target.name, open_action(target.name))
+    return {"name": target.name}
+
+
+@app.post("/api/open-folder")
+def open_folder(body: dict = Body(...)) -> dict:
+    """Show a folder in the file manager; only folders inside the projects folder."""
+    path = Path(body.get("path", "")).resolve()
+    home = state["home"].resolve()
+    if not path.is_dir() or (path != home and home not in path.parents):
+        raise HTTPException(400, "Only folders inside the projects folder can be opened")
+    if os.name == "nt":
+        os.startfile(str(path))                                     # noqa: S606 (local desktop app)
+    else:
+        subprocess.Popen(["open" if sys.platform == "darwin" else "xdg-open", str(path)])
+    return {"ok": True}
+
+
+# ---- Rivet, the helper (engine/assistant.py) --------------------------------------------------
+@app.get("/api/assistant")
+def assistant_info() -> dict:
+    return assistant.info()
+
+
+@app.post("/api/assistant/key")
+def assistant_key(body: dict = Body(...)) -> dict:
+    """Save (or with an empty key, remove) the Gemini key in ~/.partlabeler; the key never comes back out."""
+    try:
+        assistant.save_key(body.get("key", ""))
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        raise HTTPException(502, f"Could not check the key with Gemini ({type(e).__name__}). Check the internet connection.")
+    return assistant.info()
+
+
+@app.post("/api/assistant/chat")
+def assistant_chat(body: dict = Body(...)):
+    """One answer, streamed as JSON lines: {"model"} or {"offline"}, {"text"}..., {"done"} (or {"error"})."""
+    events = assistant.reply(body.get("messages"), body.get("context"), body.get("actions"))
+    return StreamingResponse((json.dumps(e) + "\n" for e in events), media_type="application/x-ndjson",
+                             headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})
 
 
 # ---- entry points -------------------------------------------------------------------------
 def serve(home: Path = Path("projects"), port: int = 8765, open_browser: bool = True, project: str | None = None) -> None:
     state["home"] = Path(home)
     state["home"].mkdir(parents=True, exist_ok=True)
+    notes()
     url = f"http://127.0.0.1:{port}/" + (f"p/{project}" if project else "")
     print(f"PartLabeler: {url}   (projects in {state['home'].resolve()}; Ctrl+C to quit)", flush=True)
     if open_browser:

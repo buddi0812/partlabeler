@@ -8,8 +8,15 @@ In:  ready | goto {item} | box {item, cls, box, obj?} | click {item, x, y, posit
      cycle {item, obj} | delete {item, obj} | set_class {obj, cls, item?} | review {item, value}
      accept {item} | undo | track {item, count, direction} | stop | suggest {item}
      find_all {item, obj} | settings {parent} | export {format, reviewed_only}
+     notifications_read | notifications_clear | assistant_info | assistant {id, messages, context, actions}
+     assistant_key {key}
 Out: project {...} | item {...} | mask {item, obj, src} | status {statuses, flags, busy, gpu, undo}
      item_changed {items} | progress {task, done, total} | toast {text} | error {text}
+     notify {item, unread} | notifications {items, unread} | assistant_info {...} | assistant {id, text|done|...}
+
+Events worth finding later (confirmed, deleted, tracked, exported, errors...) go through `notify`, which
+records them in the notification history (engine/notify.py) and shows them as a toast; `toast` is only
+for passing hints.
 
 Models load on first use and are shared by every open project (one copy in GPU memory).
 """
@@ -23,10 +30,16 @@ import traceback
 import numpy as np
 from PIL import Image
 
+from engine.notify import Notifications
+
 MASK_RGBA = (10, 124, 120, 110)
 PAIR = re.compile(r"^(left|right)_(.+)$")
 HISTORY = 50                                              # undo steps kept per project
 MODEL_NAMES = {"seg": "outline", "track": "tracking", "suggest": "matching", "concept": "find-similar"}
+UNDO_WORDS = {"box": "drawing a box", "outline": "outlining a part", "delete": "deleting a box",
+              "class change": "a class change", "confirm": "confirming a frame", "accept": "accepting suggestions",
+              "tracking": "tracking", "suggestions": "suggestions", "find similar": "find similar"}
+FORMAT_NAMES = {"yolo": "YOLO", "coco": "COCO", "cvat": "CVAT", "voc": "Pascal VOC", "labelstudio": "Label Studio"}
 
 _MODELS: dict = {}
 _LOCKS = {k: threading.Lock() for k in ("seg", "track", "suggest", "concept", "load")}
@@ -66,8 +79,10 @@ def mask_png(mask: np.ndarray) -> str:
 
 
 class Session:
-    def __init__(self, project, send, image_src=None):
+    def __init__(self, project, send, image_src=None, notes: Notifications | None = None):
+        """`notes`: a shared history (the web host keeps one per projects folder); default: this session's own."""
         self.p, self.send = project, send
+        self.notes = notes or Notifications(on_change=send)
         self.image_src = image_src or (lambda item: data_url(project.image(item)))
         self._locks = _LOCKS
         self.points = {}                                  # (item, obj) -> [[x, y, label], ...]
@@ -78,6 +93,15 @@ class Session:
     def _model(self, name):
         return model(name, lambda n: self.send({"type": "toast",
                                                 "text": f"Loading the {MODEL_NAMES[n]} model (first use only)…"}))
+
+    def notify(self, level: str, title: str, detail: str = "", action=None, key=None, plural=None) -> dict:
+        return self.notes.add(level, title, detail, project=self.p.meta["name"], action=action, key=key, plural=plural)
+
+    def _goto(self, item: int) -> dict:
+        return {"type": "goto", "project": self.p.meta["name"], "item": item, "label": "Go to frame"}
+
+    def _frame(self, item: int) -> str:
+        return f"{'frame' if self.p.meta['kind'] == 'video' else 'image'} {item + 1}"
 
     def _remember(self, items, label: str) -> None:
         self.history.append((label, self.p.snapshot(items)))
@@ -113,15 +137,46 @@ class Session:
             getattr(self, "on_" + msg.get("type", ""), self.on_unknown)(msg)
         except Exception as e:                            # report, keep the session alive
             traceback.print_exc()
-            self.send({"type": "error", "text": f"{type(e).__name__}: {e}"})
+            self.notify("error", "Something went wrong", f"{type(e).__name__}: {e}")
 
     def on_unknown(self, msg):
-        self.send({"type": "error", "text": f"unknown message {msg.get('type')!r}"})
+        self.notify("error", "The app sent a message the server does not know", repr(msg.get("type")))
 
     def on_ready(self, msg):
         self.send(self.project_msg())
         self.send(self.status_msg())
         self.send(self.item_msg(max(0, min(msg.get("item", 0), len(self.p.items) - 1))))
+        self.send({"type": "notifications", **self.notes.snapshot()})
+
+    def on_notifications_read(self, msg):
+        self.notes.mark_read()
+
+    def on_notifications_clear(self, msg):
+        self.notes.clear()
+
+    # Rivet, the helper (engine/assistant.py). The web page asks the server over HTTP; notebooks ask here.
+    def on_assistant_info(self, msg):
+        from engine import assistant
+        self.send({"type": "assistant_info", **assistant.info()})
+
+    def on_assistant(self, msg):
+        from engine import assistant
+
+        def run():
+            try:
+                for ev in assistant.reply(msg.get("messages"), msg.get("context"), msg.get("actions")):
+                    self.send({"type": "assistant", "id": msg.get("id"), **ev})
+            except Exception as e:
+                self.send({"type": "assistant", "id": msg.get("id"), "error": f"{type(e).__name__}: {e}"})
+        threading.Thread(target=run, daemon=True).start()
+
+    def on_assistant_key(self, msg):
+        from engine import assistant
+        try:
+            assistant.save_key(msg.get("key", ""))
+            self.send({"type": "assistant_info", **assistant.info()})
+        except Exception as e:
+            self.send({"type": "assistant_info", **assistant.info(), "key_error": str(e)})
 
     def on_goto(self, msg):
         self.send(self.item_msg(msg["item"]))
@@ -187,8 +242,12 @@ class Session:
         self.refresh(item)
 
     def on_delete(self, msg):
+        gone = next((b for b in self.p.boxes(msg["item"]) if b["obj"] == msg["obj"]), None)
         self._remember([msg["item"]], "delete")
         self.p.delete(msg["item"], msg["obj"])
+        if gone:
+            self.notify("info", f"Deleted a {self.p.classes[gone['cls']]} box on {self._frame(msg['item'])}",
+                        "Ctrl+Z brings it back", self._goto(msg["item"]), key="delete", plural="Deleted {n} boxes")
         self.points.pop((msg["item"], msg["obj"]), None)
         self.refresh(msg["item"])
 
@@ -201,11 +260,20 @@ class Session:
     def on_review(self, msg):
         self._remember([msg["item"]], "confirm")
         self.p.set_reviewed(msg["item"], msg.get("value", True))
+        if msg.get("value", True):
+            self.notify("success", f"Confirmed {self._frame(msg['item'])}", "Saved to the project",
+                        self._goto(msg["item"]), key="confirm", plural="Confirmed {n} frames")
+        else:
+            self.notify("info", f"Unconfirmed {self._frame(msg['item'])}", "", self._goto(msg["item"]))
         self.refresh(msg["item"])
 
     def on_accept(self, msg):
+        n = sum(b["source"] == "suggested" for b in self.p.boxes(msg["item"]))
         self._remember([msg["item"]], "accept")
         self.p.accept(msg["item"])
+        if n:
+            self.notify("success", f"Accepted {n} suggestion{'s' if n != 1 else ''} on {self._frame(msg['item'])}",
+                        "", self._goto(msg["item"]))
         self.refresh(msg["item"])
 
     def on_stop(self, msg):
@@ -222,7 +290,9 @@ class Session:
         items = self.p.restore(snap)
         self.points = {k: v for k, v in self.points.items() if k[0] not in snap["rows"]}
         self.outlines = {k: v for k, v in self.outlines.items() if k[0] not in snap["rows"]}
-        self.send({"type": "toast", "text": f"Undid {label}" + (f" on {len(items)} frames" if len(items) > 1 else "")})
+        what = UNDO_WORDS.get(label, label)
+        self.notify("info", f"Undid {what}" + (f" on {len(items)} frames" if len(items) > 1 else ""), "",
+                    self._goto(min(items)) if items else None)
         self.send({"type": "item_changed", "items": items})
         self.send(self.status_msg())
 
@@ -230,7 +300,8 @@ class Session:
         parent = (msg.get("parent") or "").strip() or None
         self.p.set_meta(parent=parent)
         self.send(self.project_msg())
-        self.send({"type": "toast", "text": f"Parent object: {parent}" if parent else "Parent object: none (whole image)"})
+        self.notify("success", "Settings saved",
+                    f"Parent object: {parent}" if parent else "Parent object: none (suggestions search the whole image)")
 
     # ---- background jobs -----------------------------------------------------------------
     def _run(self, name, fn):
@@ -245,8 +316,8 @@ class Session:
                 fn()
             except Exception as e:
                 traceback.print_exc()
-                hint = " (out of GPU memory: close other GPU programs and try again)" if "out of memory" in str(e) else ""
-                self.send({"type": "error", "text": f"{name} failed: {type(e).__name__}: {e}{hint}"})
+                hint = " Close other programs that use the GPU and try again." if "out of memory" in str(e) else ""
+                self.notify("error", f"{name} failed", f"{type(e).__name__}: {e}.{hint}")
             finally:
                 self.running = False
                 self.send({"type": "progress", "task": name, "done": 1, "total": 1, "finished": True})
@@ -281,7 +352,9 @@ class Session:
 
             with self._locks["track"]:
                 n = self._model("track").track(self.p, start, count, on_item, lambda: self.stop_flag, direction)
-            self.send({"type": "toast", "text": f"Tracked {n} frames {'back' if direction < 0 else 'ahead'}"})
+            self.notify("success", f"Tracked {n} frames {'back' if direction < 0 else 'ahead'}",
+                        f"From {self._frame(start)} in {time.perf_counter() - t0:.0f} s. Frames marked 'to check' may need a look.",
+                        self._goto(start))
             self.send({"type": "item_changed", "items": list(span)})
 
         self._run("Tracking", job)
@@ -299,7 +372,8 @@ class Session:
             obj = self.p.new_obj()
             for k, (cls, box, score) in enumerate(found):
                 self.p.put(item, obj + k, cls, box, "suggested", score)
-            self.send({"type": "toast", "text": f"{len(found)} suggestions. Y accepts all, Delete removes one"})
+            self.notify("info", f"{len(found)} suggestion{'s' if len(found) != 1 else ''} on {self._frame(item)}",
+                        "Y accepts all; select one and press Delete to drop it", self._goto(item))
             self.refresh(item)
 
         self._run("Suggesting", job)
@@ -323,8 +397,9 @@ class Session:
             obj0 = self.p.new_obj()
             for k, (box, sc) in enumerate(new):
                 self.p.put(item, obj0 + k, self._side(ex["cls"], box), box, "suggested", sc)
-            self.send({"type": "toast", "text": f"{len(new)} more like this" +
-                       (". Y accepts all, Delete removes one" if new else "")})
+            self.notify("info", f"Found {len(new)} more like this on {self._frame(item)}",
+                        "Y accepts all; select one and press Delete to drop it" if new else
+                        "Try a lower threshold or another example", self._goto(item))
             self.refresh(item)
 
         self._run("Finding similar", job)
@@ -350,6 +425,8 @@ class Session:
         def job():
             out = self.p.folder / "exports" / f"{fmt}_{time.strftime('%Y%m%d_%H%M%S')}"
             res = self.p.export(fmt, out, reviewed_only)
-            self.send({"type": "toast", "text": f"Exported {res['images']} images, {res['boxes']} boxes to {out}"})
+            self.notify("success", f"Exported {FORMAT_NAMES.get(fmt, fmt)} dataset",
+                        f"{res['images']} images, {res['boxes']} boxes. {out}",
+                        {"type": "folder", "path": str(out), "label": "Open folder"})
 
         self._run("Exporting", job)

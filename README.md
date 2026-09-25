@@ -17,7 +17,7 @@ detector on. Labeling itself trains nothing. You click, the models outline, trac
 | **Teach & Transfer** | For a video that is already labeled: it learns those labels by training a detector (RF-DETR) on your machine and proves the result on held-out frames. It then labels other similar videos or image folders in the same format. Check the results in the annotator. |
 
 The worked example throughout is a car-front lamp dataset. Nothing in the tool is specific to cars.
-Design and decisions: [docs/PLAN.md](docs/PLAN.md). Measured results: [spikes/REPORT.md](spikes/REPORT.md).
+User guide: [docs/GUIDE.md](docs/GUIDE.md). Design and decisions: [docs/PLAN.md](docs/PLAN.md). Measured results: [spikes/REPORT.md](spikes/REPORT.md).
 
 ## Install
 
@@ -58,7 +58,19 @@ http://127.0.0.1:8765 where you can:
   teaching. When it finishes, add the videos or folders to label and start labeling. "Review in annotator"
   opens each result as a project.
 
-Projects live in `projects/` (change it with `--home`). Everything is saved as you go.
+**Rivet**, the small robot at the bottom right of the start screen (in the annotator it sits in the top bar, or
+press <kbd>H</kbd>), answers how-to questions such as "How can I export?" or "Explain how Teach & Transfer works",
+with buttons that take you straight to the right place. It uses Google Gemini Flash-Lite with your own free API key
+from [Google AI Studio](https://aistudio.google.com/apikey): set `GEMINI_API_KEY`, or paste the key in Rivet's panel
+(it is saved in `~/.partlabeler/assistant.json` on your computer, never in the project). Gemini receives only the
+typed question, the chat so far and which screen you are on; never images, labels, project or class names. Its
+"Did you know?" tips are fixed text, and without a key Rivet answers from the [user guide](docs/GUIDE.md).
+
+Projects live in `projects/` (change it with `--home`). Everything is saved as you go; the header says
+*All changes saved*. The bell (or <kbd>N</kbd>) opens the notification history, shared by the start screen and
+every open project: what was created, confirmed, deleted, tracked, exported or went wrong, with shortcuts such as
+*Go to frame*, *Open folder* or *Restore*. A project's ⋯ menu offers *Show in folder* and *Move to trash*; trashed
+projects stay restorable from the Trash list on the start screen (they are kept in `projects/_trash/`).
 
 ### Annotator keys
 
@@ -76,6 +88,10 @@ Projects live in `projects/` (change it with `--home`). Everything is saved as y
 | ← → (A / D) · Shift+→ | previous / next frame · next frame to check |
 | Enter | confirm the frame and go on |
 | Ctrl+Z | undo (last 50 steps) |
+| Export (top bar) | jumps to the export controls: pick YOLO, COCO, CVAT, Pascal VOC or Label Studio, then Export |
+| N | notification history: projects created, frames confirmed, boxes deleted, tracking done, exports, errors |
+| ? | every keyboard shortcut |
+| H | ask Rivet, the helper |
 
 Solid boxes are yours, dashed ones came from tracking or import, and dotted ones are suggestions. On the
 timeline, green means confirmed, teal means your boxes, blue means tracked or imported, purple means
