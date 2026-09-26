@@ -6,14 +6,17 @@ https://github.com/user-attachments/assets/87e7f75c-94e3-48b0-a1d5-27f3808e5875
 <a href="https://www.pexels.com/license/">Pexels</a> footage (Video Kickstarter, Distill) ·
 <a href="videos/partlabeler-promo/renders/video.mp4">full-quality MP4</a></sub>
 
-Build labeled datasets of industrial parts (any product, any part list) from videos and image folders.
-What you get out is the dataset: YOLO, COCO, CVAT, Pascal VOC or Label Studio, ready to train your own
-detector on. Labeling itself trains nothing. You click, the models outline, track and suggest, and you confirm.
+Build labeled datasets of industrial parts (any product, any part list) from videos and image folders:
+boxes (detection), exact outlines (segmentation) or one class per image (classification). What you get out is
+the dataset: YOLO, COCO, CVAT, Pascal VOC or Label Studio (or class folders), ready to train your own model on.
+Labeling itself trains nothing. You click, the models outline, track, group and suggest, and you confirm.
 
 | Mode | What it does |
 |---|---|
 | **Video** | Click or box each part on one frame. The boxes are tracked ahead or back (SAM 3) in the style you drew them. Frames where a box jumped, changed size or went missing are marked *to check*. You fix and confirm, then export. |
 | **Image folder** | The same screen, one image at a time. **Suggest** proposes boxes that look like parts you already labeled (DINOv3 matching). **Find similar** finds more copies of a selected part in the same image (SAM 3). |
+| **Outlines** | Any video or folder project can label exact shapes instead of boxes: every click, box, track, suggestion and Find similar keeps SAM 3's mask, and a brush and eraser fix the edges. Exports polygons or masks in all five formats. Box projects switch to outlines in Settings, and **Outline boxes** turns existing boxes into outlines. |
+| **Image classes** | One class per image, on a grid of pictures. **Group by look** puts look-alikes together (DINOv3) so a whole group is named at once, **Suggest classes** proposes classes from a few examples and leaves pictures that look unlike every class alone, and **Check labels** finds labels that disagree with their look-alikes. Exports class folders, Ultralytics classification folders or a CSV. The same grid sorts the parts of a box or outline project (**Sort parts**): label everything as `part`, then name the groups. |
 | **Teach & Transfer** | For a video that is already labeled: it learns those labels by training a detector (RF-DETR) on your machine and proves the result on held-out frames. It then labels other similar videos or image folders in the same format, listing frames to check (including label flips and brief misses along tracks). A *quick transfer* skips training and matches the labeled examples instead: a rough first pass (about 70% of parts found on similar frames), not a replacement. Check the results in the annotator. |
 
 The worked example throughout is a car-front lamp dataset. Nothing in the tool is specific to cars.
@@ -92,6 +95,9 @@ projects stay restorable from the Trash list on the start screen (they are kept 
 | N | notification history: projects created, frames confirmed, boxes deleted, tracking done, exports, errors |
 | ? | every keyboard shortcut |
 | H | ask Rivet, the helper |
+| P · E · , . | outline projects: brush · eraser · smaller / larger brush |
+| G | sort parts (the grid), or group by look inside the grid |
+| Grid: click, Shift/Ctrl+click, Ctrl+A, then 1–9 | select pictures, give them a class · Del clears · Space or double-click looks closer |
 
 Solid boxes are yours, dashed ones came from tracking or import, and dotted ones are suggestions. On the
 timeline, green means confirmed, teal means your boxes, blue means tracked or imported, purple means
@@ -102,7 +108,8 @@ you never accepted are left out.
 ### Command line
 
 ```bash
-python -m engine.cli new projects/line2 --video line2.mp4 --classes classes.txt --every 5
+python -m engine.cli new projects/line2 --video line2.mp4 --classes classes.txt --every 5   # --task segment | classify
+python -m engine.cli new projects/sorting --images messy_folder --classes classes.txt --task classify
 python -m engine.cli export projects/line2 --format cvat --reviewed-only
 python -m engine.cli teach data/line2_labeled --run projects/_teach/line2_v1 --parent "engine block"
 python -m engine.cli transfer projects/_teach/line2_v1 line3.mp4 line4.mp4 --out projects/_teach/line2_v1/labels
@@ -136,9 +143,9 @@ describe no such feature, not that we proved it impossible. Corrections welcome.
 | Free, data stays on your machine | ✓ | ✓ (MIT) | ✓ (Apache-2.0) | ✓ (GPL-3.0) | paid tiers, cloud; free-plan data is public [14] |
 
 Where the others are clearly stronger: team workflows (roles, review queues, SSO) in CVAT, Label Studio and Roboflow;
-many more annotation types (polygons, skeletons, 3D, audio) in CVAT and X-AnyLabeling; years of maturity and
-compliance options (CVAT v2.76, Label Studio Enterprise). PartLabeler is built for one job: boxes on industrial
-parts in video, fast, on your own machine.
+more annotation types (keypoints, skeletons, rotated boxes, 3D, audio) in CVAT and X-AnyLabeling; years of maturity
+and compliance options (CVAT v2.76, Label Studio Enterprise). PartLabeler is built for one job: labeling industrial
+parts in video and pictures (boxes, outlines, image classes), fast, on your own machine.
 
 <details><summary>Sources</summary>
 

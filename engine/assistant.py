@@ -71,6 +71,12 @@ TIPS = [
      "ask": "How do I label a part?", "guide": "Label a part (click to outline)"},
     {"text": "It's free and open source (Apache-2.0), with no seats, credits or cloud account.",
      "ask": "What makes PartLabeler different from other labeling tools?", "guide": "Why PartLabeler"},
+    {"text": "Need exact shapes instead of boxes? Outline projects keep a mask per part, tracked through the video.",
+     "ask": "How do I label outlines (segmentation)?", "guide": "Outlines (segmentation)"},
+    {"text": "A messy folder of pictures? Image classes groups look-alikes so you can name a whole group at once.",
+     "ask": "How do I sort a folder of images into classes?", "guide": "Image classes and smart sorting"},
+    {"text": "Label now, name later: box every part as 'part', then Sort parts groups them by look for naming.",
+     "ask": "How does Sort parts work?", "guide": "Sort parts: name or fix classes in bulk"},
 ]
 
 _lock = threading.Lock()

@@ -7,12 +7,22 @@ export). Protocol:
 In:  ready | goto {item} | box {item, cls, box, obj?} | click {item, x, y, positive, cls, obj?}
      cycle {item, obj} | delete {item, obj} | set_class {obj, cls, item?} | review {item, value}
      accept {item} | undo | track {item, count, direction} | stop | suggest {item}
-     find_all {item, obj} | settings {parent} | export {format, reviewed_only}
+     find_all {item, obj} | settings {parent, task?} | export {format, reviewed_only}
+     paint {item, obj?, cls, x, y, png} | outline {item, all?}                     (outline projects)
+     add_class {name, of?, keys?} | grid {of} | thumbs {of, keys} | sort {of, k?} | tag {of, keys, cls} | accept_tags {keys}
+     suggest_tags | odd {of}                       (the grid: of = "images" in class projects, "parts" otherwise)
      notifications_read | notifications_clear | assistant_info | assistant {id, messages, context, actions}
      assistant_key {key}
 Out: project {...} | item {...} | mask {item, obj, src} | status {statuses, flags, busy, gpu, undo}
      item_changed {items} | progress {task, done, total} | toast {text} | error {text}
-     notify {item, unread} | notifications {items, unread} | assistant_info {...} | assistant {id, text|done|...}
+     grid {of, cards} | cards {of, cards} | thumbs {of, src} | groups {of, k, groups, unsure, dups, ...}
+     odd {of, items} | notify {item, unread} | notifications {items, unread} | assistant_info {...}
+     assistant {id, text|done|...}
+
+Outline projects (task "segment") keep a mask per part: clicks, boxes (SAM 3 outlines the part inside), tracking,
+suggestions and Find similar all store one, the brush and eraser edit it, and item messages carry each part's
+mask as a small PNG crop. Image-class projects (task "classify") are labeled on a grid of thumbnails, with smart
+sorting from engine/sort.py; box and outline projects use the same grid to sort their parts ("Sort parts").
 
 Events worth finding later (confirmed, deleted, tracked, exported, errors...) go through `notify`, which
 records them in the notification history (engine/notify.py) and shows them as a toast; `toast` is only
@@ -26,27 +36,33 @@ import re
 import threading
 import time
 import traceback
+from pathlib import Path
 
 import numpy as np
 from PIL import Image
 
+from engine import masks as M
 from engine.notify import Notifications
 
 MASK_RGBA = (10, 124, 120, 110)
 PAIR = re.compile(r"^(left|right)_(.+)$")
 HISTORY = 50                                              # undo steps kept per project
-MODEL_NAMES = {"seg": "outline", "track": "tracking", "suggest": "matching", "concept": "find-similar"}
+MODEL_NAMES = {"seg": "outline", "track": "tracking", "suggest": "matching", "concept": "find-similar",
+               "embed": "sorting"}
 UNDO_WORDS = {"box": "drawing a box", "outline": "outlining a part", "delete": "deleting a box",
               "class change": "a class change", "confirm": "confirming a frame", "accept": "accepting suggestions",
-              "tracking": "tracking", "suggestions": "suggestions", "find similar": "find similar"}
-FORMAT_NAMES = {"yolo": "YOLO", "coco": "COCO", "cvat": "CVAT", "voc": "Pascal VOC", "labelstudio": "Label Studio"}
+              "tracking": "tracking", "suggestions": "suggestions", "find similar": "find similar",
+              "paint": "painting an outline", "outline boxes": "outlining boxes", "classes": "a class change"}
+FORMAT_NAMES = {"yolo": "YOLO", "coco": "COCO", "cvat": "CVAT", "voc": "Pascal VOC", "labelstudio": "Label Studio",
+                "folders": "class folders", "csv": "CSV"}
+THUMB = 224                                               # px, longest side of grid thumbnails
 
 _MODELS: dict = {}
-_LOCKS = {k: threading.Lock() for k in ("seg", "track", "suggest", "concept", "load")}
+_LOCKS = {k: threading.Lock() for k in ("seg", "track", "suggest", "concept", "embed", "load")}
 
 
 def model(name: str, announce=None):
-    """The shared model `name` (seg | track | suggest | concept), loaded on first use."""
+    """The shared model `name` (seg | track | suggest | concept | embed), loaded on first use."""
     with _LOCKS["load"]:
         if name not in _MODELS:
             if announce:
@@ -60,6 +76,10 @@ def model(name: str, announce=None):
             elif name == "concept":
                 from engine.parent import ConceptFinder
                 _MODELS[name] = ConceptFinder()
+            elif name == "embed":                         # whole-image / crop features for sorting
+                from engine import hw
+                from engine.embed import Embedder
+                _MODELS[name] = Embedder("base" if hw.device() == "cuda" else "small")
             else:
                 from engine.suggest import Suggester
                 _MODELS[name] = Suggester(finder=lambda: model("concept"))
@@ -98,6 +118,9 @@ class Session:
         self.outlines = {}                                # (item, obj) -> ([(mask, score), ...] small->large, index)
         self.history = []                                 # [(label, snapshot)] for undo
         self.job, self.running, self.stop_flag = None, False, False
+        self.thumb_src = None                              # web host: (of, key) -> URL; notebooks ask with `thumbs`
+        self.sorting = {}                                  # of -> {"keys", "vectors", "groups"}
+        self._thumbs, self._frames, self._frame_lock = {}, {}, threading.Lock()
 
     def _model(self, name):
         return model(name, lambda n: self.send({"type": "toast",
@@ -119,10 +142,10 @@ class Session:
     # ---- messages out --------------------------------------------------------------------
     def project_msg(self):
         from engine import hw
-        return {"type": "project", "name": self.p.meta["name"], "kind": self.p.meta["kind"],
+        return {"type": "project", "name": self.p.meta["name"], "kind": self.p.meta["kind"], "task": self.p.task,
                 "classes": self.p.classes, "count": len(self.p.items),
                 "names": [it["name"] for it in self.p.items], "parent": self.p.meta.get("parent") or "",
-                "device": hw.describe(), "formats": list(self.p.FORMATS)}
+                "device": hw.describe(), "formats": list(self.p.formats), "task": self.p.task}
 
     def status_msg(self):
         from engine import hw
@@ -133,8 +156,21 @@ class Session:
         it = self.p.items[item]
         with Image.open(it["path"]) as im:
             w, h = im.size
-        return {"type": "item", "item": item, "name": it["name"], "src": self.image_src(item), "w": w, "h": h,
-                "boxes": self.p.boxes(item), "reviewed": self.p.is_reviewed(item)}
+        boxes = self.p.boxes(item)
+        if self.p.task == "segment":
+            rles = self.p.masks(item)
+            for b in boxes:
+                if b["obj"] in rles:
+                    b["mask"] = M.crop_png(M.decode(rles[b["obj"]]))
+        msg = {"type": "item", "item": item, "name": it["name"], "src": self.image_src(item), "w": w, "h": h,
+               "boxes": boxes, "reviewed": self.p.is_reviewed(item)}
+        if self.p.task == "classify":
+            msg["tag"] = self.p.tags().get(item)
+        return msg
+
+    def _size(self, item: int):
+        with Image.open(self.p.items[item]["path"]) as im:
+            return im.size
 
     def refresh(self, item: int):
         self.send(self.item_msg(item))
@@ -191,13 +227,97 @@ class Session:
         self.send(self.item_msg(msg["item"]))
 
     def on_box(self, msg):
+        """A drawn box. Outline projects: SAM 3 outlines the part inside it."""
         obj = msg.get("obj") or self.p.new_obj()
         cls = msg["cls"] if msg.get("obj") is None else next(
             (b["cls"] for b in self.p.boxes(msg["item"]) if b["obj"] == obj), msg["cls"])
+        mask = self._outline_boxes(msg["item"], [msg["box"]])[0] if self.outlines_on else None
+        if mask is not None and not mask.any():
+            self.send({"type": "toast", "text": "No part found inside that box; draw it around the whole part"})
+            return
         self._remember([msg["item"]], "box")
-        self.p.put(msg["item"], obj, cls, msg["box"], "manual")
+        self.p.put(msg["item"], obj, cls, msg["box"], "manual", mask=mask)
         self.points.pop((msg["item"], obj), None)
+        if mask is not None:
+            self.send({"type": "select", "item": msg["item"], "obj": obj})
         self.refresh(msg["item"])
+
+    def on_paint(self, msg):
+        """Brush or eraser on an outline: the page sends the part's whole edited mask as a PNG crop at (x, y).
+        An empty mask deletes the part; no obj starts a new part of class `cls`."""
+        item = msg["item"]
+        W, H = self._size(item)
+        mask = M.from_png(msg["png"], msg["x"], msg["y"], H, W)
+        existing = {b["obj"]: b for b in self.p.boxes(item)}
+        obj = msg.get("obj") if msg.get("obj") in existing else None
+        self._remember([item], "paint")
+        if not mask.any():
+            if obj is not None:
+                self.p.delete(item, obj)
+            self.refresh(item)
+            return
+        obj = obj or self.p.new_obj()
+        cls = existing[obj]["cls"] if obj in existing else msg["cls"]
+        self.p.put(item, obj, cls, M.box_of(mask), "manual", mask=mask)
+        self.points.pop((item, obj), None)
+        self.send({"type": "select", "item": item, "obj": obj})
+        self.refresh(item)
+
+    def on_outline(self, msg):
+        """Outline every box that has no outline yet: on this item, or with all=True on every item (imported
+        boxes, boxes drawn before the project was switched to outlines, Teach & Transfer results)."""
+        if not self.outlines_on:
+            self.send({"type": "toast", "text": "Switch the project to outlines first (Settings, Label type)"})
+            return
+        todo = {}
+        rows = self.p.db.execute("SELECT item, obj, x1, y1, x2, y2 FROM boxes WHERE rle IS NULL AND source != 'suggested'"
+                                 + ("" if msg.get("all") else " AND item=?"), () if msg.get("all") else (msg["item"],))
+        for item, obj, *box in rows:
+            todo.setdefault(item, []).append((obj, box))
+        if not todo:
+            self.send({"type": "toast", "text": "Every box already has an outline"})
+            return
+        self._remember(list(todo), "outline boxes")
+
+        def job():
+            done = n = 0
+            for item, objs in sorted(todo.items()):
+                if self.stop_flag:
+                    break
+                masks = self._outline_boxes(item, [b for _, b in objs])
+                rows = {b["obj"]: b for b in self.p.boxes(item)}
+                for (obj, _), mask in zip(objs, masks):
+                    if obj in rows and mask.any():
+                        b = rows[obj]
+                        self.p.put(item, obj, b["cls"], b["box"], b["source"], b["score"], mask=mask)
+                        n += 1
+                done += 1
+                self.send({"type": "progress", "task": "Outlining boxes", "done": done, "total": len(todo)})
+            self.notify("success", f"Outlined {n} box{'es' if n != 1 else ''} on {done} "
+                                   f"{'frame' if self.p.meta['kind'] == 'video' else 'image'}{'s' if done != 1 else ''}",
+                        "Check the outlines; the brush (P) and eraser (E) fix the edges")
+            self.send({"type": "item_changed", "items": list(todo)})
+
+        self._run("Outlining boxes", job)
+
+    def _seg_on(self, item: int):
+        """The outline model with `item`'s image encoded (call with the "seg" lock held)."""
+        seg = self._model("seg")
+        key = (str(self.p.folder), item)
+        if getattr(seg, "image_key", None) != key:
+            seg.set_image(self.p.image(item))
+            seg.image_key = key
+        return seg
+
+    def _outline_boxes(self, item: int, boxes) -> list:
+        """SAM 3 outlines of the parts inside these boxes on one item (box prompts), cleaned of specks and pinholes."""
+        with self._locks["seg"]:
+            seg = self._seg_on(item)
+            return [M.clean(seg.segment(box=[float(v) for v in b])[0]) for b in boxes]
+
+    @property
+    def outlines_on(self) -> bool:
+        return self.p.task == "segment"
 
     def on_click(self, msg):
         """First click on a new part: SAM's three nested outlines are kept small -> large and the
@@ -210,11 +330,7 @@ class Session:
         pts.append([float(msg["x"]), float(msg["y"]), 1 if msg.get("positive", True) else 0])
         prompt_box = existing[obj]["box"] if obj in existing and len(pts) == 1 and msg.get("obj") else None
         with self._locks["seg"]:
-            seg = self._model("seg")
-            key = (str(self.p.folder), item)
-            if getattr(seg, "image_key", None) != key:
-                seg.set_image(self.p.image(item))
-                seg.image_key = key
+            seg = self._seg_on(item)
             points, labels = [p[:2] for p in pts], [p[2] for p in pts]
             if len(pts) == 1 and prompt_box is None:
                 outs = sorted(seg.candidates(points, labels), key=lambda ms: int(ms[0].sum()))
@@ -244,8 +360,12 @@ class Session:
             return
         cls = next((b["cls"] for b in self.p.boxes(item) if b["obj"] == obj), cls)
         self._remember([item], "outline")
-        self.p.put(item, obj, cls, box, "manual", score)
-        self.send({"type": "mask", "item": item, "obj": obj, "src": mask_png(mask)})
+        if self.outlines_on:
+            self.p.put(item, obj, cls, box, "manual", score, mask=M.clean(mask))
+            self.send({"type": "select", "item": item, "obj": obj})
+        else:
+            self.p.put(item, obj, cls, box, "manual", score)
+            self.send({"type": "mask", "item": item, "obj": obj, "src": mask_png(mask)})
         if len(outs) > 1:
             self.send({"type": "toast", "text": f"Outline {pick + 1} of {len(outs)} (small to large). M: next size"})
         self.refresh(item)
@@ -305,12 +425,35 @@ class Session:
         self.send({"type": "item_changed", "items": items})
         self.send(self.status_msg())
 
+    def on_add_class(self, msg):
+        """A new class at the end of the list (existing labels keep their numbers); with keys, those cards get it."""
+        name = " ".join(str(msg.get("name", "")).split())
+        if not name:
+            return
+        if name in self.p.classes:
+            self.send({"type": "toast", "text": f"There is already a class called {name}"})
+        else:
+            self.p.set_meta(classes=[*self.p.classes, name])
+            self.send(self.project_msg())
+            self.notify("success", f"Added class {name}", f"Number {len(self.p.classes)} in the list")
+        if msg.get("keys"):
+            self.on_tag({"of": msg.get("of", "images"), "keys": msg["keys"], "cls": self.p.classes.index(name)})
+
     def on_settings(self, msg):
         parent = (msg.get("parent") or "").strip() or None
         self.p.set_meta(parent=parent)
+        task = msg.get("task")
+        switched = task in ("detect", "segment") and self.p.task in ("detect", "segment") and task != self.p.task
+        if switched:
+            self.p.set_meta(task=task)
         self.send(self.project_msg())
-        self.notify("success", "Settings saved",
-                    f"Parent object: {parent}" if parent else "Parent object: none (suggestions search the whole image)")
+        detail = f"Parent object: {parent}" if parent else "Parent object: none (suggestions search the whole image)"
+        if switched:
+            detail += (". Label type: outlines. Boxes without an outline: use Outline boxes" if task == "segment"
+                       else ". Label type: boxes (outlines are kept)")
+        self.notify("success", "Settings saved", detail)
+        if switched:
+            self.send({"type": "item_changed", "items": list(range(len(self.p.items)))})
 
     # ---- background jobs -----------------------------------------------------------------
     def _run(self, name, fn):
@@ -360,7 +503,8 @@ class Session:
                     self.send(self.status_msg())
 
             with self._locks["track"]:
-                n = self._model("track").track(self.p, start, count, on_item, lambda: self.stop_flag, direction)
+                n = self._model("track").track(self.p, start, count, on_item, lambda: self.stop_flag, direction,
+                                               masks=self.outlines_on)
             self.notify("success", f"Tracked {n} frames {'back' if direction < 0 else 'ahead'}",
                         f"From {self._frame(start)} in {time.perf_counter() - t0:.0f} s. Frames marked 'to check' may need a look.",
                         self._goto(start))
@@ -379,8 +523,9 @@ class Session:
                 if b["source"] == "suggested":
                     self.p.delete(item, b["obj"])
             obj = self.p.new_obj()
-            for k, (cls, box, score) in enumerate(found):
-                self.p.put(item, obj + k, cls, box, "suggested", score)
+            masks = self._outline_boxes(item, [box for _, box, _ in found]) if self.outlines_on else [None] * len(found)
+            for k, ((cls, box, score), mask) in enumerate(zip(found, masks)):
+                self.p.put(item, obj + k, cls, box, "suggested", score, mask=mask if mask is not None and mask.any() else None)
             self.notify("info", f"{len(found)} suggestion{'s' if len(found) != 1 else ''} on {self._frame(item)}",
                         "Y accepts all; select one and press Delete to drop it", self._goto(item))
             self.refresh(item)
@@ -404,14 +549,262 @@ class Session:
             new = [(box, sc) for box, sc in hits if all(overlap(box, h) < 0.5 for h in have)]
             self._remember([item], "find similar")
             obj0 = self.p.new_obj()
-            for k, (box, sc) in enumerate(new):
-                self.p.put(item, obj0 + k, self._side(ex["cls"], box), box, "suggested", sc)
+            masks = self._outline_boxes(item, [box for box, _ in new]) if self.outlines_on else [None] * len(new)
+            for k, ((box, sc), mask) in enumerate(zip(new, masks)):
+                self.p.put(item, obj0 + k, self._side(ex["cls"], box), box, "suggested", sc,
+                           mask=mask if mask is not None and mask.any() else None)
             self.notify("info", f"Found {len(new)} more like this on {self._frame(item)}",
                         "Y accepts all; select one and press Delete to drop it" if new else
                         "Try a lower threshold or another example", self._goto(item))
             self.refresh(item)
 
         self._run("Finding similar", job)
+
+    # ---- the grid: image classes, and sorting parts --------------------------------------------
+    # Cards are images (of="images", class projects) or parts (of="parts": one card per tracked part, shown by
+    # its largest box drawn by a person, else its largest box). Keys are item numbers or part (obj) numbers.
+    def _parts(self) -> dict:
+        """{obj: (item, box, cls, source)}: each part's representative box."""
+        best = {}
+        for obj, item, x1, y1, x2, y2, cls, source in self.p.db.execute(
+                "SELECT obj, item, x1, y1, x2, y2, cls, source FROM boxes WHERE source != 'suggested'"):
+            rank = (source == "manual", (x2 - x1) * (y2 - y1))
+            if obj not in best or rank > best[obj][0]:
+                best[obj] = (rank, (item, (x1, y1, x2, y2), cls, source))
+        return {o: v for o, (_, v) in best.items()}
+
+    def _cards(self, of: str, keys=None) -> list[dict]:
+        if of == "images":
+            tags = self.p.tags()
+            keys = range(len(self.p.items)) if keys is None else keys
+            cards = [{"key": k, "name": self.p.items[k]["name"], **({"cls": tags[k]["cls"], "source": tags[k]["source"],
+                      "score": tags[k]["score"]} if k in tags else {"cls": None})} for k in keys]
+        else:
+            parts = self._parts()
+            keys = sorted(parts) if keys is None else [k for k in keys if k in parts]
+            unit = "frame" if self.p.meta["kind"] == "video" else "image"
+            cards = [{"key": o, "name": f"#{o}, {unit} {parts[o][0] + 1}", "item": parts[o][0], "cls": parts[o][2],
+                      "source": parts[o][3]} for o in keys]
+        if self.thumb_src:
+            for c in cards:
+                c["src"] = self.thumb_src(of, c["key"])
+        return cards
+
+    def thumb_image(self, of: str, key: int) -> Image.Image:
+        """A grid thumbnail: the image, or a square around the part with some context."""
+        if of == "images":
+            with Image.open(self.p.items[key]["path"]) as im:
+                im.draft("RGB", (THUMB * 2, THUMB * 2))           # JPEG: decode at a fraction of full size
+                img = im.convert("RGB")
+        else:
+            item, box, *_ = self._parts()[key]
+            img = self._crop(self._frame_image(item), box)
+        img.thumbnail((THUMB, THUMB))
+        return img
+
+    def _frame_image(self, item: int) -> Image.Image:
+        """A few recent frames kept decoded: cutting out parts visits each frame several times in a row."""
+        with self._frame_lock:                            # page thumbnails and grid jobs share it
+            if item not in self._frames:
+                self._frames[item] = self.p.image(item)
+                while len(self._frames) > 8:
+                    self._frames.pop(next(iter(self._frames)))
+            return self._frames[item]
+
+    @staticmethod
+    def _crop(img: Image.Image, box) -> Image.Image:
+        x1, y1, x2, y2 = box
+        side, cx, cy = max(x2 - x1, y2 - y1) * 1.2, (x1 + x2) / 2, (y1 + y2) / 2
+        return img.crop((int(cx - side / 2), int(cy - side / 2), int(cx + side / 2), int(cy + side / 2)))
+
+    def thumb_bytes(self, of: str, key: int) -> bytes:
+        k = (of, key, None if of == "images" else self._parts().get(key, (None, None))[1])
+        if k not in self._thumbs:
+            buf = io.BytesIO()
+            self.thumb_image(of, key).save(buf, "JPEG", quality=82)
+            self._thumbs[k] = buf.getvalue()
+            while len(self._thumbs) > 3000:
+                self._thumbs.pop(next(iter(self._thumbs)))
+        return self._thumbs[k]
+
+    def on_grid(self, msg):
+        of = msg.get("of", "images")
+        self.send({"type": "grid", "of": of, "cards": self._cards(of)})
+
+    def on_thumbs(self, msg):
+        """Notebooks: thumbnails for the cards in view, as data URLs."""
+        of = msg.get("of", "images")
+        src = {}
+        for key in msg.get("keys", [])[:120]:
+            try:
+                src[key] = "data:image/jpeg;base64," + base64.b64encode(self.thumb_bytes(of, key)).decode()
+            except (KeyError, IndexError, OSError):
+                pass
+        self.send({"type": "thumbs", "of": of, "src": src})
+
+    def _vectors(self, of: str, progress=None):
+        """(keys, features) for every card, computed once and kept in the project's cache/ folder; parts are
+        recomputed when their box changes."""
+        import hashlib
+        if of == "images":
+            keys = list(range(len(self.p.items)))
+            sig = [f"{it['name']}|{Path(it['path']).stat().st_mtime_ns}" for it in self.p.items]
+        else:
+            parts = self._parts()
+            keys = sorted(parts)
+            sig = [f"{o}|{parts[o][0]}|{','.join(f'{v:.0f}' for v in parts[o][1])}" for o in keys]
+        ids = [hashlib.sha1(x.encode()).hexdigest()[:16] for x in sig]
+        cache = self.p.folder / "cache" / f"vectors_{of}.npz"
+        known = {}
+        if cache.exists():
+            with np.load(cache) as z:
+                known = dict(zip(z["ids"].tolist(), z["v"]))
+        todo = [k for k, i in enumerate(ids) if i not in known]
+        if of == "parts":
+            todo.sort(key=lambda k: parts[keys[k]][0])          # frame by frame: each frame is read once
+        if todo:
+            with self._locks["embed"]:
+                emb = self._model("embed")
+                for s in range(0, len(todo), 64):
+                    if self.stop_flag:
+                        raise InterruptedError("stopped")
+                    batch = todo[s:s + 64]
+                    imgs = []
+                    for k in batch:
+                        if of == "images":
+                            with Image.open(self.p.items[keys[k]]["path"]) as im:
+                                im.draft("RGB", (448, 448))
+                                imgs.append(im.convert("RGB"))
+                        else:
+                            item, box, *_ = parts[keys[k]]
+                            imgs.append(self._crop(self._frame_image(item), box))
+                    for k, v in zip(batch, emb.vectors(imgs, pool="avg")):
+                        known[ids[k]] = v
+                    if progress:
+                        progress(min(s + 64, len(todo)), len(todo))
+            cache.parent.mkdir(exist_ok=True)
+            np.savez(cache, ids=np.array(list(known)), v=np.stack(list(known.values())))
+        return keys, np.stack([known[i] for i in ids]) if ids else np.zeros((0, 1), np.float32)
+
+    def on_sort(self, msg):
+        """Group the cards by look (engine/sort.py). With `k`, re-cut the last grouping (the page's slider)."""
+        of = msg.get("of", "images")
+        st = self.sorting.get(of)
+        if msg.get("k") and st and st.get("groups"):
+            self._send_groups(of, msg["k"])
+            return
+
+        def job():
+            from engine.sort import Groups, near_duplicates
+            t0 = time.perf_counter()
+            keys, v = self._vectors(of, lambda d, n: self.send({"type": "progress", "task": "Reading images"
+                                                                if of == "images" else "Reading parts", "done": d, "total": n}))
+            if len(keys) < 3:
+                self.send({"type": "toast", "text": "Too few to group; add more images or parts first"})
+                return
+            self.send({"type": "progress", "task": "Grouping", "done": 0, "total": 1})
+            groups = Groups(v)
+            dups = near_duplicates(v)
+            self.sorting[of] = {"keys": keys, "vectors": v, "groups": groups,
+                                "dups": [[keys[i] for i in d] for d in dups]}
+            self._send_groups(of, msg.get("k"))
+            n = self.sorting[of]
+            self.notify("info", f"Grouped {len(keys)} {'images' if of == 'images' else 'parts'} into {n['k']} groups",
+                        f"{time.perf_counter() - t0:.0f} s. Fewer or more groups: the Groups slider under Sort"
+                        + (f". {len(dups)} sets of near-duplicates" if dups else ""))
+
+        self._run("Grouping", job)
+
+    def _send_groups(self, of: str, k=None):
+        st = self.sorting[of]
+        cut = st["groups"].cut(k)
+        st["k"] = cut["k"]
+        keys = st["keys"]
+        self.send({"type": "groups", "of": of, "k": cut["k"], "best_k": cut["best_k"], "max_k": cut["max_k"],
+                   "groups": [[keys[i] for i in g] for g in cut["groups"]], "unsure": [keys[i] for i in cut["unsure"]],
+                   "dups": st["dups"]})
+
+    def on_tag(self, msg):
+        """Give these cards class `cls` (None clears; images only): images get the class, parts are re-labeled
+        on every frame they appear in."""
+        of, keys, cls = msg.get("of", "images"), [int(k) for k in msg.get("keys", [])], msg.get("cls")
+        if not keys:
+            return
+        if of == "images":
+            self._remember(keys, "classes")
+            self.p.set_tags(keys, cls)
+        else:
+            if cls is None:
+                return
+            items = sorted({i for o in keys for i in self.p.items_with(o)})
+            self._remember(items, "classes")
+            for o in keys:
+                self.p.set_class(o, int(cls))
+        self.send({"type": "cards", "of": of, "cards": self._cards(of, keys)})
+        self.send(self.status_msg())
+
+    def on_accept_tags(self, msg):
+        keys = [int(k) for k in msg.get("keys") or [k for k, t in self.p.tags().items() if t["source"] == "suggested"]]
+        self._remember(keys, "accept")
+        n = self.p.accept_tags(keys)
+        self.send({"type": "cards", "of": "images", "cards": self._cards("images", keys)})
+        self.send(self.status_msg())
+        if n:
+            self.notify("success", f"Accepted {n} suggested class{'es' if n != 1 else ''}", "")
+
+    def on_suggest_tags(self, msg):
+        """Suggest a class for every image nobody has classed yet, from the images already classed."""
+        def job():
+            from engine.sort import predict
+            keys, v = self._vectors("images", lambda d, n: self.send({"type": "progress", "task": "Reading images",
+                                                                       "done": d, "total": n}))
+            tags = self.p.tags()
+            labeled = {k: t["cls"] for k, t in tags.items() if t["source"] != "suggested"}
+            got = predict(v, labeled)
+            if got is None:
+                self.send({"type": "toast", "text": "Give at least one image of two different classes first"})
+                return
+            cls, score, fits = got
+            todo = [k for k in keys if k not in labeled and fits[k]]
+            unsure = sum(1 for k in keys if k not in labeled and not fits[k])
+            stale = [k for k in keys if k not in labeled and not fits[k] and k in tags]
+            self._remember(todo + stale, "suggestions")
+            self.p.set_tags(stale, None)                          # earlier guesses that no longer fit
+            by_cls = {}
+            for k in todo:
+                by_cls.setdefault(int(cls[k]), []).append(k)
+            for c, ks in by_cls.items():
+                self.p.set_tags(ks, c, "suggested", [score[k] for k in ks])
+            self.send({"type": "cards", "of": "images", "cards": self._cards("images", todo + stale)})
+            self.notify("info", f"Suggested classes for {len(todo)} image{'s' if len(todo) != 1 else ''}",
+                        "Dotted cards are suggestions: check them (the least sure are first under Suggested), then "
+                        "Accept (Y)." + (f" {unsure} look unlike every class so far and were left without one: name "
+                        "some of them, then suggest again." if unsure else ""), None)
+
+        self._run("Suggesting classes", job)
+
+    def on_odd(self, msg):
+        """Cards whose class disagrees with their look-alikes: likely labeling mistakes."""
+        of = msg.get("of", "images")
+
+        def job():
+            from engine.sort import odd_ones
+            keys, v = self._vectors(of, lambda d, n: self.send({"type": "progress", "task": "Reading", "done": d, "total": n}))
+            if of == "images":
+                labeled = {i: t["cls"] for i, t in self.p.tags().items() if t["source"] != "suggested" and i < len(keys)}
+                pos = {k: i for i, k in enumerate(keys)}
+                idx = {pos[k]: c for k, c in labeled.items()}
+            else:
+                parts = self._parts()
+                idx = {i: parts[k][2] for i, k in enumerate(keys)}
+            odd = [[keys[i], c, round(sh, 2)] for i, c, sh in odd_ones(v, idx)]
+            self.send({"type": "odd", "of": of, "items": odd})
+            self.notify("info" if odd else "success", f"{len(odd)} possible labeling mistake{'s' if len(odd) != 1 else ''}"
+                        if odd else "No labeling mistakes found",
+                        "Each looks like the class shown on it; check them under To check" if odd else
+                        "Every labeled card looks like its class")
+
+        self._run("Checking labels", job)
 
     def _side(self, cls: int, box) -> int:
         """For left_/right_ twins: the twin whose confirmed boxes sit closer horizontally to `box`."""
@@ -434,8 +827,11 @@ class Session:
         def job():
             out = self.p.folder / "exports" / f"{fmt}_{time.strftime('%Y%m%d_%H%M%S')}"
             res = self.p.export(fmt, out, reviewed_only)
-            self.notify("success", f"Exported {FORMAT_NAMES.get(fmt, fmt)} dataset",
-                        f"{res['images']} images, {res['boxes']} boxes. {out}",
+            what = {"detect": "boxes", "segment": "outlines"}.get(self.p.task)
+            detail = f"{res['images']} images" + (f", {res['boxes']} {what}" if what else "")
+            if res.get("no_outline"):
+                detail += f" ({res['no_outline']} boxes without an outline left out: use Outline boxes)"
+            self.notify("success", f"Exported {FORMAT_NAMES.get(fmt, fmt)} dataset", f"{detail}. {out}",
                         {"type": "folder", "path": str(out), "label": "Open folder"})
 
         self._run("Exporting", job)

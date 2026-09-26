@@ -1,6 +1,7 @@
 """DINOv3 patch features (timm weights, pinned in engine.models) for matching parts across images."""
 import numpy as np
 import timm
+from PIL import Image
 import torch
 import torch.nn.functional as F
 
@@ -37,3 +38,19 @@ class Embedder:
             tokens = self.model.forward_features(x)[0, self.model.num_prefix_tokens:]
         feats = F.normalize(tokens.float(), dim=-1).view(nh // self.patch, nw // self.patch, -1)
         return feats, (nw / W, nh / H)
+
+    @torch.inference_mode()
+    def vectors(self, images, size: int = 224, batch: int = 32, pool: str = "avg") -> np.ndarray:
+        """One L2-normalised feature per image (whole images or part crops), for grouping and classifying:
+        the mean of the patch tokens ("avg", best in S10), the CLS token ("cls") or both side by side ("both")."""
+        out = []
+        for i in range(0, len(images), batch):
+            x = torch.stack([torch.from_numpy(np.array(im.convert("RGB").resize((size, size), Image.BILINEAR)))
+                             for im in images[i:i + batch]]).to(self.device)
+            x = (x.permute(0, 3, 1, 2).float() / 255 - self.mean) / self.std
+            with torch.autocast("cuda", dtype=hw.dtype(self.device), enabled=self.device == "cuda"):
+                t = self.model.forward_features(x).float()
+            cls, avg = F.normalize(t[:, 0], dim=-1), F.normalize(t[:, self.model.num_prefix_tokens:].mean(1), dim=-1)
+            v = {"cls": cls, "avg": avg, "both": torch.cat([cls, avg], -1)}[pool]
+            out.append(F.normalize(v, dim=-1).cpu().numpy())
+        return np.concatenate(out) if out else np.zeros((0, self.model.num_features), np.float32)

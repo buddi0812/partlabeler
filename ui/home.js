@@ -143,6 +143,7 @@ button:focus-visible, a:focus-visible, summary:focus-visible { outline:2px solid
 .h-seg button { position:relative; border:0; background:none; padding:6px 10px; border-radius:8px; color:var(--steel); font-weight:600; }
 .h-seg button[aria-pressed=true] { color:var(--ink); }
 .h-seg button:active:not(:disabled) { transform:none; }
+.h-seg.three { grid-template-columns:repeat(3, 1fr); width:min(420px, 100%); } .h-seg.three .h-seg-thumb { width:calc(33.333% - 2px); }
 
 /* jobs */
 .h-job { border:1px solid var(--line); border-radius:12px; padding:12px 14px; display:grid; gap:8px; background:var(--paper); animation:h-rise .35s var(--out); }
@@ -233,6 +234,7 @@ dialog[open]::backdrop { animation:h-fade .25s ease-out; }
   *, *::before, *::after { animation-duration:.001ms !important; animation-delay:0s !important; transition-duration:.001ms !important; transition-delay:0s !important; } }
 `;
 
+const TASKS = { detect: "Boxes", segment: "Outlines", classify: "Image classes" };
 const ICON = {
   video: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="m16 10 5-3v10l-5-3"/></svg>`,
   images: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 16-5-5-9 9"/></svg>`,
@@ -347,7 +349,8 @@ export default function home(root) {
       <div>
         <h1 id="h-title"><span class="h-in" style="--d:0">Box a part once.</span><span class="h-in" style="--d:1">Track it through the whole video.</span></h1>
         <p class="h-lede h-in" style="--d:2">Click a part and SAM 3 outlines it. Tracking carries the boxes through the video, you confirm what's right,
-          and the dataset exports to YOLO, COCO, CVAT, Pascal VOC or Label Studio. Everything runs on this computer.</p>
+          and the dataset exports to YOLO, COCO, CVAT, Pascal VOC or Label Studio. Boxes, exact outlines or one class per image,
+          with smart grouping to sort a messy folder. Everything runs on this computer.</p>
         <div class="h-actions h-in" style="--d:3">
           <button type="button" class="primary" data-go="new">New project</button>
           <button type="button" data-go="teach">Teach &amp; Transfer</button>
@@ -372,8 +375,12 @@ export default function home(root) {
         <p class="h-sub" style="margin-bottom:14px">A video or a folder of images, and the part names to label.</p>
         <form class="h-form h-new" autocomplete="off">
           <label class="h-field"><span>Name</span><input type="text" name="name" required placeholder="e.g. gearbox_line2…"></label>
+          <div class="h-field"><span>Label type</span>
+            <div class="h-seg three h-taskseg" role="group" aria-label="Label type"><span class="h-seg-thumb" aria-hidden="true"></span>
+              <button type="button" data-task="detect" aria-pressed="true">Boxes</button><button type="button" data-task="segment" aria-pressed="false">Outlines</button><button type="button" data-task="classify" aria-pressed="false">Image classes</button></div>
+            <small class="h-taskhint">A box around every part (object detection).</small></div>
           <div class="h-field"><span>Source</span>
-            <div class="h-seg" role="group" aria-label="Source type"><span class="h-seg-thumb" aria-hidden="true"></span>
+            <div class="h-seg h-srcseg" role="group" aria-label="Source type"><span class="h-seg-thumb" aria-hidden="true"></span>
               <button type="button" data-kind="video" aria-pressed="true">Video</button><button type="button" data-kind="images" aria-pressed="false">Image folder</button></div>
             <div class="h-row" style="margin-top:4px"><input type="text" name="source" required aria-label="Source path" placeholder="Path to the video file…">
               <button type="button" data-browse="source">Browse…</button></div>
@@ -446,7 +453,7 @@ export default function home(root) {
   <div class="h-toasts" aria-live="polite"></div>`;
   const $ = (s) => root.querySelector(s);
   const newForm = $(".h-new"), teachForm = $(".h-teach"), transferForm = $(".h-transfer");
-  let kind = "video", sources = [], projects = [], info = {}, seen = null;
+  let kind = "video", task = "detect", sources = [], projects = [], info = {}, seen = null;
 
   heroDemo($(".h-demo"));
   const top = $(".h-top");
@@ -469,10 +476,10 @@ export default function home(root) {
     const href = `/p/${encodeURIComponent(p.name)}`, unit = p.kind === "video" ? "frames" : "images";
     return `<article class="h-proj" style="--i:${i}">${BRK}<a class="h-proj-link" href="${href}" title="${esc(p.source)}">
       <span class="h-proj-top"><span class="h-kind">${p.kind === "video" ? ICON.video : ICON.images}</span><b class="h-proj-name" translate="no">${esc(p.name)}</b></span>
-      <span class="h-proj-meta">${p.kind === "video" ? "Video" : "Image folder"}, ${p.classes.length} class${p.classes.length === 1 ? "" : "es"}, ${p.items} ${unit}</span>
+      <span class="h-proj-meta">${p.kind === "video" ? "Video" : "Image folder"}, ${TASKS[p.task] || "Boxes"}, ${p.classes.length} class${p.classes.length === 1 ? "" : "es"}, ${p.items} ${unit}</span>
       ${p.problem ? `<span class="h-err">${esc(p.problem)}</span>` : ""}
       <span class="h-meter" role="img" aria-label="${p.confirmed} confirmed and ${Math.max(0, p.labeled - p.confirmed)} more labeled out of ${p.items}"><i class="rev" style="--w:${rev}%;--i:${i}"></i><i class="lab" style="--w:${lab}%;--i:${i}"></i></span>
-      <span class="h-proj-foot"><b>${p.confirmed}</b> of ${p.items} confirmed<span class="h-ago">${ago(p.modified)}</span></span></a>
+      <span class="h-proj-foot"><b>${p.confirmed}</b> of ${p.items} ${p.task === "classify" ? "classed" : "confirmed"}<span class="h-ago">${ago(p.modified)}</span></span></a>
       <details class="h-menu"><summary aria-label="More actions for ${esc(p.name)}" title="More actions">⋯</summary><div class="h-menu-list">
         <a href="${href}">Open</a>
         <button type="button" data-folder="${esc(p.name)}">Show in folder</button>
@@ -591,18 +598,33 @@ export default function home(root) {
   function setKind(k) {
     kind = k;
     newForm.querySelectorAll("[data-kind]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.kind === k));
-    $(".h-seg").style.setProperty("--x", k === "video" ? 0 : 1);
+    $(".h-srcseg").style.setProperty("--x", k === "video" ? 0 : 1);
     newForm.source.placeholder = k === "video" ? "Path to the video file…" : "Path to the image folder…";
     $(".h-srchint").textContent = k === "video" ? "Every Nth frame is kept for labeling." : "All images in the folder and its sub-folders.";
     $(".h-every").hidden = k !== "video";
   }
-  newForm.addEventListener("click", (e) => { const k = e.target.closest("[data-kind]")?.dataset.kind; if (k) setKind(k); });
+  const TASK_HINT = { detect: "A box around every part (object detection).",
+                      segment: "The exact outline of every part (instance segmentation). Exports polygons or masks.",
+                      classify: "One class per image, labeled on a grid with smart grouping: good for sorting a messy folder." };
+  function setTask(t) {
+    task = t;
+    newForm.querySelectorAll("[data-task]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.task === t));
+    $(".h-taskseg").style.setProperty("--x", ["detect", "segment", "classify"].indexOf(t));
+    $(".h-taskhint").textContent = TASK_HINT[t];
+    newForm.classes.placeholder = t === "classify" ? "One class per line, e.g.\nok\nscratch\ndent…" : "One part name per line, e.g.\nbolt\nleft_bracket\nright_bracket…";
+    $(".h-more").hidden = t === "classify";
+    if (t === "classify" && kind === "video") setKind("images");
+  }
+  newForm.addEventListener("click", (e) => {
+    const k = e.target.closest("[data-kind]")?.dataset.kind; if (k) setKind(k);
+    const t = e.target.closest("[data-task]")?.dataset.task; if (t) setTask(t);
+  });
   newForm.addEventListener("submit", async (e) => {
     e.preventDefault();
     const f = newForm, msg = $(".h-newmsg"), btn = f.querySelector("button[type=submit]");
     msg.textContent = "";
-    const body = { name: f.name.value.trim(), [kind]: f.source.value.trim(), every: f.every.value, classes: f.classes.value,
-                   labels: f.labels.value.trim(), parent: f.parent.value.trim() };
+    const body = { name: f.name.value.trim(), [kind]: f.source.value.trim(), every: f.every.value, classes: f.classes.value, task,
+                   ...(task === "classify" ? {} : { labels: f.labels.value.trim(), parent: f.parent.value.trim() }) };
     btn.disabled = true;
     try {
       const { job } = await api("/api/projects", body);

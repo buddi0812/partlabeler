@@ -22,7 +22,7 @@ from pathlib import Path
 import click
 import typer
 
-FORMATS = ("yolo", "coco", "cvat", "voc", "labelstudio")
+FORMATS = ("yolo", "coco", "cvat", "voc", "labelstudio", "folders", "csv")   # folders, csv: image classes
 SIZES = ("nano", "small", "medium")
 
 app = typer.Typer(help="PartLabeler: annotated datasets of machine parts from videos and image folders.",
@@ -61,6 +61,8 @@ def new(project: Path = typer.Argument(..., help="New project folder."),
         images: Path | None = typer.Option(None, exists=True, file_okay=False, help="Source image folder."),
         classes: Path = typer.Option(..., exists=True, dir_okay=False, help="classes.txt or data.yaml."),
         every: int = typer.Option(5, min=1, help="Video: keep 1 frame in N."),
+        task: str = typer.Option("detect", click_type=click.Choice(["detect", "segment", "classify"]),
+                                 help="What to label: boxes (detect), outlines (segment) or one class per image (classify)."),
         labels: Path | None = typer.Option(None, exists=True, file_okay=False, help="YOLO labels to import.")):
     """Create a project from a video or an image folder, optionally with existing YOLO labels."""
     from engine.project import Project
@@ -68,7 +70,7 @@ def new(project: Path = typer.Argument(..., help="New project folder."),
         raise typer.BadParameter("give exactly one of --video or --images")
     names = _classes(classes)
     with _bar() as progress:
-        p = Project.create(project, names, video=video, images=images, every=every, progress=progress)
+        p = Project.create(project, names, video=video, images=images, every=every, progress=progress, task=task)
     typer.echo(f"{p.folder}: {len(p.items)} {'frames' if video else 'images'}, {len(names)} classes")
     if labels:
         st = p.import_yolo(labels)
@@ -85,7 +87,10 @@ def export(project: Path = typer.Argument(..., exists=True, file_okay=False, hel
     from engine.project import Project
     out = out or project / "exports" / f"{fmt}_{time.strftime('%Y%m%d_%H%M%S')}"
     res = Project(project).export(fmt, out, reviewed_only)
-    typer.echo(f"exported {res['images']} images, {res['boxes']} boxes -> {res.get('folder') or res.get('file')}")
+    what = f", {res['boxes']} boxes" if "boxes" in res else ""
+    typer.echo(f"exported {res['images']} images{what} -> {res.get('folder') or res.get('file')}")
+    if res.get("no_outline"):
+        typer.echo(f"left out {res['no_outline']} boxes without an outline (open the project and use 'Outline boxes')")
 
 
 @app.command()

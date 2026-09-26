@@ -13,4 +13,7 @@
 - Rivet, the in-app helper (`engine/assistant.py`, UI in `ui/canvas.js`): Gemini Flash-Lite, answers from `docs/GUIDE.md`
   (keep the guide accurate when features change). The API key comes only from `GEMINI_API_KEY` or `~/.partlabeler/assistant.json`:
   never write a key into the repo, and scan for `AIza` before any public push. Tips and the pros are fixed text, not model calls.
+- Label types (project.json `task`): detect (boxes), segment (outlines: masks as COCO RLE, box = mask box,
+  polygons only at export, `engine/masks.py`) and classify (image classes on a grid). Smart sorting
+  (`engine/sort.py`: grouping, suggestions, wrong-label check; S10) also drives "Sort parts" in box/outline projects.
 - Layout: `engine/` (no UI code; `api.py` is the one message protocol), `ui/` (`canvas.js` annotator, `home.js` start screen, two hosts), `engine/cli.py` (`partlabeler` CLI). User data lives in `data/` and `projects/`, both gitignored: never commit them.

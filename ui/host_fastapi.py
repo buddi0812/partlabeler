@@ -20,12 +20,13 @@ import time
 import traceback
 import uuid
 import webbrowser
+from urllib.parse import quote
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 import uvicorn
 from fastapi import Body, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from engine import assistant
@@ -77,6 +78,7 @@ def session(name: str) -> Session:
         state["clients"].setdefault(name, set())
         state["sessions"][name] = Session(p, lambda m, n=name: broadcast(n, m),
                                           image_src=lambda item, n=name: f"/items/{n}/{item}.jpg", notes=notes())
+        state["sessions"][name].thumb_src = lambda of, key, n=name: f"/thumbs/{quote(n)}/{of}/{key}.jpg"
     return state["sessions"][name]
 
 
@@ -113,7 +115,8 @@ def broadcast(name: str, msg: dict) -> None:
 
 def summary(folder: Path) -> dict:
     meta = json.loads((folder / "project.json").read_text(encoding="utf-8"))
-    out = {"name": folder.name, "kind": meta["kind"], "source": meta["source"], "classes": meta["classes"],
+    out = {"name": folder.name, "kind": meta["kind"], "task": meta.get("task", "detect"), "source": meta["source"],
+           "classes": meta["classes"],
            "parent": meta.get("parent"), "modified": (folder / "labels.sqlite").stat().st_mtime
            if (folder / "labels.sqlite").exists() else (folder / "project.json").stat().st_mtime}
     try:
@@ -218,6 +221,18 @@ def item_image(name: str, item: int):
     return FileResponse(items[item]["path"])
 
 
+@app.get("/thumbs/{name}/{of}/{key}.jpg")
+def thumb(name: str, of: str, key: int):
+    """Grid thumbnails: whole images (of=images) or parts (of=parts)."""
+    if of not in ("images", "parts"):
+        raise HTTPException(404)
+    try:
+        data = session(name).thumb_bytes(of, key)
+    except (KeyError, IndexError, OSError):
+        raise HTTPException(404)
+    return Response(data, media_type="image/jpeg", headers={"Cache-Control": "no-cache"})
+
+
 @app.websocket("/ws/{name}")
 async def ws(sock: WebSocket, name: str):
     await sock.accept()
@@ -276,7 +291,7 @@ def create_project(body: dict = Body(...)) -> dict:
     folder = state["home"] / name
     if (folder / "project.json").exists():
         raise HTTPException(400, f"A project called {name!r} already exists")
-    classes = classes_from(body)
+    classes = [] if body.get("task") == "classify" and not (body.get("classes") or "").strip() and not body.get("classes_file")         else classes_from(body)                              # image classes may be named later, while sorting
     video, images = body.get("video") or None, body.get("images") or None
     if not (video or images):
         raise HTTPException(400, "Pick a video file or an image folder")
@@ -284,10 +299,13 @@ def create_project(body: dict = Body(...)) -> dict:
     if not src.exists():
         raise HTTPException(400, f"Not found: {src}")
     labels, parent, every = body.get("labels") or None, (body.get("parent") or "").strip() or None, int(body.get("every") or 5)
+    task = body.get("task") or "detect"
+    if task not in ("detect", "segment", "classify"):
+        raise HTTPException(400, f"Unknown label type {task!r}")
 
     def job(progress, should_stop):
         p = Project.create(folder, classes, video=video, images=images, every=every,
-                           progress=lambda i, n, t: progress(i, n, t))
+                           progress=lambda i, n, t: progress(i, n, t), task=task)
         if parent:
             p.set_meta(parent=parent)
         res = {"name": name, "items": len(p.items)}

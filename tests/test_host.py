@@ -99,3 +99,21 @@ def test_trash_restore_and_notifications(client, tmp_path, video):
 def test_open_folder_refuses_paths_outside_the_projects_folder(client, tmp_path):
     assert client.post("/api/open-folder", json={"path": str(tmp_path)}).status_code == 400
     assert client.post("/api/open-folder", json={"path": str(tmp_path / "home" / "missing")}).status_code == 400
+
+
+def test_image_class_project_without_classes_and_grid_thumbnails(client, images):
+    r = client.post("/api/projects", json={"name": "sorting", "images": str(images), "task": "classify", "classes": ""})
+    assert wait(client, r.json()["job"])["error"] is None
+    [p] = client.get("/api/projects").json()
+    assert (p["task"], p["classes"], p["items"]) == ("classify", [], 3)
+    with client.websocket_connect("/ws/sorting") as ws:
+        ws.send_json({"type": "add_class", "name": "ok", "of": "images", "keys": [0, 2]})
+        ws.send_json({"type": "grid", "of": "images"})
+        while (m := ws.receive_json())["type"] != "grid":
+            pass
+    assert [c["cls"] for c in m["cards"]] == [0, None, 0] and m["cards"][1]["src"] == "/thumbs/sorting/images/1.jpg"
+    t = client.get("/thumbs/sorting/images/1.jpg")
+    assert t.status_code == 200 and t.headers["content-type"] == "image/jpeg"
+    assert client.get("/thumbs/sorting/images/9.jpg").status_code == 404
+    bad = client.post("/api/projects", json={"name": "x", "images": str(images), "task": "nope", "classes": "a"})
+    assert bad.status_code == 400

@@ -219,3 +219,34 @@ quick transfer puts roof and bumper parts in many more frames. The source has th
 the taught detector found the roof rack in only 12 of the 80, so part of the disagreement is the reference
 missing parts. Real accuracy on another colour needs hand labels to measure. Verdict: a quick first pass to
 review, not a replacement for Teach.
+
+## S10 — smart sorting: grouping, suggestions, wrong labels (`s10_sorting.py`, `engine/sort.py`) — adopted
+3,000 part pictures cut from the example dataset (14 classes; left/right twins are mirror images, so scores are also
+given with each pair merged), DINOv3 features on an RTX 3060. Grouping: Ward clustering after PCA to 128 dims,
+number of groups picked by the simplified silhouette. Suggestions: class prototypes below 5 examples, logistic
+regression from 5. Wrong labels: 3% of labels flipped at random, found by leave-one-out neighbour votes.
+
+| DINOv3, pooling | Speed | Groups (true 14 / 11) | Grouping NMI, twins merged | Right, 1 / 3 / 10 examples a class | Wrong labels found |
+|---|---|---|---|---|---|
+| small, CLS token | 470/s | 22 | 0.80 | 81% / 87% / 92% | 88 of 90, 87% of flags real |
+| small, patch mean | 500/s | 17 | 0.85 | 83% / 86% / 92% | 88 of 90, 85% |
+| base, CLS token | 250/s | 6 | 0.81 | 80% / 86% / 92% | 88 of 90, 88% |
+| **base, patch mean** (adopted on GPU; small on CPU) | 250/s | 12 | 0.85 | 83% / 88% / 93% | 88 of 90, 88% |
+
+The patch mean beats the CLS token here, against the literature's preference for CLS in instance retrieval; the
+automatic number of groups swings from 6 to 22 between variants, hence the slider (re-cutting the tree is
+instant). With twins merged, suggestions from 3 examples are right 93-94% of the time.
+
+Suggestions for kinds nobody has named yet: with half the classes named, every picture of the other half got a
+wrong suggestion. Now a class is only suggested where the picture is as close to one of its examples as the
+closest 90% of neighbour pairs in the collection are to each other:
+
+| Examples per named class | Named kinds suggested correctly | Unnamed kinds given a (wrong) suggestion |
+|---|---|---|
+| 1 | 46% | 1% |
+| 3 | 59% | 2% |
+| 10 | 72% | 5% |
+
+Each round of accepting and suggesting again reaches further. Caveat: crops of one video's parts are easier to
+group than a real messy folder; whole-image folders were only tried by hand (240 part pictures: 19 groups in
+6 s including model loading, 2 sets of near-duplicates).

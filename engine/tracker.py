@@ -55,9 +55,10 @@ class Tracker:
 
     @torch.inference_mode()
     def track(self, project, start: int, count: int, on_item=None, should_stop=lambda: False,
-              direction: int = 1) -> int:
+              direction: int = 1, masks: bool = False) -> int:
         """Track the boxes on item `start` through the next `count` items (direction 1) or the previous
-        `count` items (direction -1). Calls on_item(item, {obj: (cls, box or None, score)}) per item;
+        `count` items (direction -1). Calls on_item(item, {obj: (cls, box or None, score)}) per item, with the
+        part's mask as a 4th value when `masks` (outline projects; the box is then the mask's own box);
         returns the items processed. Out of GPU memory, the chunk is halved and retried."""
         seeds = {b["obj"]: b for b in project.boxes(start) if b["source"] != "suggested"}
         if not seeds:
@@ -80,7 +81,7 @@ class Tracker:
             chunk = todo[pos:pos + self.chunk]
             try:
                 last, n, stopped = self._chunk(project, refs, cur_item, cur, chunk, classes, style, pos == 0,
-                                               on_item, should_stop)
+                                               on_item, should_stop, masks)
             except torch.OutOfMemoryError:
                 hw.free_gpu_memory()
                 if self.chunk <= MIN_CHUNK:
@@ -95,7 +96,7 @@ class Tracker:
             cur = {o: r[1] for o, r in last.items() if r[1] is not None}
         return done
 
-    def _chunk(self, project, refs, cur_item, cur, chunk, classes, style, first, on_item, should_stop):
+    def _chunk(self, project, refs, cur_item, cur, chunk, classes, style, first, on_item, should_stop, keep_masks=False):
         """One fresh session over [reference frames, current frame, chunk...]; the frame list is in
         tracking order, so backward tracking is the same run over reversed frames."""
         ref_items = sorted(refs, key=lambda it: abs(it - cur_item), reverse=True)
@@ -127,10 +128,14 @@ class Tracker:
                 scores = getattr(out, "object_score_logits", None)
                 res = {}
                 for k, o in enumerate(sess.obj_ids):
-                    box = mask_box(masks[k, 0].cpu().numpy())
+                    m = masks[k, 0].cpu().numpy()
+                    box = mask_box(m)
+                    score = float(torch.sigmoid(scores[k]).max()) if scores is not None else None
+                    if keep_masks:                             # outlines: the mask is the label, its box follows
+                        res[o] = (classes[o], box, score, m.astype(bool) if box else None)
+                        continue
                     if box and o in style:
                         box = apply_style(box, style[o])
-                    score = float(torch.sigmoid(scores[k]).max()) if scores is not None else None
                     res[o] = (classes[o], box, score)
                 if on_item:
                     on_item(frame_items[local], res)

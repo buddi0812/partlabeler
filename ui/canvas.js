@@ -90,6 +90,38 @@ const CSS = `
 .pl-help-grid h3 { grid-column:1 / -1; margin:10px 0 2px; font-size:13px; color:var(--muted); font-weight:600; }
 .pl-help-grid div { display:flex; justify-content:space-between; gap:12px; padding:3px 0; border-bottom:1px solid #eef1f4; font-size:13.5px; }
 .pl kbd, .pl-help-dlg kbd { font:12px/1.2 ui-monospace,"Cascadia Mono",Consolas,monospace; border:1px solid var(--line); border-bottom-width:2px; border-radius:5px; padding:1px 5px; background:#f7f9fa; white-space:nowrap; }
+.pl-brush { display:flex; gap:8px; align-items:center; font-size:13px; margin-top:6px; } .pl-brush input { flex:1; accent-color:var(--accent); }
+.pl-gridwrap { display:flex; flex-direction:column; gap:8px; min-height:0; background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:10px 12px; }
+.pl-gridbar { display:flex; flex-wrap:wrap; gap:6px 12px; align-items:center; }
+.pl-gridbar h2 { margin:0; font-size:15px; font-weight:600; }
+.pl-filters { display:flex; gap:4px; flex-wrap:wrap; }
+.pl-filters button { padding:3px 10px; border-radius:99px; font-size:12.5px; }
+.pl-filters button[aria-pressed=true] { background:var(--ink); color:#fff; border-color:var(--ink); }
+.pl-filters b { font-weight:600; font-variant-numeric:tabular-nums; margin-left:3px; opacity:.75; }
+.pl-grid { overflow:auto; max-height:calc(100vh - 205px); min-height:260px; overscroll-behavior:contain; display:flex; flex-direction:column; gap:14px; padding:2px 4px 8px 2px; }
+.pl.big .pl-grid { max-height:calc(var(--plh) - 165px); }
+.pl-gsec h3 { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin:0 0 6px; font-size:13.5px; font-weight:600; position:sticky; top:0; background:var(--panel); z-index:1; padding:5px 0; }
+.pl-gsec h3 .pl-src { font-weight:400; }
+.pl-gsec h3 select { font-size:12.5px; padding:2px 5px; }
+.pl-cards { display:grid; grid-template-columns:repeat(auto-fill, minmax(var(--card, 132px), 1fr)); gap:8px; }
+.pl .pl-card { position:relative; display:flex; flex-direction:column; padding:0; border:2px solid var(--line); border-radius:9px; overflow:hidden; background:#0d1217; text-align:left; color:var(--ink); }
+.pl .pl-card:hover:not(:disabled) { border-color:var(--accent); background:#0d1217; }
+.pl-card img { width:100%; aspect-ratio:1; object-fit:contain; display:block; background:#0d1217; }
+.pl-card-cls { display:flex; gap:5px; align-items:center; padding:3px 6px; background:var(--panel); font-size:12px; min-height:23px; min-width:0; }
+.pl-card-cls span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
+.pl-card-cls .pl-sw { flex:none; }
+.pl .pl-card.sugg { border-style:dashed; } .pl-card.sugg .pl-card-cls { color:var(--muted); font-style:italic; }
+.pl .pl-card[aria-pressed=true] { border-color:var(--accent); box-shadow:0 0 0 2px var(--accent); }
+.pl .pl-card.cur { outline:2px solid var(--ink); outline-offset:2px; }
+.pl-card .pl-badge { position:absolute; top:4px; left:4px; font-size:11px; font-weight:600; padding:1px 6px; border-radius:99px; background:rgba(21,32,43,.82); color:#fff; max-width:calc(100% - 8px); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.pl-card .pl-badge.odd { background:var(--flag); color:#1d1300; }
+.pl-range { display:flex; gap:8px; align-items:center; font-size:13px; margin-top:8px; flex-wrap:wrap; } .pl-range input { flex:1; min-width:90px; accent-color:var(--accent); }
+.pl-sortnote { font-size:12.5px; color:var(--muted); margin:6px 0 0; }
+.pl-peek { border:1px solid var(--line); border-radius:12px; padding:0; width:min(1100px, calc(100vw - 32px)); max-height:92vh; color:var(--ink); background:var(--panel); }
+.pl-peek::backdrop { background:rgba(13,18,23,.78); }
+.pl-peek header { display:flex; gap:10px; align-items:center; padding:10px 14px; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+.pl-peek header b { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; flex:1; }
+.pl-peek img { display:block; width:100%; height:min(calc(92vh - 60px), 760px); object-fit:contain; background:#0d1217; }
 @media (max-width: 900px) { .pl-main { grid-template-columns:minmax(0,1fr); } .pl-side { max-height:none; } .pl-where { display:none; } }
 @media (prefers-reduced-motion: reduce) { .pl *, .pln-drawer { scroll-behavior:auto !important; transition:none !important; } }
 `;
@@ -129,7 +161,14 @@ const NOTE_CSS = `
 `;
 
 const STATUS = ["No boxes", "Suggestions", "Tracked or imported", "Has your boxes", "Confirmed"];
-const FORMAT_NAMES = { yolo: "YOLO", coco: "COCO", cvat: "CVAT", voc: "Pascal VOC", labelstudio: "Label Studio" };
+const FORMAT_NAMES = { yolo: "YOLO", coco: "COCO", cvat: "CVAT", voc: "Pascal VOC", labelstudio: "Label Studio",
+                       folders: "Class folders", csv: "CSV list" };
+const TASK_NAMES = { detect: "Boxes", segment: "Outlines", classify: "Image classes" };
+function rgbOf(i) {                                                   // colorOf(i) as [r, g, b] (hsl 78% 52%)
+  const h = (i * 137.508) % 360, s = 0.78, l = 0.52, a = s * Math.min(l, 1 - l);
+  const f = (n) => { const k = (n + h / 30) % 12; return Math.round(255 * (l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1)))); };
+  return [f(0), f(8), f(4)];
+}
 const colorOf = (i) => `hsl(${(i * 137.508) % 360} 78% 52%)`;
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const BELL = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>`;
@@ -679,30 +718,51 @@ function render({ model, el }) {
     </div>
     <div class="pl-banner" hidden></div>
     <div class="pl-main">
+      <div class="pl-gridwrap" hidden><div class="pl-gridbar"><h2 class="pl-gtitle">Images</h2><span class="pl-src pl-gcount"></span>
+          <div class="pl-filters" role="group" aria-label="Show"></div></div><div class="pl-grid" tabindex="-1"></div></div>
       <div class="pl-stage"><canvas class="pl-cv" aria-label="Frame image. Click a part to box it."></canvas>
         <div class="pl-hint" hidden><span><b>Click a part</b> to outline and box it, or press <kbd>B</kbd> and drag to draw a box.
           Pick the class first with <kbd>1</kbd>–<kbd>9</kbd>. Press <kbd>?</kbd> for all shortcuts.</span>
           <button type="button" data-a="hideHint">Got it</button></div></div>
       <aside class="pl-side" aria-label="Labeling tools">
-        <section><h2>Tool</h2><div class="pl-tools" role="group" aria-label="Tool">
+        <section class="pl-toolsec"><h2>Tool</h2><div class="pl-tools" role="group" aria-label="Tool">
           <button type="button" data-tool="click" title="Click a part to outline and box it (C)">Click to outline</button>
-          <button type="button" data-tool="box" title="Drag to draw a box (B)">Draw box</button></div></section>
+          <button type="button" data-tool="box" title="Drag to draw a box (B)">Draw box</button>
+          <button type="button" data-tool="brush" class="pl-seg" title="Paint onto the selected outline, or a new part (P)">Brush</button>
+          <button type="button" data-tool="erase" class="pl-seg" title="Erase from the selected outline (E)">Eraser</button></div>
+          <label class="pl-brush pl-seg">Brush size <input type="range" class="pl-bsize" min="1" max="120" value="12" name="brush-size" aria-label="Brush size in pixels"><span class="pl-bsize-v">12 px</span></label></section>
         <section><h2 id="pl-class-h">Class</h2>
           <input type="search" class="pl-filter" name="class-filter" autocomplete="off" placeholder="Filter classes…" aria-label="Filter classes" hidden>
-          <div class="pl-list pl-classes" role="group" aria-labelledby="pl-class-h"></div></section>
+          <div class="pl-list pl-classes" role="group" aria-labelledby="pl-class-h"></div>
+          <form class="pl-addcls pl-tools" style="margin-top:6px"><input type="text" class="pl-newcls" name="new-class" autocomplete="off" placeholder="New class…" aria-label="New class name" style="flex:1;min-width:0">
+            <button type="submit" title="Add a class; selected pictures in the grid get it">Add</button></form></section>
         <section><h2 id="pl-box-h">Boxes on this frame</h2><div class="pl-list pl-boxes" role="group" aria-labelledby="pl-box-h"></div></section>
         <section class="pl-find"><h2>Find parts</h2><div class="pl-tools">
           <button type="button" data-b="suggest" title="Suggest boxes that look like parts you labeled on other frames (S)">Suggest</button>
           <button type="button" data-b="findAll" title="Find more parts like the selected box on this frame (F)">Find similar</button>
-          <button type="button" data-b="accept" title="Keep every suggestion on this frame (Y)">Accept all</button></div></section>
+          <button type="button" data-b="accept" title="Keep every suggestion on this frame (Y)">Accept all</button>
+          <button type="button" data-b="sortParts" title="See every part as a picture, grouped by look, and name or fix classes in bulk (G)">Sort parts</button></div>
+          <div class="pl-tools pl-seg" style="margin-top:6px">
+          <button type="button" data-b="outlineHere" title="Outline every box on this frame that has no outline yet">Outline boxes</button>
+          <button type="button" data-b="outlineAll" title="Outline every box without an outline, on every frame">…on every frame</button></div></section>
+        <section class="pl-sort" hidden><h2>Sort</h2><div class="pl-tools">
+          <button type="button" data-b="group" title="Put look-alikes together (G)">Group by look</button>
+          <button type="button" data-b="suggestTags" class="pl-imgonly" title="Suggest a class for every image without one, from the ones you classed (S)">Suggest classes</button>
+          <button type="button" data-b="acceptTags" class="pl-imgonly" title="Keep the suggested classes: of the selected images, or all (Y)">Accept suggestions</button>
+          <button type="button" data-b="odd" title="Find labels that disagree with their look-alikes">Check labels</button>
+          <button type="button" data-b="closeGrid" class="pl-partsonly" title="Back to labeling frames (Esc)">Back to frames</button></div>
+          <label class="pl-range" hidden>Groups <input type="range" class="pl-k" min="1" value="1" name="groups" aria-label="Number of groups"><span class="pl-kv"></span></label>
+          <p class="pl-sortnote">Select pictures (click, Shift+click, Ctrl+click, Ctrl+A), then press a class number. Double-click to look closer.</p></section>
         <section class="pl-export"><h2>Export dataset</h2><div class="pl-tools">
           <select class="pl-fmt" name="export-format" aria-label="Export format"></select>
           <label><input type="checkbox" class="pl-revonly" name="confirmed-only"> Confirmed frames only</label>
           <button type="button" class="primary" data-b="export">Export</button></div></section>
         <details class="pl-settings"><summary>Settings</summary>
-          <label class="pl-field">Parent object
+          <label class="pl-field pl-tasksel">Label type
+            <select class="pl-task" name="label-type"><option value="detect">Boxes</option><option value="segment">Outlines (masks)</option></select></label>
+          <label class="pl-field pl-parentf">Parent object
             <input type="text" class="pl-parent" name="parent-object" autocomplete="off" placeholder="Optional, e.g. engine block…"></label>
-          <span class="pl-src">What the parts sit on. Suggestions then search inside it, which helps when the camera or distance changes.
+          <span class="pl-src pl-parentf">What the parts sit on. Suggestions then search inside it, which helps when the camera or distance changes.
             Leave empty to search the whole image.</span>
           <div class="pl-tools" style="margin-top:8px"><button type="button" data-b="saveSettings">Save settings</button></div>
           <p class="pl-src pl-device"></p></details>
@@ -743,14 +803,26 @@ function render({ model, el }) {
         <div><span>Ask Rivet, the helper</span><kbd>H</kbd></div>
         <div><span>This list</span><kbd>?</kbd></div>
         <div><span>Full screen (top bar)</span><span>⤢</span></div>
-      </div></dialog>`;
+        <h3>Outlines and sorting</h3>
+        <div><span>Brush / eraser (outline projects)</span><span><kbd>P</kbd> / <kbd>E</kbd></span></div>
+        <div><span>Smaller / larger brush</span><span><kbd>,</kbd> <kbd>.</kbd></span></div>
+        <div><span>Sort parts / group by look</span><kbd>G</kbd></div>
+        <div><span>Grid: give the selected pictures a class</span><span><kbd>1</kbd>–<kbd>9</kbd>, <kbd>0</kbd></span></div>
+        <div><span>Grid: select all shown / clear class</span><span><kbd>Ctrl</kbd>+<kbd>A</kbd> / <kbd>Del</kbd></span></div>
+        <div><span>Grid: look closer</span><span>Double-click, <kbd>Space</kbd></span></div>
+      </div></dialog>
+    <dialog class="pl-peek" aria-label="Picture"><header><b class="pl-peek-t"></b><span class="pl-peek-c"></span>
+      <button type="button" data-a="peekPrev" aria-label="Previous">◀</button><button type="button" data-a="peekNext" aria-label="Next">▶</button>
+      <button type="button" data-a="closePeek">Close</button></header><img class="pl-peek-img" alt=""></dialog>`;
   const $ = (s) => el.querySelector(s);
   const cv = $(".pl-cv"), ctx = cv.getContext("2d"), strip = $(".pl-strip"), sctx = strip.getContext("2d");
   const S = { project: null, statuses: [], flags: [], item: 0, target: 0, data: null, img: null, mask: null,
               maskItem: -1, cls: 0, tool: "click", sel: null, drag: null, busy: false, filter: "",
-              saving: false, savedAt: null, hintHidden: false, started: false };
+              saving: false, savedAt: null, hintHidden: false, started: false, brush: 12, hover: null, paint: null,
+              grid: null };
   try { S.hintHidden = localStorage.getItem("pl-hint-hidden") === "1"; } catch {}
-  const MUTATING = new Set(["box", "click", "cycle", "delete", "set_class", "review", "accept", "undo", "settings"]);
+  const MUTATING = new Set(["box", "click", "cycle", "delete", "set_class", "review", "accept", "undo", "settings", "paint", "tag", "accept_tags", "add_class"]);
+  const seg = () => S.project?.task === "segment", classify = () => S.project?.task === "classify";
   const send = (m) => { if (MUTATING.has(m.type)) { S.saving = true; renderSaved(); } model.send(m); };
   const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
 
@@ -801,17 +873,62 @@ function render({ model, el }) {
   }
 
   // ---- drawing ---------------------------------------------------------------------------
+  // Outlines arrive as 1-bit PNG crops; each is tinted once in its class colour (edge solid, inside see-through)
+  const tints = new Map();
+  function tinted(b) {
+    const [mx, my, src] = b.mask, key = `${b.cls}|${src.length}|${src.slice(-40)}`;
+    let t = tints.get(key);
+    if (t) return t.ready ? t : null;
+    if (tints.size > 600) tints.clear();
+    t = { ready: false }; tints.set(key, t);
+    const img = new Image();
+    img.onload = () => {
+      const w = img.width, h = img.height, c = document.createElement("canvas"); c.width = w; c.height = h;
+      const x = c.getContext("2d"); x.drawImage(img, 0, 0);
+      const d = x.getImageData(0, 0, w, h), px = d.data, inside = new Uint8Array(w * h);
+      for (let i = 0; i < w * h; i++) inside[i] = px[i * 4] > 127 ? 1 : 0;
+      const [r, g, bl] = rgbOf(b.cls);
+      for (let yy = 0; yy < h; yy++) for (let xx = 0; xx < w; xx++) {
+        const i = yy * w + xx;
+        const edge = inside[i] && (xx === 0 || yy === 0 || xx === w - 1 || yy === h - 1 || !inside[i - 1] || !inside[i + 1] || !inside[i - w] || !inside[i + w]);
+        px[i * 4] = r; px[i * 4 + 1] = g; px[i * 4 + 2] = bl; px[i * 4 + 3] = inside[i] ? (edge ? 255 : 95) : 0;
+      }
+      x.putImageData(d, 0, 0);
+      Object.assign(t, { ready: true, canvas: c, inside, w, h });
+      draw();
+    };
+    img.src = src;
+    return null;
+  }
+  const inMask = (b, x, y) => {
+    const t = b.mask && tinted(b); if (!t) return false;
+    const xx = Math.floor(x - b.mask[0]), yy = Math.floor(y - b.mask[1]);
+    return xx >= 0 && yy >= 0 && xx < t.w && yy < t.h && t.inside[yy * t.w + xx] === 1;
+  };
+
   function draw() {
     if (!S.img) return;
     ctx.drawImage(S.img, 0, 0);
-    if (S.mask && S.maskItem === S.item) ctx.drawImage(S.mask, 0, 0);
+    if (S.mask && S.maskItem === S.item && !seg()) ctx.drawImage(S.mask, 0, 0);
     const lw = Math.max(2, cv.width / 700), fs = Math.max(12, cv.width / 95);
     ctx.font = `600 ${fs}px system-ui, sans-serif`;
+    if (seg()) {
+      for (const b of S.data?.boxes || []) {
+        if (!b.mask || (S.paint && b.obj === S.paint.obj)) continue;
+        const t = tinted(b); if (!t) continue;
+        ctx.globalAlpha = b.source === "suggested" ? 0.55 : b.obj === S.sel ? 1 : 0.85;
+        ctx.drawImage(t.canvas, b.mask[0], b.mask[1]);
+      }
+      ctx.globalAlpha = 1;
+      if (S.paint) { ctx.globalAlpha = 0.6; ctx.drawImage(S.paint.cv, 0, 0); ctx.globalAlpha = 1; }
+    }
     for (const b of S.data?.boxes || []) {
       const [x1, y1, x2, y2] = b.box, col = colorOf(b.cls), on = b.obj === S.sel;
-      ctx.setLineDash(b.source === "tracked" ? [lw * 4, lw * 2] : b.source === "suggested" ? [lw, lw * 1.5] : []);
+      const outlined = seg() && b.mask;
+      ctx.setLineDash(b.source === "tracked" ? [lw * 4, lw * 2] : b.source === "suggested" ? [lw, lw * 1.5] : outlined ? [lw * 1.2, lw * 2.4] : []);
       if (on) { ctx.lineWidth = lw * 3; ctx.strokeStyle = "#fff"; ctx.strokeRect(x1, y1, x2 - x1, y2 - y1); }
-      ctx.lineWidth = on ? lw * 1.8 : lw; ctx.strokeStyle = col; ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
+      ctx.lineWidth = on ? lw * 1.8 : outlined ? lw * 0.6 : lw; ctx.strokeStyle = col;
+      if (!outlined || on) ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
       ctx.setLineDash([]);
       const label = S.project.classes[b.cls] ?? b.cls, tw = ctx.measureText(label).width + fs * 0.6;
       const ty = y1 - fs * 1.35 < 0 ? y2 : y1 - fs * 1.35;
@@ -822,6 +939,10 @@ function render({ model, el }) {
       const d = S.drag; ctx.setLineDash([lw * 3, lw * 2]); ctx.lineWidth = lw; ctx.strokeStyle = "#fff";
       ctx.strokeRect(Math.min(d.x0, d.x1), Math.min(d.y0, d.y1), Math.abs(d.x1 - d.x0), Math.abs(d.y1 - d.y0));
       ctx.setLineDash([]);
+    }
+    if (S.hover && (S.tool === "brush" || S.tool === "erase")) {           // the brush's footprint
+      ctx.beginPath(); ctx.arc(S.hover[0], S.hover[1], S.brush, 0, Math.PI * 2);
+      ctx.lineWidth = lw; ctx.strokeStyle = "#fff"; ctx.setLineDash(S.tool === "erase" ? [lw * 2, lw * 2] : []); ctx.stroke(); ctx.setLineDash([]);
     }
   }
 
@@ -846,7 +967,7 @@ function render({ model, el }) {
     const filt = $(".pl-filter"); filt.hidden = cls.length <= 8;
     const q = S.filter.trim().toLowerCase();
     const shown = cls.map((c, i) => [c, i]).filter(([c]) => !q || c.toLowerCase().includes(q));
-    $(".pl-classes").innerHTML = shown.length ? shown.map(([c, i]) => `<button type="button" class="pl-row" data-cls="${i}" aria-pressed="${i === S.cls}">
+    $(".pl-classes").innerHTML = !S.project ? "" : !cls.length ? `<span class="pl-empty">No classes yet: type one below${S.grid ? "; the selected pictures get it" : ""}.</span>` : shown.length ? shown.map(([c, i]) => `<button type="button" class="pl-row" data-cls="${i}" aria-pressed="${i === S.cls}">
       <span class="pl-sw" style="background:${colorOf(i)}" aria-hidden="true"></span><span class="pl-key">${i < 10 ? (i + 1) % 10 : ""}</span>
       <span class="pl-name" translate="no">${esc(c)}</span><span></span></button>`).join("") : `<span class="pl-empty">No class matches “${esc(S.filter)}”.</span>`;
     const boxes = S.data?.boxes || [];
@@ -856,8 +977,15 @@ function render({ model, el }) {
       <button type="button" class="pl-x" data-del="${b.obj}" aria-label="Delete ${esc(cls[b.cls] ?? "")} box #${b.obj}" title="Delete (Del)">×</button></div>`).join("")
       : `<span class="pl-empty">No boxes yet. Click a part in the image.</span>`;
     el.querySelectorAll("[data-tool]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.tool === S.tool));
+    const grid = Boolean(S.grid), cl = classify();
+    el.querySelectorAll(".pl-seg").forEach((n) => (n.hidden = !seg() || grid));
+    $(".pl-toolsec").hidden = grid; $(".pl-boxes").closest("section").hidden = grid; $(".pl-find").hidden = grid;
+    $(".pl-sort").hidden = !grid;
+    el.querySelectorAll(".pl-imgonly").forEach((n) => (n.hidden = !cl));
+    el.querySelectorAll(".pl-partsonly").forEach((n) => (n.hidden = cl));
+    $(".pl-bsize-v").textContent = `${S.brush} px`;
     const hint = $(".pl-hint");
-    hint.hidden = S.hintHidden || !S.project || boxes.length > 0 || S.statuses.some((s) => s >= 2);
+    hint.hidden = S.hintHidden || !S.project || grid || boxes.length > 0 || S.statuses.some((s) => s >= 2);
   }
 
   function renderSaved() {
@@ -887,6 +1015,16 @@ function render({ model, el }) {
     $(".pl-video").hidden = S.project.kind !== "video";
     $('[data-a="review"]').textContent = S.data.reviewed ? "Unconfirm frame" : "Confirm frame";
     $(".pl-device").textContent = [S.project.device, S.gpu && `GPU memory in use: ${S.gpu}`].filter(Boolean).join(". ");
+    el.querySelectorAll('[data-b="group"],[data-b="suggestTags"],[data-b="odd"],[data-b="outlineHere"],[data-b="outlineAll"],[data-b="sortParts"]')
+      .forEach((b) => (b.disabled = busy));
+    const cl = classify();
+    $('[data-a="prev"]').closest(".pl-group").hidden = cl; $('[data-a="review"]').hidden = cl;
+    $(".pl-strip").hidden = cl; $(".pl-legend").hidden = cl;
+    if (cl) {
+      const n = (v) => S.statuses.filter((s) => s === v).length, given = n(4) + n(2), sugg = n(1);
+      $(".pl-where").textContent = `${S.project.count} images`;
+      $(".pl-counts").textContent = `${given} classed, ${sugg} suggested, ${S.statuses.length - given - sugg} without a class`;
+    }
   }
 
   function renderProject() {
@@ -894,8 +1032,15 @@ function render({ model, el }) {
     fmt.innerHTML = (S.project.formats || ["yolo", "coco"]).map((f) => `<option value="${f}">${FORMAT_NAMES[f] || f}</option>`).join("");
     if (keep) fmt.value = keep;
     $(".pl-parent").value = S.project.parent || "";
+    $(".pl-task").value = seg() ? "segment" : "detect";
+    $(".pl-revonly").closest("label").hidden = classify();              // suggested classes are never exported
+    $(".pl-tasksel").hidden = classify();
+    el.querySelectorAll(".pl-parentf").forEach((n) => (n.hidden = classify()));
+    $('[data-a="exportJump"]').title = `Export the dataset: ${(S.project.formats || []).map((f) => FORMAT_NAMES[f] || f).join(", ")}`;
     const back = $(".pl-back"); back.hidden = !web; if (web) back.href = model.homeUrl;
     if (web) document.title = `${S.project.name} · PartLabeler`;
+    if (classify() && !S.grid) openGrid("images");
+    if (!seg() && (S.tool === "brush" || S.tool === "erase")) S.tool = "click";
   }
 
   function legend() {
@@ -934,6 +1079,7 @@ function render({ model, el }) {
   function setClass(i) {
     if (!S.project || i < 0 || i >= S.project.classes.length) return;
     S.cls = i;
+    if (S.grid) { tagSelected(i); renderSide(); return; }
     if (S.sel != null) send({ type: "set_class", obj: S.sel, cls: i, item: S.item });
     renderSide();
   }
@@ -953,7 +1099,17 @@ function render({ model, el }) {
     // (review targets the frame on screen; navigation after it starts from there)
     export: () => send({ type: "export", format: $(".pl-fmt").value, reviewed_only: $(".pl-revonly").checked }),
     exportJump: () => { flash($(".pl-export")); $(".pl-fmt").focus(); },   // the controls sit below a possibly long class list
-    saveSettings: () => send({ type: "settings", parent: $(".pl-parent").value }),
+    saveSettings: () => send({ type: "settings", parent: $(".pl-parent").value, ...(classify() ? {} : { task: $(".pl-task").value }) }),
+    sortParts: () => openGrid("parts"),
+    closeGrid: () => closeGrid(),
+    group: () => send({ type: "sort", of: S.grid?.of || "images" }),
+    suggestTags: () => send({ type: "suggest_tags" }),
+    acceptTags: () => send({ type: "accept_tags", keys: S.grid?.sel.size ? [...S.grid.sel] : undefined }),
+    odd: () => send({ type: "odd", of: S.grid?.of || "images" }),
+    outlineHere: () => send({ type: "outline", item: S.item }),
+    outlineAll: () => send({ type: "outline", item: S.item, all: true }),
+    peekPrev: () => peekStep(-1), peekNext: () => peekStep(1),
+    closePeek: () => $(".pl-peek").close(),
     full: () => toggleFull(),
     help: () => $(".pl-help-dlg").showModal(),
     closeHelp: () => $(".pl-help-dlg").close(),
@@ -961,6 +1117,7 @@ function render({ model, el }) {
   };
   el.addEventListener("click", (e) => {
     const a = e.target.closest("[data-a]")?.dataset.a; if (a && actions[a]) { actions[a](); return; }
+    if (S.grid && e.target.closest(".pl-gridwrap") && gridClick(e)) return;
     if (!e.target.closest(".pl-side")) return;
     const b = e.target.closest("[data-b]")?.dataset.b; if (b) { actions[b](); return; }
     const t = e.target.closest("[data-tool],[data-cls],[data-obj],[data-del]"); if (!t) return;
@@ -970,6 +1127,196 @@ function render({ model, el }) {
     else if (t.dataset.obj) { S.sel = +t.dataset.obj; renderSide(); draw(); }
   });
   $(".pl-filter").addEventListener("input", (e) => { S.filter = e.target.value; renderSide(); });
+  $(".pl-bsize").addEventListener("input", (e) => { S.brush = +e.target.value; renderSide(); });
+  $(".pl-addcls").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const name = $(".pl-newcls").value.trim(); if (!name) return;
+    const G = S.grid, keys = G?.sel.size ? [...G.sel] : undefined;
+    send({ type: "add_class", name, of: G?.of, keys }); $(".pl-newcls").value = "";
+  });
+  let kTimer = 0;
+  $(".pl-k").addEventListener("input", (e) => {
+    $(".pl-kv").textContent = e.target.value;
+    clearTimeout(kTimer); kTimer = setTimeout(() => send({ type: "sort", of: S.grid.of, k: +e.target.value }), 120);
+  });
+  el.addEventListener("change", (e) => {
+    const sel = e.target.closest("[data-gname]"); if (!sel || sel.value === "" || !S.grid) return;
+    const G = S.grid, cls = +sel.value, keys = sections().find((x) => x.group === +sel.dataset.gname)?.keys || [];
+    const todo = G.of === "images" ? keys.filter((k) => !isGiven(G.cards.get(k)) || G.cards.get(k).cls === cls) : keys;
+    if (todo.length) send({ type: "tag", of: G.of, keys: todo, cls });
+    if (keys.length > todo.length) hint(`${keys.length - todo.length} kept the class you gave them before`);
+    sel.value = "";
+  });
+  el.addEventListener("dblclick", (e) => { const c = S.grid && e.target.closest("[data-card]"); if (c) peek(+c.dataset.card); });
+
+  // ---- the grid: image classes, and sorting the parts of a box or outline project --------------
+  const FILTERS = { all: "All", none: "No class", sugg: "Suggested", given: "Classed", odd: "To check", unsure: "Unsure", dups: "Duplicates" };
+  const isGiven = (c) => c && c.cls != null && c.source !== "suggested";
+  const PASS = {
+    all: () => true, none: (c) => c.cls == null, sugg: (c) => c.source === "suggested", given: isGiven,
+    odd: (c) => S.grid.odd.has(c.key), unsure: (c) => S.grid.unsure.has(c.key), dups: (c) => S.grid.dupOf.has(c.key),
+  };
+  function openGrid(of) {
+    S.grid = { of, cards: new Map(), order: [], groups: null, unsure: new Set(), dups: [], dupOf: new Set(), odd: new Map(),
+               filter: "all", sel: new Set(), cur: null, anchor: null, shown: 400, visible: [], thumbs: new Map(), want: new Set() };
+    S.sel = null; S.tool = S.tool === "brush" || S.tool === "erase" ? "click" : S.tool;
+    $(".pl-gtitle").textContent = of === "images" ? "Images" : "Parts";
+    $(".pl-gridwrap").hidden = false; $(".pl-stage").hidden = true; $(".pl-range").hidden = true;
+    send({ type: "grid", of });
+    renderGrid(); renderSide(); renderTop();
+    $(".pl-grid").focus?.();
+  }
+  function closeGrid() {
+    if (!S.grid || classify()) return;
+    S.grid = null;
+    $(".pl-gridwrap").hidden = true; $(".pl-stage").hidden = false;
+    renderSide(); renderTop();
+    send({ type: "goto", item: S.target });                        // classes may have changed
+  }
+  function sections() {
+    const G = S.grid, pass = PASS[G.filter], keep = (keys) => keys.filter((k) => G.cards.has(k) && pass(G.cards.get(k)));
+    if (G.filter === "sugg") return [{ title: "Suggested, least sure first", keys: keep(G.order).sort((a, b) => (G.cards.get(a).score ?? 0) - (G.cards.get(b).score ?? 0)) }];
+    if (G.filter === "odd") return [{ title: "These look like another class (the one on the badge)", keys: [...G.odd.keys()].filter((k) => G.cards.has(k)) }];
+    if (G.filter === "dups") return G.dups.map((d, i) => ({ title: `Near-duplicates ${i + 1}`, keys: d.filter((k) => G.cards.has(k)) }));
+    if (G.groups) return G.groups.map((g, i) => ({ title: `Group ${i + 1}`, keys: keep(g), group: i })).filter((x) => x.keys.length);
+    return [{ title: "", keys: keep(G.order) }];
+  }
+  function cardHtml(c) {
+    const G = S.grid, cls = S.project.classes, name = c.cls != null ? cls[c.cls] ?? c.cls : "No class";
+    const badge = G.odd.has(c.key) ? `<span class="pl-badge odd">Looks like ${esc(cls[G.odd.get(c.key)[0]])}</span>`
+      : G.dupOf.has(c.key) ? `<span class="pl-badge">Near-duplicate</span>` : G.unsure.has(c.key) ? `<span class="pl-badge">Unsure</span>` : "";
+    const src = c.src || G.thumbs.get(c.key);
+    const sure = c.source === "suggested" && c.score != null ? ` ${Math.round(c.score * 100)}%` : "";
+    return `<button type="button" class="pl-card${c.source === "suggested" ? " sugg" : ""}${G.cur === c.key ? " cur" : ""}" data-card="${c.key}"
+      aria-pressed="${G.sel.has(c.key)}" title="${esc(c.name)}"><img alt="${esc(c.name)}" loading="lazy" decoding="async" ${src ? `src="${esc(src)}"` : `data-need="${c.key}"`}>${badge}
+      <span class="pl-card-cls">${c.cls != null ? `<i class="pl-sw" style="background:${colorOf(c.cls)}" aria-hidden="true"></i>` : ""}<span translate="no">${esc(name)}${sure}</span></span></button>`;
+  }
+  function renderGrid() {
+    const G = S.grid; if (!G) return;
+    const all = [...G.cards.values()], count = (f) => all.filter(PASS[f]).length;
+    $(".pl-filters").innerHTML = Object.entries(FILTERS)
+      .filter(([f]) => (G.of === "images" || !["none", "sugg"].includes(f)) && (f === "all" || f === G.filter || count(f) > 0))
+      .map(([f, t]) => `<button type="button" data-filter="${f}" aria-pressed="${f === G.filter}">${t}<b>${count(f)}</b></button>`).join("");
+    const secs = sections(), total = secs.reduce((n, x) => n + x.keys.length, 0);
+    let budget = G.shown; G.visible = [];
+    const cls = S.project.classes.map((n, i) => `<option value="${i}">${esc(n)}</option>`).join("");
+    const html = secs.map((x) => {
+      const keys = x.keys.slice(0, Math.max(0, budget)); budget -= keys.length; G.visible.push(...keys);
+      if (!keys.length) return "";
+      const head = x.title ? `<h3>${esc(x.title)} <span class="pl-src">${x.keys.length}</span>${x.group != null
+        ? ` <button type="button" data-gsel="${x.group}">Select all</button><select data-gname="${x.group}" aria-label="Give ${esc(x.title)} a class">
+            <option value="">Give all a class…</option>${cls}</select>` : ""}</h3>` : "";
+      return `<section class="pl-gsec">${head}<div class="pl-cards">${keys.map((k) => cardHtml(G.cards.get(k))).join("")}</div></section>`;
+    }).join("");
+    const grid = $(".pl-grid"), top = grid.scrollTop;
+    grid.innerHTML = html ? html + (total > G.shown ? `<button type="button" class="pl-more" data-more="1">Show ${Math.min(800, total - G.shown)} more</button>` : "")
+      : `<p class="pl-empty">${!G.loaded ? "Loading…" : G.cards.size ? "Nothing here with this filter." : G.of === "parts" ? "No parts yet: label some first." : "No images."}</p>`;
+    grid.scrollTop = top;
+    renderGridCount();
+    needThumbs();
+  }
+  function renderGridCount() {
+    const G = S.grid;
+    $(".pl-gcount").textContent = `${G.cards.size} ${G.of === "images" ? "images" : "parts"}${G.sel.size ? `, ${G.sel.size} selected` : ""}`;
+  }
+  function paintSel() {
+    const G = S.grid;
+    el.querySelectorAll(".pl-grid [data-card]").forEach((c) => {
+      const k = +c.dataset.card; c.setAttribute("aria-pressed", String(G.sel.has(k))); c.classList.toggle("cur", k === G.cur);
+    });
+    renderGridCount();
+  }
+  function gridClick(e) {
+    const G = S.grid;
+    const f = e.target.closest("[data-filter]"); if (f) { G.filter = f.dataset.filter; G.shown = 400; renderGrid(); return true; }
+    if (e.target.closest("[data-more]")) { G.shown += 800; renderGrid(); return true; }
+    const gs = e.target.closest("[data-gsel]"); if (gs) { G.sel = new Set(sections().find((x) => x.group === +gs.dataset.gsel)?.keys); paintSel(); return true; }
+    const card = e.target.closest("[data-card]"); if (!card) return false;
+    const k = +card.dataset.card;
+    if (e.shiftKey && G.anchor != null) {
+      const a = G.visible.indexOf(G.anchor), b = G.visible.indexOf(k);
+      if (a >= 0 && b >= 0) G.visible.slice(Math.min(a, b), Math.max(a, b) + 1).forEach((x) => G.sel.add(x));
+    } else if (e.ctrlKey || e.metaKey) { G.sel.has(k) ? G.sel.delete(k) : G.sel.add(k); G.anchor = k; }
+    else { G.sel = new Set([k]); G.anchor = k; }
+    G.cur = k; paintSel();
+    return true;
+  }
+  function tagSelected(cls) {
+    const G = S.grid, keys = G.sel.size ? [...G.sel] : G.cur != null ? [G.cur] : [];
+    if (!keys.length) { hint("Select pictures first: click, Shift+click or Ctrl+A"); return; }
+    send({ type: "tag", of: G.of, keys, cls });
+  }
+  function moveCur(step, extend) {
+    const G = S.grid; if (!G.visible.length) return;
+    let i = G.visible.indexOf(G.cur); i = i < 0 ? 0 : Math.max(0, Math.min(G.visible.length - 1, i + step));
+    G.cur = G.visible[i];
+    if (extend) G.sel.add(G.cur); else { G.sel = new Set([G.cur]); G.anchor = G.cur; }
+    paintSel();
+    el.querySelector(`.pl-grid [data-card="${G.cur}"]`)?.scrollIntoView({ block: "nearest" });
+  }
+  function columns() {
+    const c = el.querySelector(".pl-grid .pl-cards");
+    return c ? Math.max(1, getComputedStyle(c).gridTemplateColumns.split(" ").length) : 1;
+  }
+  function gridKey(e) {
+    const G = S.grid, k = e.key;
+    if ((e.ctrlKey || e.metaKey) && k.toLowerCase() === "a") { G.sel = new Set(G.visible); paintSel(); return true; }
+    if ((e.ctrlKey || e.metaKey) && k.toLowerCase() === "z") { actions.undo(); return true; }
+    if (e.ctrlKey || e.metaKey || e.altKey) return false;
+    if (/^[0-9]$/.test(k)) setClass(k === "0" ? 9 : +k - 1);
+    else if (k === "[" || k === "]") setClass((S.cls + (k === "]" ? 1 : -1) + S.project.classes.length) % S.project.classes.length);
+    else if (k === "ArrowRight" || k === "ArrowLeft") moveCur(k === "ArrowRight" ? 1 : -1, e.shiftKey);
+    else if (k === "ArrowDown" || k === "ArrowUp") moveCur((k === "ArrowDown" ? 1 : -1) * columns(), e.shiftKey);
+    else if ((k === "Delete" || k === "Backspace") && G.of === "images") tagSelectedClear();
+    else if (k === " " || k === "Enter") { if (G.cur != null) peek(G.cur); }
+    else if (k === "Escape") { if (G.sel.size) { G.sel = new Set(); paintSel(); } else closeGrid(); }
+    else if (k === "g") actions.group();
+    else if (k === "s" && G.of === "images") actions.suggestTags();
+    else if (k === "y" && G.of === "images") actions.acceptTags();
+    else return false;
+    return true;
+  }
+  function tagSelectedClear() {
+    const G = S.grid, keys = G.sel.size ? [...G.sel] : G.cur != null ? [G.cur] : [];
+    if (keys.length) send({ type: "tag", of: G.of, keys, cls: null });
+  }
+  // Notebooks: thumbnails come as data URLs for the cards in view (the web page loads them by URL)
+  let thumbTimer = 0;
+  const seen = typeof IntersectionObserver !== "undefined" ? new IntersectionObserver((ents) => {
+    for (const en of ents) if (en.isIntersecting && S.grid) { S.grid.want.add(+en.target.dataset.need); seen.unobserve(en.target); }
+    clearTimeout(thumbTimer);
+    thumbTimer = setTimeout(() => {
+      if (!S.grid?.want.size) return;
+      const keys = [...S.grid.want].slice(0, 60); keys.forEach((k) => S.grid.want.delete(k));
+      send({ type: "thumbs", of: S.grid.of, keys });
+    }, 60);
+  }, { root: $(".pl-grid"), rootMargin: "400px" }) : null;
+  function needThumbs() { if (seen) el.querySelectorAll(".pl-grid img[data-need]").forEach((img) => seen.observe(img)); }
+  // A closer look: image projects show the picture (arrows step, numbers give a class); parts open their frame
+  function peek(k) {
+    const G = S.grid, c = G.cards.get(k); if (!c) return;
+    if (G.of === "parts") { closeGrid(); goto(c.item); S.pendingSel = k; return; }
+    G.peek = k; G.cur = k; paintSel();
+    const dlg = $(".pl-peek"); if (!dlg.open) dlg.showModal();
+    $(".pl-peek-t").textContent = c.name;
+    const t = G.cards.get(k);
+    $(".pl-peek-c").innerHTML = t.cls != null ? `<span class="pl-chip ${isGiven(t) ? "rev" : ""}">${esc(S.project.classes[t.cls])}${isGiven(t) ? "" : " (suggested)"}</span>` : `<span class="pl-src">No class: press 1–9</span>`;
+    const img = $(".pl-peek-img");
+    img.src = web ? `${model.homeUrl}items/${encodeURIComponent(S.project.name)}/${k}.jpg` : G.thumbs.get(k) || "";
+    if (!web) { S.target = k; send({ type: "goto", item: k }); }       // the item message brings the full picture
+  }
+  function peekStep(step) {
+    const G = S.grid, i = G.visible.indexOf(G.peek);
+    if (i >= 0 && G.visible[i + step] != null) peek(G.visible[i + step]);
+  }
+  $(".pl-peek").addEventListener("keydown", (e) => {
+    const k = e.key, G = S.grid; if (!G) return;
+    if (k === "ArrowRight" || k === "ArrowLeft") peekStep(k === "ArrowRight" ? 1 : -1);
+    else if (/^[0-9]$/.test(k)) { S.cls = k === "0" ? 9 : +k - 1; send({ type: "tag", of: G.of, keys: [G.peek], cls: S.cls }); renderSide(); }
+    else if (k === "Delete" || k === "Backspace") send({ type: "tag", of: G.of, keys: [G.peek], cls: null });
+    else return;
+    e.preventDefault(); e.stopPropagation();
+  });
   strip.addEventListener("click", (e) => { const r = strip.getBoundingClientRect(); goto(Math.floor((e.clientX - r.left) / r.width * S.statuses.length)); });
 
   // ---- full screen --------------------------------------------------------------------------
@@ -1009,18 +1356,78 @@ function render({ model, el }) {
   // ---- mouse on the image ----------------------------------------------------------------
   const toImage = (e) => { const r = cv.getBoundingClientRect(); return [(e.clientX - r.left) * cv.width / r.width, (e.clientY - r.top) * cv.height / r.height]; };
   function boxAt(x, y) {
+    const size = (b) => (b.box[2] - b.box[0]) * (b.box[3] - b.box[1]);
+    if (seg()) { const m = (S.data?.boxes || []).filter((b) => inMask(b, x, y)).sort((a, b) => size(a) - size(b))[0]; if (m) return m.obj; }
     const hits = (S.data?.boxes || []).filter((b) => x >= b.box[0] && x <= b.box[2] && y >= b.box[1] && y <= b.box[3]);
     hits.sort((a, b) => (a.box[2] - a.box[0]) * (a.box[3] - a.box[1]) - (b.box[2] - b.box[0]) * (b.box[3] - b.box[1]));
     return hits[0]?.obj ?? null;
   }
   cv.addEventListener("contextmenu", (e) => e.preventDefault());
-  cv.addEventListener("mousedown", (e) => { if (!S.img) return; const [x, y] = toImage(e); S.drag = { x0: x, y0: y, x1: x, y1: y, moved: false, e }; el.focus(); });
+  // Brush and eraser (outline projects): paint on a copy of the part's mask; on release the page sends the
+  // part's whole new mask as a PNG crop (engine: on_paint)
+  const painting = () => seg() && (S.tool === "brush" || S.tool === "erase");
+  function startPaint(x, y) {
+    if (S.tool === "erase" && S.sel == null) { hint("Select an outline first (Ctrl+click it), then erase"); return; }
+    const b = S.sel != null ? S.data.boxes.find((bb) => bb.obj === S.sel) : null;
+    const t = b?.mask ? tinted(b) : null;
+    if (b?.mask && !t) return;                                       // its mask is still loading
+    const pc = document.createElement("canvas"); pc.width = cv.width; pc.height = cv.height;
+    const px = pc.getContext("2d"), cls = b ? b.cls : S.cls;
+    let bounds = [x, y, x, y];
+    if (t) {
+      const id = px.createImageData(t.w, t.h), [r, g, bl] = rgbOf(cls);
+      for (let i = 0; i < t.w * t.h; i++) if (t.inside[i]) { id.data[i * 4] = r; id.data[i * 4 + 1] = g; id.data[i * 4 + 2] = bl; id.data[i * 4 + 3] = 255; }
+      px.putImageData(id, b.mask[0], b.mask[1]);
+      bounds = [Math.min(x, b.mask[0]), Math.min(y, b.mask[1]), Math.max(x, b.mask[0] + t.w), Math.max(y, b.mask[1] + t.h)];
+    }
+    px.lineCap = px.lineJoin = "round"; px.lineWidth = S.brush * 2; px.strokeStyle = colorOf(cls);
+    px.globalCompositeOperation = S.tool === "erase" ? "destination-out" : "source-over";
+    S.paint = { cv: pc, px, obj: b ? b.obj : null, cls, last: [x, y], bounds };
+    strokeTo(x, y);
+  }
+  function strokeTo(x, y) {
+    const P = S.paint, [lx, ly] = P.last, r = S.brush + 2;
+    P.px.beginPath(); P.px.moveTo(lx, ly); P.px.lineTo(x + 0.01, y); P.px.stroke(); P.last = [x, y];
+    P.bounds = [Math.min(P.bounds[0], x - r), Math.min(P.bounds[1], y - r), Math.max(P.bounds[2], x + r), Math.max(P.bounds[3], y + r)];
+    draw();
+  }
+  function finishPaint() {
+    const P = S.paint; S.paint = null;
+    const x0 = Math.max(0, Math.floor(P.bounds[0])), y0 = Math.max(0, Math.floor(P.bounds[1]));
+    const x1 = Math.min(cv.width, Math.ceil(P.bounds[2])), y1 = Math.min(cv.height, Math.ceil(P.bounds[3]));
+    let bx0 = Infinity, by0 = Infinity, bx1 = -1, by1 = -1;
+    if (x1 > x0 && y1 > y0) {
+      const d = P.px.getImageData(x0, y0, x1 - x0, y1 - y0).data, w = x1 - x0;
+      for (let i = 3, j = 0; i < d.length; i += 4, j++) {
+        if (d[i] > 127) { const xx = j % w, yy = (j / w) | 0; if (xx < bx0) bx0 = xx; if (xx > bx1) bx1 = xx; if (yy < by0) by0 = yy; if (yy > by1) by1 = yy; }
+      }
+    }
+    if (bx1 < 0 && P.obj == null) { draw(); return; }                 // erased nothing into nothing
+    const out = document.createElement("canvas");
+    let ox = 0, oy = 0;
+    if (bx1 < 0) out.width = out.height = 1;                          // all erased: the part is removed
+    else {
+      out.width = bx1 - bx0 + 1; out.height = by1 - by0 + 1; ox = x0 + bx0; oy = y0 + by0;
+      out.getContext("2d").drawImage(P.cv, ox, oy, out.width, out.height, 0, 0, out.width, out.height);
+    }
+    send({ type: "paint", item: S.item, obj: P.obj ?? undefined, cls: P.cls, x: ox, y: oy, png: out.toDataURL("image/png") });
+  }
+  let hoverRaf = 0;
+  cv.addEventListener("mouseleave", () => { if (S.hover) { S.hover = null; draw(); } });
+  cv.addEventListener("mousedown", (e) => {
+    if (!S.img) return; const [x, y] = toImage(e); el.focus();
+    if (painting() && !(e.ctrlKey || e.metaKey) && e.button === 0) { startPaint(x, y); return; }
+    S.drag = { x0: x, y0: y, x1: x, y1: y, moved: false, e };
+  });
   cv.addEventListener("mousemove", (e) => {
+    if (S.paint) { const [x, y] = toImage(e); strokeTo(x, y); return; }
+    if (painting() && !S.drag) { S.hover = toImage(e); if (!hoverRaf) hoverRaf = requestAnimationFrame(() => { hoverRaf = 0; draw(); }); return; }
     if (!S.drag) return; const [x, y] = toImage(e); S.drag.x1 = x; S.drag.y1 = y;
     const r = cv.getBoundingClientRect(), px = cv.width / r.width;
     S.drag.moved ||= Math.hypot(x - S.drag.x0, y - S.drag.y0) > 5 * px; if (S.drag.moved) draw();
   });
   window.addEventListener("mouseup", (e) => {
+    if (S.paint) { finishPaint(); return; }
     const d = S.drag; if (!d) return; S.drag = null;
     if (e.ctrlKey || e.metaKey) { S.sel = boxAt(d.x0, d.y0); renderSide(); draw(); return; }
     if (S.tool === "box") {
@@ -1039,7 +1446,8 @@ function render({ model, el }) {
 
   // ---- keys --------------------------------------------------------------------------------
   el.addEventListener("keydown", (e) => {
-    if (e.target.matches("input,select,textarea") || $(".pl-help-dlg").open || center.isOpen) return;
+    if (e.target.matches("input,select,textarea") || $(".pl-help-dlg").open || $(".pl-peek").open || center.isOpen) return;
+    if (S.grid && gridKey(e)) { e.preventDefault(); return; }
     const k = e.key;
     if ((e.ctrlKey || e.metaKey) && k.toLowerCase() === "z") actions.undo();
     else if (e.ctrlKey || e.metaKey || e.altKey) return;
@@ -1053,7 +1461,10 @@ function render({ model, el }) {
     else if (k === "r") actions.trackBack(); else if (k === "R") actions.trackBackAll();
     else if (k === "s") actions.suggest(); else if (k === "f") actions.findAll();
     else if (k === "y") actions.accept(); else if (k === "x") actions.stop();
-    else if (k === "c" || k === "b") { S.tool = k === "c" ? "click" : "box"; renderSide(); }
+    else if (k === "c" || k === "b") { S.tool = k === "c" ? "click" : "box"; renderSide(); draw(); }
+    else if ((k === "p" || k === "e") && seg()) { S.tool = k === "p" ? "brush" : "erase"; renderSide(); draw(); }
+    else if ((k === "," || k === ".") && seg()) { S.brush = Math.max(1, Math.min(120, Math.round(S.brush * (k === "." ? 1.25 : 0.8)))); $(".pl-bsize").value = S.brush; renderSide(); draw(); }
+    else if (k === "g" && !classify()) actions.sortParts();
     else if (k === "m") { if (S.sel != null) send({ type: "cycle", item: S.item, obj: S.sel }); }
     else if (k === "n") center.toggle();
     else if (k === "?") actions.help();
@@ -1065,7 +1476,27 @@ function render({ model, el }) {
 
   // ---- messages in -------------------------------------------------------------------------
   model.on("msg:custom", (m) => {
-    if (m.type === "project") { S.project = m; legend(); renderProject(); renderSide(); renderTop(); }
+    if (m.type === "project") { S.project = m; legend(); renderProject(); renderSide(); renderTop(); if (S.grid) renderGrid(); }
+    else if (m.type === "grid" && S.grid?.of === m.of) {
+      S.grid.cards = new Map(m.cards.map((c) => [c.key, c])); S.grid.order = m.cards.map((c) => c.key); S.grid.loaded = true; renderGrid();
+    }
+    else if (m.type === "cards" && S.grid?.of === m.of) { for (const c of m.cards) S.grid.cards.set(c.key, c); renderGrid(); if ($(".pl-peek").open) peek(S.grid.peek); }
+    else if (m.type === "groups" && S.grid?.of === m.of) {
+      Object.assign(S.grid, { groups: m.groups, unsure: new Set(m.unsure), dups: m.dups, dupOf: new Set(m.dups.flat()) });
+      const r = $(".pl-range"), k = $(".pl-k"); r.hidden = m.max_k < 2; k.max = m.max_k; k.value = m.k;
+      $(".pl-kv").textContent = `${m.k}${m.k === m.best_k ? " (best fit)" : ""}`;
+      renderGrid();
+    }
+    else if (m.type === "odd" && S.grid?.of === m.of) {
+      S.grid.odd = new Map(m.items.map(([k, c, sh]) => [k, [c, sh]])); if (m.items.length) S.grid.filter = "odd"; renderGrid();
+    }
+    else if (m.type === "thumbs" && S.grid?.of === m.of) {
+      for (const [k, src] of Object.entries(m.src)) {
+        S.grid.thumbs.set(+k, src);
+        el.querySelectorAll(`.pl-grid img[data-need="${k}"]`).forEach((img) => { img.src = src; img.removeAttribute("data-need"); });
+      }
+    }
+    else if (m.type === "select") { S.sel = m.obj; }
     else if (m.type === "status") {
       Object.assign(S, { statuses: m.statuses, flags: m.flags, busy: m.busy, gpu: m.gpu, undo: m.undo });
       if (S.saving) { S.saving = false; S.savedAt = Date.now(); }
@@ -1080,12 +1511,17 @@ function render({ model, el }) {
         S.item = m.item; S.data = m; S.img = img;
         if (cv.width !== m.w || cv.height !== m.h) { cv.width = m.w; cv.height = m.h; }
         if (S.sel != null && !m.boxes.some((b) => b.obj === S.sel)) S.sel = null;
+        if (S.pendingSel != null) { if (m.boxes.some((b) => b.obj === S.pendingSel)) S.sel = S.pendingSel; S.pendingSel = null; }
+        if (S.grid?.peek === m.item && $(".pl-peek").open && !web) $(".pl-peek-img").src = m.src;
         draw(); renderSide(); renderTop(); drawStrip();
       };
       img.src = m.src;
     }
     else if (m.type === "mask") { const img = new Image(); img.onload = () => { S.mask = img; S.maskItem = m.item; S.sel = m.obj; draw(); renderSide(); }; img.src = m.src; }
-    else if (m.type === "item_changed") { if (m.items.includes(S.target)) send({ type: "goto", item: S.target }); }
+    else if (m.type === "item_changed") {
+      if (S.grid) send({ type: "grid", of: S.grid.of });
+      else if (m.items.includes(S.target)) send({ type: "goto", item: S.target });
+    }
     else if (m.type === "progress") {
       const f = m.finished ? 0 : m.done / Math.max(1, m.total);
       $(".pl-bar i").style.width = `${f * 100}%`;

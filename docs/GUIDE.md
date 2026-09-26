@@ -1,8 +1,10 @@
 # PartLabeler user guide
 
-PartLabeler builds labeled datasets of parts (any product, any part list) from videos and image folders.
-The result is the dataset itself: YOLO, COCO, CVAT, Pascal VOC or Label Studio files you can train your own
-detector on. Labeling trains nothing: you click, the models outline, track and suggest, and you confirm.
+PartLabeler builds labeled datasets of parts (any product, any part list) from videos and image folders:
+boxes (object detection), exact outlines (instance segmentation) or one class per image (classification).
+The result is the dataset itself: YOLO, COCO, CVAT, Pascal VOC or Label Studio files, or class folders, that you
+train your own model on. Labeling trains nothing: you click, the models outline, track, group and suggest, and
+you confirm.
 Everything runs on your own computer. This guide is also what Rivet, the in-app helper, answers from.
 
 ## Start the app
@@ -21,13 +23,28 @@ restore projects from the Trash. Each project card has a ⋯ menu with Open, Sho
 ## Create a project
 
 1. On the start screen, find **New project** and type a name (for example `gearbox_line2`).
-2. Choose **Video** or **Image folder**, then click **Browse…** to pick the file or folder.
-3. For a video, set **Keep every Nth frame** (5 keeps one frame in five; use 1 for every frame).
-4. Type the class names, one per line (for example `bolt`, `bracket`, `connector`), or click
+2. Pick the **Label type**: **Boxes**, **Outlines** or **Image classes** (see Label types below).
+3. Choose **Video** or **Image folder**, then click **Browse…** to pick the file or folder.
+4. For a video, set **Keep every Nth frame** (5 keeps one frame in five; use 1 for every frame).
+5. Type the class names, one per line (for example `bolt`, `bracket`, `connector`), or click
    **Load from classes.txt / data.yaml…**. Names starting with `left_` / `right_` are treated as mirror twins.
-5. Optional, under **More options**: import existing YOLO labels to review or finish, and set a
-   **parent object** (see Settings).
-6. Click **Create project**. A progress bar shows the frames being prepared, then the annotator opens.
+   Image-class projects may start with no classes: you name them while sorting. More classes can be added
+   later in any project (**New class…** under Class in the side panel).
+6. Optional, under **More options**: import existing YOLO labels to review or finish (boxes, or polygons for
+   outline projects), and set a **parent object** (see Settings).
+7. Click **Create project**. A progress bar shows the frames being prepared, then the annotator opens.
+
+## Label types: boxes, outlines, image classes
+
+- **Boxes** (object detection): a box around every part. The default.
+- **Outlines** (instance segmentation): the exact shape of every part, as a mask. Everything that makes a box
+  makes an outline here: clicking, drawing a box (SAM 3 outlines the part inside it), tracking, Suggest and Find
+  similar. The brush and eraser fix edges. Exports hold polygons or masks.
+- **Image classes** (classification): one class per image, labeled on a grid of pictures with smart grouping.
+  Good for sorting a messy folder (for example ok / scratch / dent, or one folder per part type).
+
+A box project can be switched to outlines later: **Settings → Label type → Outlines**, then **Outline boxes**
+(… **on every frame**) under Find parts turns every existing box into an outline. Switching back keeps the outlines.
 
 ## The annotator screen
 
@@ -76,6 +93,63 @@ After tracking, frames where a box jumped, changed size a lot or went missing ge
 on the timeline. Confirming a frame with no boxes records it as checked background (an empty label file on
 export). Click **Unconfirm frame** to undo a confirmation.
 
+## Outlines (segmentation)
+
+In an outline project the side panel's Tool section has four tools:
+
+1. **Click to outline** (C): click a part and SAM 3 outlines it; **M** steps to the next larger outline, Shift+click
+   adds to it and Alt+click takes away from it, as for boxes.
+2. **Draw box** (B): drag a box around a part; SAM 3 outlines the part inside it.
+3. **Brush** (P): paint onto the selected outline (Ctrl+click an outline to select it). With nothing selected,
+   the brush paints a new part of the current class.
+4. **Eraser** (E): erase from the selected outline. Erasing all of it deletes the part.
+
+**,** and **.** make the brush smaller and larger (or use the Brush size slider). Tracking (T) carries the
+outlines through the video, and Suggest, Find similar and Accept all work as for boxes, with outlines.
+**Outline boxes** outlines every box on the frame that has none yet (imported boxes, boxes drawn before the
+switch to outlines, Teach & Transfer results); **…on every frame** does the whole project.
+
+Export: YOLO gets segmentation polygons (one line per part, pieces and holes joined as Ultralytics expects),
+COCO gets polygons, or RLE masks for parts with holes or that are too small for a faithful polygon, CVAT gets
+polygons or masks, Pascal VOC gets SegmentationClass and SegmentationObject PNGs, and Label Studio gets
+polygons (holes are not kept there). Boxes without an outline are left out and counted in the notification.
+
+## Image classes and smart sorting
+
+An image-class project opens as a grid of pictures instead of one frame at a time.
+
+- **Select** pictures: click one, Shift+click a range, Ctrl+click to add or remove, Ctrl+A for everything shown.
+  Then press a class number (1–9, 0) or click the class in the side panel. Del clears the class.
+- **New class…** (under Class): adds a class; the selected pictures get it straight away.
+- **Group by look** (G): puts look-alike pictures together (DINOv3 features, nothing leaves the computer).
+  The **Groups** slider under Sort gives fewer or more groups; it starts at the best fit. Each group has
+  **Select all** and **Give all a class…**, so naming a group labels all of it at once (pictures you already
+  classed yourself keep their class).
+- **Suggest classes** (S): once at least two classes have pictures, it suggests a class for the others. It only
+  suggests where a picture looks like pictures of that class; the rest stay without a class. Check the dotted
+  cards (**Suggested** lists the least sure first), **Accept suggestions** (Y), then suggest again: each round
+  reaches further.
+- **Check labels**: lists pictures whose class disagrees with their look-alikes (likely mistakes) under
+  **To check**, with the class they look like on the badge.
+- **Duplicates** lists near-identical pictures after grouping; **Unsure** lists pictures that fit no group well.
+- Double-click a picture (or press Space) for a closer look; arrows step, numbers give the class.
+
+On the example dataset's part pictures (3,000, 14 classes) the first grouping came close to the real classes,
+suggestions from 3 examples per class were right 88% of the time, and Check labels found 88 of 90 wrong labels.
+
+Export: **Class folders** (one folder per class), **YOLO** (Ultralytics classification: train/ and val/ with a
+folder per class; neighbouring images go to the same side) or **CSV list** (path, class; no copies). Suggested
+classes nobody accepted are never exported.
+
+## Sort parts: name or fix classes in bulk
+
+In a box or outline project, **Sort parts** (G, under Find parts) shows every part as a picture (a tracked part
+once), with the same grid tools: Group by look, the Groups slider, Check labels, selecting and class numbers.
+Giving a part a class changes it on every frame it appears in. Double-click a part to go to its frame.
+This allows "label now, name later": outline or box every part as one class (for example `part`), add the real
+classes, then group the parts and name each group. Check labels finds parts whose class disagrees with their
+look-alikes. **Back to frames** (Esc) returns to the annotator.
+
 ## Find parts: Suggest, Find similar, Accept all
 
 - **Suggest** (S) proposes boxes that look like parts you already labeled on other frames or images
@@ -88,8 +162,9 @@ export). Click **Unconfirm frame** to undo a confirmation.
 ## Export the dataset
 
 Click **Export** in the top bar: it jumps to the Export dataset controls in the side panel. Pick the format
-(YOLO, COCO, CVAT, Pascal VOC or Label Studio), tick **Confirmed frames only** if you want just the frames
-you checked, and click **Export**. The files go into the project's `exports/` folder, in a new sub-folder
+(YOLO, COCO, CVAT, Pascal VOC or Label Studio; image-class projects: class folders, YOLO or CSV), tick
+**Confirmed frames only** if you want just the frames you checked, and click **Export**. Outline projects export
+outlines (see Outlines). The files go into the project's `exports/` folder, in a new sub-folder
 named after the format and time. A notification offers **Open folder**. Export as often as you like;
 nothing is overwritten. From the command line: `python -m engine.cli export projects/<name> --format coco`.
 
@@ -151,7 +226,9 @@ Click: new part · M: next larger outline · Shift/Alt+click: grow/shrink the se
 select · B: draw box · C: click mode · 1–9, 0, [ ]: class · Del: delete · Esc: deselect · Ctrl+Z: undo ·
 ← → (A / D): previous / next frame · Shift+→: next to check · Enter: confirm · T / Shift+T: track ahead /
 to the end · R / Shift+R: track back / to the start · X: stop · S: suggest · F: find similar · Y: accept all ·
-N: notifications · ?: all shortcuts.
+N: notifications · ?: all shortcuts. Outlines: P brush · E eraser · , and . brush size. G: sort parts (grid: group
+by look). Grid: 1–9 and 0 give the selected pictures a class · Ctrl+A select all shown · Del clear · Space or
+double-click: closer look · Esc: clear the selection, then back to frames.
 
 ## Notebooks and Google Colab
 
@@ -188,11 +265,13 @@ on an RTX 3060 12 GB; all models together use about 4 GB). CPU works but is slow
 - It runs inside notebooks, including Google Colab's free T4, where web-UI tools are not allowed.
 - Teach & Transfer learns one labeled video and labels similar ones on your own GPU, and proves its accuracy
   on held-out frames first (0.936 held-out mAP50 on the example dataset).
-- It exports all five common formats: YOLO, COCO, CVAT XML, Pascal VOC and Label Studio.
+- It exports all five common formats: YOLO, COCO, CVAT XML, Pascal VOC and Label Studio, for boxes and outlines.
+- Boxes, outlines (segmentation) and image classes in one tool, with smart grouping that sorts a messy folder of
+  pictures, and a check that finds labels which disagree with their look-alikes.
 - Tracked frames that look wrong are flagged for you, so you check the frames that need it.
 - Where others are stronger: team workflows (roles, review queues, single sign-on) in CVAT, Label Studio and
-  Roboflow, and many more annotation types (polygons, skeletons, 3D) in CVAT and X-AnyLabeling.
-  PartLabeler is built for one job: boxes on parts in video, fast, on your own machine.
+  Roboflow, and more annotation types (keypoints, skeletons, rotated boxes, 3D) in CVAT and X-AnyLabeling.
+  PartLabeler is built for one job: labeling parts in video and pictures, fast, on your own machine.
 
 ## Privacy and the helper
 

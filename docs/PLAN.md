@@ -332,6 +332,7 @@ partlabeler/
 4. **M3 (stable):** long videos, chunk carry-over, VRAM watchdog, crash-safe autosave and resume, `run_windows.bat`, full exports.
 5. **M4 (Teach & Transfer):** detector.py, importers, analysis, augmentation + recolouring, evaluation (Knowledge score + colour stress), transfer batch queue, tracker smoothing, self-training, QA report + preview video, wizard UI + CLI, and "open flagged frames in the annotator". Boost then comes almost for free because it uses the same detector.py.
 6. **Phase B:** Colab (anywidget, fp16/560 px preset, Drive persistence), then small GPUs and CPU (EdgeTAM, DINOv2-S, Laya only on uncertain crops), plus a benchmark table per preset.
+7. **Label types (added 2026-09-26, after research):** outlines (instance segmentation: SAM 3 masks kept as COCO RLE, brush/eraser, "Outline boxes", polygons or masks in all five exports; Teach & Transfer stays detection and SAM 3 outlines its boxes) and image classes (a grid with DINOv3 grouping, prototype/logistic suggestions that leave unfamiliar images alone, a wrong-label check, near-duplicates; class-folder, Ultralytics-classify and CSV exports), plus "Sort parts" for box and outline projects. S10 in `spikes/REPORT.md`. Not in v1: text-prompted zero-shot classes (SigLIP 2), multi-label images, a local VLM to name groups, polygon vertex editing, masks for Teach & Transfer's own model (RF-DETR-Seg).
 
 `/graphify` runs after each milestone; claude-mem tracks progress between sessions.
 
