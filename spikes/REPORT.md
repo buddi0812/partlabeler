@@ -288,3 +288,19 @@ One frame each of the public circuit-board sample (1280x720) and the example vid
 Lossless storage cannot be smaller than JPEG: it costs about 2x (WebP) to 3.5x (PNG). So frames stay compact by
 default, lossless WebP (checked pixel-exact against the decoded video) is a per-project option, and exports hard-link
 the stored frames instead of copying them: no extra disk space per export and no re-encoding.
+
+## S13 — tracking from outlines (reported by the user: a notch erased by hand came back when tracking)
+The tracker was seeded with each part's box, so SAM 3 re-outlined the part from the box and hand fixes were
+lost; also, prompts added on several frames (reference frame + start frame) were only partly used, because the
+session counts only the latest call's inputs as new. Now outlines are the prompts (boxes only where a part has
+none), each frame's prompts are made into memory as they are added, and chunks carry outlines forward.
+On a copy of the reported project (1920x1080, tracking 3 frames ahead from a hand-fixed outline):
+
+| Frame after the fix | IoU with the hand-fixed outline, before | after |
+|---|---|---|
+| +1 | 0.807 | 0.876 |
+| +2 | 0.781 | 0.877 |
+| +3 | 0.806 | 0.873 |
+
+The erased notch stays out of the tracked outlines (it was filled before). With a part labeled on two frames
+far apart, tracking from the later one now lands 6 px from that label (57 px before).

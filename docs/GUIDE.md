@@ -114,7 +114,9 @@ Press **C** to go back to click-to-outline. Hand-drawn boxes are useful for part
 Label every part on one frame, then press **T** (or **Ahead ▶**) to track those boxes ahead by the number of
 frames in the box next to it (20 by default); **Shift+T** tracks to the end. **R** / **◀ Back** tracks
 backwards and **Shift+R** tracks to the start. **X** or **Stop** stops a running job. Tracking uses SAM 3 and
-keeps the style of the boxes you drew. Long videos are tracked in chunks, and if the GPU runs out of memory
+keeps the style of the boxes you drew. In a segmentation project tracking starts from each part's outline, so
+what you fixed by hand (a notch erased, an edge brushed) is what SAM 3 follows into the next frames; after
+fixing an outline, track again from that frame to redo the frames after it. Long videos are tracked in chunks, and if the GPU runs out of memory
 the chunk size is halved automatically.
 
 ## Frames to check

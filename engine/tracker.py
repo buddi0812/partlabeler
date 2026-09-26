@@ -1,10 +1,14 @@
 """Track labeled parts forward or backward through a project's frames with SAM 3 (HF Sam3TrackerVideoModel).
 
-A run starts at one item and covers the next `count` items. Every box on the start item is a
-prompt. Each object's most recent earlier manual box is prepended as an extra reference frame,
-so what a person drew keeps steering the tracker (S2: reference frames lifted IoU 0.969 -> 0.986).
-Runs are split into chunks; each chunk is a fresh, fully released session seeded with the previous
-chunk's last boxes (long sessions grow memory without bound).
+A run starts at one item and covers the next `count` items. Every part on the start item is a
+prompt: its outline when it has one (segmentation projects: SAM 3 then remembers the exact shape a person
+fixed, holes and notches included), else its box. Each part's most recent earlier manual label is prepended
+as an extra reference frame, so what a person drew keeps steering the tracker (S2: reference frames lifted
+IoU 0.969 -> 0.986). Each frame's prompts are turned into the tracker's memory right when they are added
+(the model runs on that frame): the session only counts the inputs of the latest call as new, so prompts
+on several frames would otherwise be dropped. Runs are split into chunks; each chunk is a fresh, fully
+released session seeded with the previous chunk's last outlines or boxes (long sessions grow memory
+without bound).
 """
 import gc
 
@@ -48,10 +52,20 @@ class Tracker:
         self.proc = Sam3TrackerVideoProcessor.from_pretrained(path)
         self.device, self.dtype, self.chunk = device, dtype, CHUNK
 
-    def _add(self, sess, local: int, boxes: dict) -> None:
-        objs = sorted(boxes)
-        self.proc.add_inputs_to_inference_session(inference_session=sess, frame_idx=local, obj_ids=objs,
-                                                  input_boxes=[[list(map(float, boxes[o])) for o in objs]])
+    def _add(self, sess, local: int, prompts: dict) -> None:
+        """Prompts {obj: mask (H x W bool) or box} on one frame, made into conditioning memory at once."""
+        masks = {o: v for o, v in prompts.items() if isinstance(v, np.ndarray)}
+        boxes = {o: v for o, v in prompts.items() if not isinstance(v, np.ndarray)}
+        if masks:                                          # masks and boxes cannot share one call
+            objs = sorted(masks)
+            self.proc.add_inputs_to_inference_session(inference_session=sess, frame_idx=local, obj_ids=objs,
+                                                      input_masks=[masks[o] for o in objs])
+            self.model(inference_session=sess, frame_idx=local)
+        if boxes:
+            objs = sorted(boxes)
+            self.proc.add_inputs_to_inference_session(inference_session=sess, frame_idx=local, obj_ids=objs,
+                                                      input_boxes=[[list(map(float, boxes[o])) for o in objs]])
+            self.model(inference_session=sess, frame_idx=local)
 
     @torch.inference_mode()
     def track(self, project, start: int, count: int, on_item=None, should_stop=lambda: False,
@@ -64,17 +78,22 @@ class Tracker:
         if not seeds:
             return 0
         classes = {o: b["cls"] for o, b in seeds.items()}
-        refs = {}                                              # item -> {obj: box}: nearest manual box behind start
+
+        def prompt(item, b):                                   # the outline when there is one
+            m = project.mask(item, b["obj"]) if masks else None
+            return m if m is not None and m.any() else b["box"]
+
+        refs = {}                                              # item -> {obj: prompt}: nearest manual label behind start
         for o in seeds:
             behind = [a for a in project.anchors(o) if (a - start) * direction < 0]
             if behind:
                 a = behind[-1] if direction > 0 else behind[0]
-                refs.setdefault(a, {})[o] = next(b["box"] for b in project.boxes(a) if b["obj"] == o)
+                refs.setdefault(a, {})[o] = prompt(a, next(b for b in project.boxes(a) if b["obj"] == o))
         if direction > 0:
             todo = list(range(start + 1, min(len(project.items), start + 1 + count)))
         else:
             todo = list(range(start - 1, max(-1, start - 1 - count), -1))
-        cur_item, cur = start, {o: b["box"] for o, b in seeds.items()}
+        cur_item, cur = start, {o: prompt(start, b) for o, b in seeds.items()}
         style = {}                                             # obj -> offset of the drawn box around SAM's outline
         done = pos = 0
         while pos < len(todo) and cur:
@@ -93,7 +112,7 @@ class Tracker:
                 break
             pos += len(chunk)
             cur_item = chunk[-1]
-            cur = {o: r[1] for o, r in last.items() if r[1] is not None}
+            cur = {o: (r[3] if masks and len(r) > 3 and r[3] is not None else r[1]) for o, r in last.items() if r[1] is not None}
         return done
 
     def _chunk(self, project, refs, cur_item, cur, chunk, classes, style, first, on_item, should_stop, keep_masks=False):
@@ -112,17 +131,15 @@ class Tracker:
                     self._add(sess, local, boxes)
             base = len(ref_items)
             self._add(sess, base, cur)
-            for out in self.model.propagate_in_video_iterator(sess, start_frame_idx=0):
+            for out in self.model.propagate_in_video_iterator(sess, start_frame_idx=base):   # references: memory only
                 local = out.frame_idx
-                if local < base:
-                    continue
                 masks = self.proc.post_process_masks([out.pred_masks], original_sizes=[[sess.video_height,
                                                                                         sess.video_width]])[0]
                 if local == base:                              # the start frame: learn each box's style
-                    if first:
+                    if first and not keep_masks:
                         for k, o in enumerate(sess.obj_ids):
                             outline = mask_box(masks[k, 0].cpu().numpy())
-                            if outline and outline[2] > outline[0] and outline[3] > outline[1]:
+                            if outline and outline[2] > outline[0] and outline[3] > outline[1] and not isinstance(cur[o], np.ndarray):
                                 style[o] = style_offset(cur[o], outline)
                     continue
                 scores = getattr(out, "object_score_logits", None)
