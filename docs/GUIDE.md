@@ -12,7 +12,53 @@ Everything runs on your own computer. This guide is also what Rivet, the in-app 
 Double-click `run_windows.bat` (Windows), run `./run.sh` (Linux / macOS) or `python -m engine.cli app`.
 The start screen opens in your browser at http://127.0.0.1:8765. Keep the black console window open while
 you work: closing it stops the app. Your work is saved as you go, so you can close the browser at any time.
-Projects are saved in the `projects` folder next to the app (start with `--home <folder>` to use another).
+Projects are saved in the `projects` folder next to the app (start with `--home <folder>` to use another), or in
+the folder your account chose in Settings.
+
+## Accounts and signing in
+
+The first time the app opens it asks you to **create your account**: a username, your name (optional) and a
+password of at least 8 characters. After that it shows **Sign in**; **Create an account** there adds another
+person, for example a teammate who shares the computer. **Keep me signed in** keeps you signed in for 30 days in
+that browser; without it you are signed out after 12 hours.
+
+Accounts live on this computer only (in `~/.partlabeler/accounts.json`, passwords stored as secure hashes).
+Each account has its own settings: theme and colours, helpers, defaults and its **projects folder**. Projects
+themselves are plain folders: accounts that use the same projects folder see the same projects. An account is
+not encryption: anyone who can open this computer's files can open the projects.
+
+**Forgot your password?** Passwords can't be emailed. Anyone at this computer can set a new one from a command
+prompt in the PartLabeler folder: `.venv\Scripts\python -m engine.cli account reset USERNAME`
+(`account list` shows the accounts, `account remove USERNAME` deletes one; its projects stay).
+
+The account menu is the round button with your initials at the top right of every page: it shows who is signed
+in and has **Settings** and **Sign out**. Notebooks (Jupyter, Colab) have no sign-in: the notebook is already
+yours, and the annotator there uses the default settings.
+
+## Settings
+
+Open **Settings** from the account menu. Every change is saved at once ("Saved" flashes next to the title) and
+belongs to your account.
+
+- **Account**: your name (shown in the top bar), **Change password** (signs out your other browsers),
+  **Delete this account** (asks for the password; your projects stay), **Sign out**.
+- **Appearance**: **Theme** Light, Dark or **Match my computer** (follows Windows' light or dark mode);
+  **Colour palette** for buttons, links and highlights (Teal, Blue, Indigo, Violet, Rose, Orange, Green,
+  Graphite; your label colours stay as they are); **Animations** on or off.
+- **Helpers and messages**: **Rivet, the helper** on or off (from the next page you open), **Rivet's tips**,
+  the **First-steps hint** over the frame in the annotator, **Pop-up messages** (off: only problems pop up; the
+  bell keeps everything) and **Look for updates** (off: only when you click Check for updates).
+- **Annotating and export**: **Frames per track** (how far T and R track; the annotator also remembers the
+  number you type there), **Brush size** for outlines (the annotator remembers the slider too), the **Export
+  format** picked first in export dialogs and whether **Confirmed frames only** starts ticked.
+- **New tasks**: the starting **Frame step**, **Image quality**, **Lossless frames** and **Segment size** of
+  Create a new task.
+- **Projects folder**: where your projects are kept. Type a full path (or **Browse…**) and click **Use this
+  folder**. With **Move everything in the current folder there** ticked, your projects, trash, backups and Teach
+  runs move there first (a progress bar shows it; keep the app open until it is done). Other accounts that use
+  the old folder then no longer see what moved. **Back to the default folder** fills in the app's folder.
+- **Unfinished work as a zip**: how to back up a project or a task, and **Import a zip…** as a new project or
+  into one of your projects (see Backup and restore).
 
 ## Projects, tasks and jobs (as in CVAT)
 
@@ -267,9 +313,10 @@ outlines (see Outlines). The files go into the project's `exports/` folder, in a
 named after the format and time. A notification offers **Open folder**. Export as often as you like;
 nothing is overwritten. From the command line: `python -m engine.cli export projects/<name> --format coco`.
 
-## Settings and the parent object
+## Project settings and the parent object
 
-In the annotator, open **Settings** at the bottom of the side panel. The **parent object** is the thing the
+In the annotator, open **Settings** at the bottom of the side panel (these belong to the project; your own
+preferences are on the Settings page of the account menu). The **parent object** is the thing the
 parts sit on (for example "engine block" or "circuit board"). When it is set, Suggest searches only inside
 it, which helps when the camera or distance changes. Leave it empty to search the whole image. The Settings
 section also shows the device (GPU or CPU) and GPU memory in use.
@@ -320,6 +367,18 @@ settings, labels with their colours, tasks, jobs and all annotations, the stored
 its image folders, so it opens complete on another computer. **+ → Create from backup…** on the start screen
 turns such a zip back into a project (with a new name if the old one is taken). Command line:
 `python -m engine.cli backup projects/<name>` and `python -m engine.cli restore <zip>`.
+
+**Backup task** (a task's ⋯ menu, or Actions on the task page) does the same for one task: its stored frames or
+pictures, labels, confirmed frames, subset and jobs with their stage and state, so unfinished work carries on
+elsewhere. The zip goes to `_backups` too. To continue it:
+
+- in an existing project: **Import task…** on the project page (next to Create multi tasks). The project must
+  be of the same type; labels are matched by name and any the project lacks are added. A whole project's backup
+  works here too: all its tasks are added.
+- as a project of its own: **+ → Create from backup…** on the start screen, or **Import a zip…** in Settings.
+
+Command line: `python -m engine.cli backup projects/<name> --task <task name>` and
+`python -m engine.cli import-task projects/<name> <zip>`.
 
 ## Trash and restore
 
@@ -380,6 +439,9 @@ that fails, run the installer again (it is safe to rerun and keeps your projects
 - *A project shows an error on the start screen*: its source video or folder was moved. Move it back.
 - *Suggest finds nothing*: label a few examples of that class first, or clear the parent object setting.
 - *The page looks old after an update*: reload it (F5).
+- *Forgot your password*: see Accounts and signing in (`account reset`).
+- *My projects are gone after signing in*: your account may use another projects folder. Check Settings →
+  Projects folder, or sign in with the account that made them.
 
 ## Why PartLabeler
 
@@ -399,7 +461,8 @@ that fails, run the installer again (it is safe to rerun and keeps your projects
 
 ## Privacy and the helper
 
-Labeling, tracking, suggestions, Teach & Transfer and export all run locally. The update check asks GitHub
+Labeling, tracking, suggestions, Teach & Transfer and export all run locally. Accounts and settings stay on
+this computer. The update check asks GitHub
 for the newest version number (nothing about you or your projects is sent; set PARTLABELER_NO_UPDATE_CHECK=1 to
 check only when you click the button). Rivet, the helper robot, is the only feature that sends anything you type: it sends your typed question, the chat so far and which screen
 you are on (for example "annotator, frame 12 of 400") to Google Gemini. It never sends images, labels,

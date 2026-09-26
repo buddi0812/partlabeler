@@ -3,7 +3,7 @@
 // Tasks and Jobs lists across projects. The annotator opens per job (/projects/<p>/tasks/<t>/jobs/<j>).
 // Talks to ui/host_fastapi.py (/api/projects/..., /api/tasks, /api/annotation-jobs); shares the start screen's
 // look and helpers (ui/home.js).
-import { CSS, header, fileBrowser, followJob, labelsEditor, api, esc, ago, size, TASKS } from "/ui/home.js";
+import { CSS, header, fileBrowser, followJob, labelsEditor, api, esc, ago, size, TASKS, ICON, prefs } from "/ui/home.js";
 import { notificationCenter, assistant, webAssistant } from "/ui/canvas.js";
 
 const PAGE_CSS = `
@@ -27,7 +27,7 @@ const PAGE_CSS = `
 .pg-list { display:grid; gap:10px; }
 .pg-task { display:grid; grid-template-columns:160px minmax(0,1fr) minmax(200px, 260px) auto; gap:16px; align-items:center; background:var(--paper);
   border:1px solid var(--line); border-radius:12px; padding:10px 12px 10px 10px; position:relative; transition:border-color .2s, box-shadow .2s; }
-.pg-task:hover { border-color:#c2ccd2; box-shadow:0 8px 22px rgba(31,42,48,.08); }
+.pg-task:hover { border-color:var(--line-hi); box-shadow:0 8px 22px rgba(31,42,48,.08); }
 .pg-thumb { width:160px; height:100px; border-radius:8px; background:var(--stage) center/cover no-repeat; display:block; }
 .pg-thumb.big { width:100%; height:auto; aspect-ratio:16/10; max-width:420px; }
 .pg-task h3 { margin:0; font:600 16px/1.3 var(--display); overflow-wrap:anywhere; }
@@ -37,11 +37,11 @@ const PAGE_CSS = `
 .pg-prog-text { font-size:12.5px; color:var(--steel); display:flex; flex-wrap:wrap; gap:2px 10px; }
 .pg-prog-text b { color:var(--ink); font:600 13px var(--numeric); }
 .pg-prog { height:8px; background:var(--alu-2); border-radius:4px; overflow:hidden; display:flex; margin:6px 0 4px; }
-.pg-prog i { display:block; height:100%; } .pg-prog .done { background:var(--ok); } .pg-prog .review { background:var(--lab); } .pg-prog .work { background:#a7d5cf; }
+.pg-prog i { display:block; height:100%; } .pg-prog .done { background:var(--ok); } .pg-prog .review { background:var(--lab); } .pg-prog .work { background:color-mix(in srgb, var(--teal) 38%, var(--paper)); }
 .pg-btns { display:flex; gap:6px; align-items:center; }
 .pg-btns .h-menu { position:relative; top:auto; right:auto; }
 .pg-status { font-size:11.5px; font-weight:600; padding:2px 9px; border-radius:99px; background:var(--alu-2); color:var(--steel); text-transform:capitalize; }
-.pg-status.completed { background:#dcf1e4; color:#1f7a44; } .pg-status.validation { background:#e3ecfb; color:#2b5aa6; }
+.pg-status.completed { background:var(--ok-soft); color:var(--ok-ink); } .pg-status.validation { background:var(--c-info-soft,#e3ecfb); color:var(--c-info-ink,#2b5aa6); }
 .pg-top { display:grid; grid-template-columns:minmax(260px, 420px) minmax(0,1fr); gap:22px; align-items:start; }
 .pg-name { font:600 clamp(20px, 2.4vw, 26px) var(--display); border:1px solid transparent; background:transparent; padding:2px 6px; margin-left:-7px; border-radius:8px; width:100%; }
 .pg-name:hover { border-color:var(--line); background:var(--paper); }
@@ -49,14 +49,14 @@ const PAGE_CSS = `
 .pg-kv dt { color:var(--steel); } .pg-kv dd { margin:0; overflow-wrap:anywhere; font-variant-numeric:tabular-nums; }
 .pg-jobs { display:grid; grid-template-columns:repeat(auto-fill, minmax(290px, 1fr)); gap:10px; }
 .pg-job { background:var(--paper); border:1px solid var(--line); border-radius:12px; padding:12px 14px; display:grid; gap:8px; position:relative; }
-.pg-job:hover { border-color:#c2ccd2; }
+.pg-job:hover { border-color:var(--line-hi); }
 .pg-job h3 { margin:0; font:600 16px var(--display); display:flex; gap:8px; align-items:center; }
 .pg-job h3 a { color:inherit; } .pg-job .pg-kv { font-size:12.5px; }
 .pg-job select { padding:4px 8px; font-size:13px; }
 .pg-tile { display:grid; gap:6px; background:var(--paper); border:1px solid var(--line); border-radius:12px; padding:10px; color:inherit; text-decoration:none; }
 .pg-tile:hover { border-color:var(--teal); box-shadow:0 8px 22px rgba(31,42,48,.08); }
 .pg-tile .pg-thumb { width:100%; height:130px; }
-.pg-empty { color:var(--steel); padding:18px; border:1.5px dashed #c3ccd2; border-radius:12px; background:rgba(255,255,255,.5); }
+.pg-empty { color:var(--steel); padding:18px; border:1.5px dashed var(--line-hi); border-radius:12px; background:var(--c-empty,rgba(255,255,255,.5)); }
 .pg-files { display:grid; gap:6px; }
 .pg-form { max-width:760px; }
 .pg-form .h-panel { display:grid; gap:14px; }
@@ -65,6 +65,49 @@ const PAGE_CSS = `
 .pg-dlg h2 { margin:0; padding:18px 20px 4px; font:600 19px var(--display); }
 .pg-dlg .h-form { padding:10px 20px 4px; }
 .pg-dlg .pg-dlgjob { padding:0 20px; }
+/* settings */
+.st { display:grid; grid-template-columns:210px minmax(0,1fr); gap:22px; align-items:start; }
+.st-nav { position:sticky; top:76px; display:grid; gap:2px; }
+.st-nav a { padding:7px 12px; border-radius:8px; color:var(--steel); text-decoration:none; font-weight:600; font-size:13.5px; }
+.st-nav a:hover { background:var(--alu-2); color:var(--ink); }
+.st-body { display:grid; gap:18px; min-width:0; }
+.st-sec { display:grid; scroll-margin-top:84px; }
+.st-sec > h2 { margin-bottom:6px; }
+.st-sec > .h-sub { margin:0 0 6px; font-size:13px; }
+.st-row { display:flex; gap:16px; align-items:center; justify-content:space-between; padding:11px 0; border-top:1px solid var(--line); min-width:0; }
+.st-row > span:first-child { display:grid; gap:1px; min-width:0; } .st-row b { font-weight:600; } .st-row small { color:var(--steel); font-size:12.5px; }
+.st-row.st-col { flex-direction:column; align-items:stretch; gap:8px; }
+.st-row input[type=number] { width:104px; } .st-row input[type=text] { width:min(260px, 100%); }
+.st-switch { appearance:none; -webkit-appearance:none; width:42px; height:24px; border-radius:99px; background:var(--alu-2); border:1px solid var(--line-hi);
+  position:relative; cursor:pointer; flex:none; margin:0; transition:background .2s, border-color .2s; }
+.st-switch::after { content:""; position:absolute; top:2px; left:2px; width:18px; height:18px; border-radius:50%; background:var(--paper);
+  box-shadow:0 1px 3px rgba(0,0,0,.3); transition:transform .25s var(--spring); }
+.st-switch:checked { background:var(--teal); border-color:var(--teal); } .st-switch:checked::after { transform:translateX(18px); }
+.st-switch:focus-visible { outline:2px solid var(--teal); outline-offset:2px; }
+.st-swatches { display:flex; flex-wrap:wrap; gap:8px; }
+.st-sw { display:inline-flex; align-items:center; gap:8px; padding:5px 13px 5px 6px; border-radius:99px; }
+.st-sw i { width:20px; height:20px; border-radius:50%; background:var(--sw); flex:none; }
+.st-sw[aria-checked=true] { border-color:var(--sw); box-shadow:0 0 0 2px var(--sw); font-weight:600; }
+.st code, .st-code { font:12.5px ui-monospace,"Cascadia Mono",Consolas,monospace; background:var(--alu); padding:3px 7px; border-radius:6px; overflow-wrap:anywhere; }
+.st-saved { color:var(--ok-ink); font-weight:600; font-size:13px; opacity:0; transition:opacity .3s; } .st-saved.on { opacity:1; }
+.st-danger { color:var(--bad); } .st-danger:hover:not(:disabled) { border-color:var(--bad); }
+.st-list { margin:2px 0 8px; padding-left:20px; } .st-list li { margin:3px 0; }
+.st-more summary { cursor:pointer; color:var(--teal-deep); font-weight:600; font-size:13.5px; padding:10px 0 4px; border-top:1px solid var(--line); }
+.st-more .h-form { max-width:420px; margin:8px 0 6px; }
+@media (max-width: 900px) { .st { grid-template-columns:minmax(0,1fr); } .st-nav { position:static; display:flex; flex-wrap:wrap; }
+  .st-row { flex-wrap:wrap; } }
+
+/* sign in */
+.lg { min-height:100vh; display:grid; place-items:center; padding:24px 16px; }
+.lg-card { width:min(420px, 100%); display:grid; gap:14px; padding:26px 26px 22px; }
+.lg-card h1 { font:600 24px/1.2 var(--display); margin:6px 0 0; }
+.lg .h-logo { margin:0; }
+.lg-card .h-form button.primary { justify-self:start; padding:8px 22px; }
+.lg-link { border:0; background:none; padding:0; color:var(--teal-deep); font-weight:600; text-decoration:underline; }
+.lg-link:hover:not(:disabled) { border:0; }
+.lg-forgot summary { cursor:pointer; color:var(--steel); font-size:13px; }
+.lg-forgot p { font-size:13px; color:var(--ink-2); margin:6px 0 0; }
+.lg-forgot code { font:12.5px ui-monospace,"Cascadia Mono",Consolas,monospace; background:var(--alu); padding:2px 6px; border-radius:5px; overflow-wrap:anywhere; }
 @media (max-width: 900px) {
   .pg-task { grid-template-columns:110px minmax(0,1fr); } .pg-thumb { width:110px; height:70px; }
   .pg-task .pg-progcol, .pg-task .pg-btns { grid-column:1 / -1; } .pg-top { grid-template-columns:minmax(0,1fr); } }
@@ -94,14 +137,78 @@ function progress(t) {                                // CVAT's task row: done �
 
 function statusChip(s) { return `<span class="pg-status ${esc(s)}">${esc(s)}</span>`; }
 
+const SECTIONS = [["account", "Account"], ["appearance", "Appearance"], ["helpers", "Helpers and messages"], ["annotating", "Annotating and export"],
+                  ["tasks", "New tasks"], ["storage", "Projects folder"], ["transfer", "Unfinished work as a zip"]];
+const THEMES = ["light", "dark", "system"], THEME_NAMES = { light: "Light", dark: "Dark", system: "Match my computer" };
+const ACCENTS = { teal: ["Teal", "#0a7c78"], blue: ["Blue", "#2563c9"], indigo: ["Indigo", "#4f46c8"], violet: ["Violet", "#7c3aca"],   // ui/theme.css
+                  rose: ["Rose", "#c2305a"], orange: ["Orange", "#b4530a"], green: ["Green", "#287a36"], graphite: ["Graphite", "#4b5a66"] };
+const EXPORTS = { "": "The project's first format", yolo: "YOLO (Ultralytics)", coco: "COCO 1.0", cvat: "CVAT for images 1.1", voc: "Pascal VOC",
+                  labelstudio: "Label Studio", folders: "Class folders (classification)", csv: "CSV list (classification)" };
+
+// ---- sign in / create an account (before any other page) ------------------------------------------------
+function loginPage(root, args) {
+  let signup = !!args.first;
+  const next = new URLSearchParams(location.search).get("next") || "/";
+  const go = () => { location.href = next.startsWith("/") && !next.startsWith("//") ? next : "/"; };
+  root.innerHTML = `<main class="lg"><div class="lg-card h-panel">
+    <a class="h-logo" href="/login">${ICON.logo}<span>PartLabeler</span></a>
+    <h1 class="lg-h"></h1><p class="h-sub lg-lede"></p>
+    <form class="h-form lg-in" autocomplete="on">
+      <label class="h-field"><span>Username</span><input type="text" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required></label>
+      <label class="h-field"><span>Password</span><input type="password" name="password" autocomplete="current-password" required></label>
+      <label class="h-check-row"><input type="checkbox" name="keep" checked> Keep me signed in<small>For 30 days in this browser.</small></label>
+      <button class="primary" type="submit">Sign in</button></form>
+    <form class="h-form lg-up" autocomplete="on" hidden>
+      <label class="h-field"><span>Username</span><input type="text" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required
+        pattern="[A-Za-z0-9][A-Za-z0-9._\\-]{0,31}" title="1 to 32 letters, digits, dots, dashes or underscores"><small>Letters, digits, dots, dashes or underscores.</small></label>
+      <label class="h-field"><span>Your name</span><input type="text" name="name" autocomplete="name" maxlength="60" placeholder="Optional, shown in the top bar"></label>
+      <label class="h-field"><span>Password</span><input type="password" name="password" autocomplete="new-password" minlength="8" required><small>At least 8 characters.</small></label>
+      <label class="h-field"><span>Repeat the password</span><input type="password" name="repeat" autocomplete="new-password" minlength="8" required></label>
+      <label class="h-check-row"><input type="checkbox" name="keep" checked> Keep me signed in<small>For 30 days in this browser.</small></label>
+      <button class="primary" type="submit">Create account</button></form>
+    <p class="h-err lg-err" role="alert"></p>
+    <p class="h-sub lg-switch"></p>
+    <details class="lg-forgot"><summary>Forgot your password?</summary><p>Passwords stay on this computer, so they can't be emailed.
+      Anyone at this computer can set a new one in a command prompt in the PartLabeler folder:
+      <code>.venv\\Scripts\\python -m engine.cli account reset USERNAME</code></p></details>
+  </div></main>`;
+  const $ = (s) => root.querySelector(s), err = $(".lg-err");
+  const show = () => {
+    $(".lg-in").hidden = signup; $(".lg-up").hidden = !signup; err.textContent = "";
+    $(".lg-h").textContent = signup ? (args.first ? "Create your account" : "Create an account") : "Sign in";
+    $(".lg-lede").textContent = signup ? "Accounts live on this computer. Yours keeps your theme, settings and projects folder."
+      : "Welcome back. Your settings and projects folder come with your account.";
+    $(".lg-switch").innerHTML = signup ? (args.first ? "" : `Already have an account? <button type="button" class="lg-link" data-lg>Sign in</button>`)
+      : `New here? <button type="button" class="lg-link" data-lg>Create an account</button>`;
+    (signup ? $(".lg-up") : $(".lg-in")).username.focus();
+    document.title = `${$(".lg-h").textContent} · PartLabeler`;
+  };
+  root.addEventListener("click", (e) => { if (e.target.closest("[data-lg]")) { signup = !signup; show(); } });
+  const submit = (form, url, body) => form.addEventListener("submit", async (e) => {
+    e.preventDefault(); err.textContent = "";
+    const b = body(form); if (!b) return;
+    form.querySelector("button[type=submit]").disabled = true;
+    try { await api(url, b); go(); }
+    catch (x) { err.textContent = x.message; form.querySelector("button[type=submit]").disabled = false; }
+  });
+  submit($(".lg-in"), "/api/auth/login", (f) => ({ username: f.username.value.trim(), password: f.password.value, keep: f.keep.checked }));
+  submit($(".lg-up"), "/api/auth/signup", (f) => {
+    if (f.password.value !== f.repeat.value) { err.textContent = "The two passwords are different"; f.repeat.focus(); return null; }
+    return { username: f.username.value.trim(), name: f.name.value.trim(), password: f.password.value, keep: f.keep.checked };
+  });
+  show();
+}
+
 export function page(root, args) {
   document.head.appendChild(Object.assign(document.createElement("style"), { textContent: CSS + PAGE_CSS }));
-  const active = args.view === "tasks" ? "tasks" : args.view === "jobs" ? "jobs" : "projects";
+  if (args.view === "login") return loginPage(root, args);
+  const active = { tasks: "tasks", jobs: "jobs", settings: "" }[args.view] ?? "projects";
   root.innerHTML = `${header(active)}<main class="pg"><p class="pg-meta">Loading…</p></main><div class="h-toasts" aria-live="polite"></div>
     <dialog class="h-confirm pg-dlg pg-ask"><h2></h2><p class="pg-ask-text"></p><div class="b-foot"><button type="button" data-a="no">Cancel</button><button type="button" class="danger" data-a="yes">OK</button></div></dialog>`;
   const $ = (s) => root.querySelector(s), main = $(".pg"), pick = fileBrowser();
 
   function toast(n) {
+    if (prefs().toasts === false && n.level !== "error" && n.level !== "warning") return;   // Settings: only problems pop up
     const t = document.createElement("div");
     t.className = `h-toast ${n.level || "info"}`; t.setAttribute("role", n.level === "error" ? "alert" : "status");
     t.innerHTML = "<b></b><small></small>"; t.querySelector("b").textContent = n.title; t.querySelector("small").textContent = n.detail || "";
@@ -147,9 +254,9 @@ export function page(root, args) {
     const d = document.createElement("dialog");
     d.className = "h-confirm pg-dlg";
     d.innerHTML = `<h2>Export ${esc(what)} as a dataset</h2><form class="h-form" method="dialog">
-      <label class="h-field"><span>Export format</span><select name="format">${formats.map((f) => `<option value="${f}">${esc(FORMAT_NAMES[f] || f)}</option>`).join("")}</select></label>
+      <label class="h-field"><span>Export format</span><select name="format">${formats.map((f) => `<option value="${f}"${f === prefs().export_format ? " selected" : ""}>${esc(FORMAT_NAMES[f] || f)}</option>`).join("")}</select></label>
       <label class="h-check-row"><input type="checkbox" name="images" checked> Save images<small>Off: the label files only.</small></label>
-      <label class="h-check-row"><input type="checkbox" name="confirmed"> Confirmed frames only<small>Only frames you confirmed (Enter).</small></label>
+      <label class="h-check-row"><input type="checkbox" name="confirmed"${prefs().confirmed_only ? " checked" : ""}> Confirmed frames only<small>Only frames you confirmed (Enter).</small></label>
       <label class="h-field"><span>Custom name</span><input type="text" name="name" placeholder="Leave empty for the default name"></label></form>
       <div class="pg-dlgjob"></div>
       <div class="b-foot"><button type="button" data-a="cancel">Cancel</button><button type="button" class="primary" data-a="ok">OK</button></div>`;
@@ -211,14 +318,23 @@ export function page(root, args) {
         <details class="h-menu"><summary aria-label="Actions for task ${esc(t.name)}" title="Actions">⋯</summary><div class="h-menu-list">
           <button type="button" data-t-upload="${t.id}" data-p="${esc(project)}">Upload annotations</button>
           <button type="button" data-t-export="${t.id}" data-p="${esc(project)}">Export task dataset</button>
+          <button type="button" data-t-backup="${t.id}" data-p="${esc(project)}">Backup task</button>
           <button type="button" class="danger" data-t-delete="${t.id}" data-p="${esc(project)}" data-name="${esc(t.name)}">Delete</button></div></details></div></article>`;
   }
   async function taskActions(e, reload, formatsOf) {
     const up = e.target.closest("[data-t-upload]"), ex = e.target.closest("[data-t-export]"), del = e.target.closest("[data-t-delete]");
-    const b = up || ex || del; if (!b) return false;
+    const bk = e.target.closest("[data-t-backup]");
+    const b = up || ex || del || bk; if (!b) return false;
     b.closest("details").open = false;
-    const project = b.dataset.p, tid = +(up?.dataset.tUpload ?? ex?.dataset.tExport ?? del?.dataset.tDelete);
-    if (up) uploadDialog(project, `task #${tid}`, { task: tid }, reload);
+    const project = b.dataset.p, tid = +(up?.dataset.tUpload ?? ex?.dataset.tExport ?? del?.dataset.tDelete ?? bk?.dataset.tBackup);
+    if (bk) {
+      try {
+        await api(`/api/projects/${enc(project)}/tasks/${tid}/backup`, {});
+        toast({ title: `Backing up task #${tid}…`, detail: "A zip with its frames, labels and progress goes to the _backups folder; a notification says when it is ready." });
+        setTimeout(pollNotes, 1500);
+      } catch (err) { toast({ level: "error", title: "Could not back up", detail: err.message }); }
+    }
+    else if (up) uploadDialog(project, `task #${tid}`, { task: tid }, reload);
     else if (ex) exportDialog(project, await formatsOf(project), `task #${tid}`, { tasks: [tid] });
     else if (await ask(`Delete task ${del.dataset.name}?`, "Its stored frames and all its labels are deleted. An image folder itself stays where it is. This cannot be undone.", "Delete")) {
       try { await api(`/api/projects/${enc(project)}/tasks/${tid}`, undefined, "DELETE"); toast({ title: `Deleted task ${del.dataset.name}` }); reload(); }
@@ -251,7 +367,8 @@ export function page(root, args) {
           <div class="pg-tools"><input type="text" class="pg-q" placeholder="Search…" value="${esc(q)}" aria-label="Search tasks">
             <select class="h-sort pg-sort" aria-label="Sort tasks">${[["id", "ID"], ["name", "Name"], ["updated", "Updated date"], ["subset", "Subset"]].map(([v, t]) => `<option value="${v}"${v === sort ? " selected" : ""}>${t}</option>`).join("")}</select>
             <span class="pg-sp"></span><a href="/projects/${enc(name)}/tasks/create"><button type="button" class="primary">+ Create a new task</button></a>
-            <a href="/projects/${enc(name)}/tasks/create?multi=1"><button type="button">Create multi tasks</button></a></div>
+            <a href="/projects/${enc(name)}/tasks/create?multi=1"><button type="button">Create multi tasks</button></a>
+            <button type="button" data-pa="import-task" title="Add a task backup (.zip) with its frames, labels and progress">Import task…</button></div>
           ${d.tasks.length ? groups.map((g) => {
             const ts = tasks.filter((t) => g === null || (t.subset || "") === g);
             return ts.length ? `<div class="pg-subset">${g !== null ? `<h3>${g ? `Subset: ${esc(g)}` : "No subset"} <small class="h-count">${ts.length}</small></h3>` : ""}<div class="pg-list">${ts.map((t) => taskRow(t, name)).join("")}</div></div>` : "";
@@ -278,6 +395,17 @@ export function page(root, args) {
         if (await ask(`Move ${name} to the trash?`, "It moves to the Trash with its frames and labels; restore it from the Trash on the start screen.", "Move to trash")) {
           await api(`/api/projects/${enc(name)}/trash`, {}); location.href = "/";
         }
+      } else if (a === "import-task") {
+        const path = await pick({ kind: "backup", folder: false }); if (!path) return;
+        try {
+          const { job } = await api(`/api/projects/${enc(name)}/tasks/import`, { path });
+          toast({ title: "Adding the task…", detail: "Its frames, labels and progress are copied into this project." });
+          const wait = async () => { const j = await api(`/api/jobs/${job}`).catch(() => null);
+            if (j && !j.finished) return setTimeout(wait, 800);
+            if (j?.error) toast({ level: "error", title: "Could not add the task", detail: j.error }); else await reload();
+            pollNotes(); };
+          wait();
+        } catch (err) { toast({ level: "error", title: "Could not add the task", detail: err.message }); }
       } else if (a === "edit-labels") { editing = true; render(); }
       else if (a === "cancel-labels") { editing = null; render(); }
       else if (a === "save-labels") {
@@ -312,12 +440,12 @@ export function page(root, args) {
             <input type="text" class="pg-path" placeholder="or type a path and press Enter" aria-label="Path of a video or image folder"></div>
           <small>${multi ? "Add several: each becomes a task." : "One video or one image folder."}</small></div></section>
         <details class="h-panel h-more"><summary>Advanced configuration</summary><div class="pg-two" style="margin-top:14px">
-          <label class="h-field"><span>Image quality</span><input type="number" name="quality" min="5" max="100" value="95"><small>JPEG quality of a video's frames, 5–100.</small></label>
-          <label class="h-check-row" style="align-self:center"><input type="checkbox" name="lossless" ${d.frame_format === "webp" ? "checked" : ""}> Lossless frames<small>Exact pixels, about twice the space.</small></label>
-          <label class="h-field"><span>Frame step</span><input type="number" name="every" min="1" value="5"><small>Keep every Nth frame of a video.</small></label>
+          <label class="h-field"><span>Image quality</span><input type="number" name="quality" min="5" max="100" value="${prefs().quality || 95}"><small>JPEG quality of a video's frames, 5–100.</small></label>
+          <label class="h-check-row" style="align-self:center"><input type="checkbox" name="lossless" ${d.frame_format === "webp" || prefs().lossless ? "checked" : ""}> Lossless frames<small>Exact pixels, about twice the space.</small></label>
+          <label class="h-field"><span>Frame step</span><input type="number" name="every" min="1" value="${prefs().every || 5}"><small>Keep every Nth frame of a video.</small></label>
           <label class="h-field"><span>Start frame</span><input type="number" name="start" min="0" placeholder="first"></label>
           <label class="h-field"><span>Stop frame</span><input type="number" name="stop" min="0" placeholder="last"></label>
-          <label class="h-field"><span>Segment size</span><input type="number" name="segment" min="0" placeholder="whole task"><small>Frames per job; empty: one job.</small></label>
+          <label class="h-field"><span>Segment size</span><input type="number" name="segment" min="0" placeholder="whole task" value="${prefs().segment_size || ""}"><small>Frames per job; empty: one job.</small></label>
           <label class="h-field"><span>Sorting method</span><select name="sorting"><option value="lexicographical">Lexicographical</option><option value="natural">Natural</option></select><small>Order of an image folder's pictures.</small></label>
         </div></details>
         <div class="h-row"><button type="submit" class="primary" value="open">Submit &amp; Open</button><button type="submit" value="continue">Submit &amp; Continue</button><span class="h-sub pg-msg"></span></div>
@@ -374,6 +502,7 @@ export function page(root, args) {
           <details class="h-menu" style="position:relative;top:auto;right:auto"><summary style="width:auto;padding:0 12px;border:1px solid var(--line);background:var(--paper)">Actions ▾</summary><div class="h-menu-list">
             <button type="button" data-t-upload="${t.id}" data-p="${esc(name)}">Upload annotations</button>
             <button type="button" data-t-export="${t.id}" data-p="${esc(name)}">Export task dataset</button>
+            <button type="button" data-t-backup="${t.id}" data-p="${esc(name)}">Backup task</button>
             <button type="button" class="danger" data-t-delete="${t.id}" data-p="${esc(name)}" data-name="${esc(t.name)}">Delete</button></div></details></div>
         <div class="pg-top"><span class="pg-thumb big" style="background-image:url('${t.preview}')"></span>
           <div class="pg-section"><input class="pg-name" value="${esc(t.name)}" aria-label="Task name" title="Click to rename" translate="no">
@@ -406,6 +535,167 @@ export function page(root, args) {
     });
   }
 
+  // ---- settings (per account: engine/accounts.py) ------------------------------------------------------
+  async function settingsPage() {
+    let me;
+    try { me = await api("/api/me"); } catch (err) { main.innerHTML = `<p class="h-err">${esc(err.message)}</p>`; return; }
+    const projects = await api("/api/projects").catch(() => []);
+    const P = me.prefs;
+    const sw = (k, title, note) => `<label class="st-row"><span><b>${title}</b><small>${note}</small></span>
+      <input type="checkbox" class="st-switch" role="switch" data-pref="${k}"${P[k] ? " checked" : ""}></label>`;
+    const num = (k, title, note, min, max) => `<label class="st-row"><span><b>${title}</b><small>${note}</small></span>
+      <input type="number" data-pref="${k}" min="${min}" max="${max}" value="${P[k]}"></label>`;
+    main.innerHTML = `<div class="pg-title"><h1>Settings</h1><span class="st-saved" role="status" aria-live="polite"></span></div>
+      <p class="pg-meta">Signed in as <b translate="no">${esc(me.user.name)}</b>. Changes are saved at once and follow your account on this computer.</p>
+      <div class="st"><nav class="st-nav" aria-label="Settings sections">${SECTIONS.map(([id, t]) => `<a href="#${id}">${t}</a>`).join("")}</nav><div class="st-body">
+      <section class="h-panel st-sec" id="account"><h2>Account</h2>
+        <div class="st-row"><span><b>Username</b><small>You sign in with it; it can't be changed.</small></span><code translate="no">${esc(me.user.username)}</code></div>
+        <form class="st-row st-name"><span><b>Your name</b><small>Shown in the top bar.</small></span>
+          <span class="h-row"><input type="text" name="name" value="${esc(me.user.name)}" maxlength="60" autocomplete="name" aria-label="Your name"><button type="submit">Save</button></span></form>
+        <details class="st-more"><summary>Change password</summary><form class="h-form st-pw" autocomplete="off">
+          <label class="h-field"><span>Current password</span><input type="password" name="old" autocomplete="current-password" required></label>
+          <label class="h-field"><span>New password</span><input type="password" name="new" autocomplete="new-password" minlength="8" required><small>At least 8 characters. Other browsers are signed out.</small></label>
+          <label class="h-field"><span>Repeat the new password</span><input type="password" name="repeat" autocomplete="new-password" minlength="8" required></label>
+          <div class="h-row"><button type="submit" class="primary">Change password</button><span class="h-sub st-pwmsg" role="status"></span></div></form></details>
+        <details class="st-more"><summary>Delete this account</summary><form class="h-form st-del" autocomplete="off">
+          <p class="h-sub">Removes the account and its settings. Projects stay where they are, for other accounts or for a new one.</p>
+          <label class="h-field"><span>Password</span><input type="password" name="password" autocomplete="current-password" required></label>
+          <div class="h-row"><button type="submit" class="danger">Delete my account</button><span class="h-err st-delmsg" role="alert"></span></div></form></details>
+        <div class="h-row" style="margin-top:12px"><button type="button" data-signout>Sign out</button></div></section>
+
+      <section class="h-panel st-sec" id="appearance"><h2>Appearance</h2>
+        <div class="st-row st-col"><span><b>Theme</b><small>Match my computer follows Windows' light or dark mode.</small></span>
+          <span class="h-seg three st-theme" role="group" aria-label="Theme" style="--x:${THEMES.indexOf(P.theme)}"><span class="h-seg-thumb" aria-hidden="true"></span>
+            ${THEMES.map((t) => `<button type="button" data-theme="${t}" aria-pressed="${t === P.theme}">${THEME_NAMES[t]}</button>`).join("")}</span></div>
+        <div class="st-row st-col"><span><b>Colour palette</b><small>Buttons, links and highlights. The label colours of your projects stay as they are.</small></span>
+          <div class="st-swatches" role="radiogroup" aria-label="Colour palette">${Object.entries(ACCENTS).map(([a, [name, c]]) =>
+            `<button type="button" class="st-sw" role="radio" aria-checked="${a === P.accent}" data-accent="${a}" style="--sw:${c}"><i aria-hidden="true"></i>${name}</button>`).join("")}</div></div>
+        ${sw("motion", "Animations", "The start screen demo, Rivet's moves, sliding panels. Also off when Windows asks for less motion.")}</section>
+
+      <section class="h-panel st-sec" id="helpers"><h2>Helpers and messages</h2>
+        ${sw("rivet", "Rivet, the helper", "The robot at the bottom right that answers questions about PartLabeler. Applies to pages you open next.")}
+        ${sw("tips", "Rivet's tips", "A “Did you know?” bubble now and then.")}
+        ${sw("hints", "First-steps hint", "The short how-to over the frame when a job opens in the annotator.")}
+        ${sw("toasts", "Pop-up messages", "Off: only problems pop up. The bell keeps every message either way.")}
+        ${sw("update_check", "Look for updates", "Asks GitHub for a new version (at most every 6 hours). Off: only when you click Check for updates.")}</section>
+
+      <section class="h-panel st-sec" id="annotating"><h2>Annotating and export</h2>
+        ${num("track_n", "Frames per track", "How far T (ahead) and R (back) track. The annotator remembers changes you make there.", 1, 10000)}
+        ${num("brush", "Brush size", "Outline brush and eraser, in pixels (segmentation projects).", 1, 120)}
+        <label class="st-row"><span><b>Export format</b><small>Picked first in export dialogs, when the project offers it.</small></span>
+          <select data-pref="export_format">${Object.entries(EXPORTS).map(([v, t]) => `<option value="${v}"${v === P.export_format ? " selected" : ""}>${t}</option>`).join("")}</select></label>
+        ${sw("confirmed_only", "Confirmed frames only", "Ticked by default when exporting: only frames you confirmed.")}</section>
+
+      <section class="h-panel st-sec" id="tasks"><h2>New tasks</h2><p class="h-sub">The starting values of Create a new task; each task can still change them.</p>
+        ${num("every", "Frame step", "Keep every Nth frame of a video.", 1, 1000)}
+        ${num("quality", "Image quality", "JPEG quality of a video's stored frames, 5 to 100.", 5, 100)}
+        ${sw("lossless", "Lossless frames", "Exact pixels as WebP, about twice the disk space.")}
+        ${num("segment_size", "Segment size", "Frames per job; 0 makes one job per task.", 0, 1000000)}</section>
+
+      <section class="h-panel st-sec" id="storage"><h2>Projects folder</h2>
+        <p class="h-sub">Where your projects are kept, with their frames and labels, the trash, backups and Teach runs. This setting is yours only.</p>
+        <div class="st-row st-col"><span><b>Now</b></span><code class="st-code st-home" translate="no">${esc(me.home)}</code></div>
+        <form class="h-form st-folder" autocomplete="off">
+          <label class="h-field"><span>New folder</span><span class="h-row"><input type="text" name="path" placeholder="Full path, e.g. D:\\PartLabeler\\projects" aria-label="New projects folder">
+            <button type="button" data-st="browse">Browse…</button></span></label>
+          <label class="h-check-row"><input type="checkbox" name="move" checked> Move everything in the current folder there
+            <small>Projects, trash, backups and Teach runs. Off: the new folder starts as it is and the old projects stay where they are.
+              Other accounts using the current folder no longer see what moves.</small></label>
+          <div class="h-row"><button type="submit" class="primary">Use this folder</button>
+            <button type="button" data-st="default"${me.home === me.default_home ? " hidden" : ""}>Back to the default folder</button></div>
+          <p class="h-sub">The app's default folder: <code class="st-code" translate="no">${esc(me.default_home)}</code></p></form>
+        <div class="st-job"></div></section>
+
+      <section class="h-panel st-sec" id="transfer"><h2>Unfinished work as a zip</h2>
+        <p class="h-sub">Carry on elsewhere: a backup zip keeps the frames, labels, confirmed frames and jobs.</p>
+        <ul class="st-list"><li><b>A whole project</b>: its ⋯ menu on the start screen, or Actions on its page, then <b>Backup project</b>.</li>
+          <li><b>One task</b>: its ⋯ menu, then <b>Backup task</b>.</li>
+          <li>The zips go to the <code>_backups</code> folder inside your projects folder.</li></ul>
+        <div class="h-row"><button type="button" class="primary" data-st="import">Import a zip…</button><label class="h-sub">as
+          <select class="st-into" aria-label="Import as"><option value="">a new project</option>${projects.map((p) =>
+            `<option value="${esc(p.name)}">tasks of ${esc(p.name)} (${esc(TASKS[p.task] || p.task)})</option>`).join("")}</select></label></div>
+        <div class="st-ijob"></div></section>
+      </div></div>`;
+
+    const saved = $(".st-saved");
+    let savedTimer = 0;
+    const flashSaved = (text = "Saved") => { saved.textContent = text; saved.classList.add("on"); clearTimeout(savedTimer); savedTimer = setTimeout(() => saved.classList.remove("on"), 1800); };
+    const apply = (p) => {
+      const r = document.documentElement.dataset;
+      r.theme = p.theme; r.accent = p.accent;
+      if (p.motion) delete r.motion; else r.motion = "off";
+    };
+    async function save(changes) {
+      try {
+        const p = await api("/api/me/prefs", changes);
+        Object.assign(window.PL.prefs, p); apply(p); flashSaved();
+        main.querySelectorAll("input[type=number][data-pref]").forEach((x) => { x.value = p[x.dataset.pref]; });
+        main.querySelectorAll("[data-theme]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.theme === p.theme)));
+        $(".st-theme").style.setProperty("--x", THEMES.indexOf(p.theme));
+        main.querySelectorAll("[data-accent]").forEach((b) => b.setAttribute("aria-checked", String(b.dataset.accent === p.accent)));
+      } catch (err) { toast({ level: "error", title: "Not saved", detail: err.message }); }
+    }
+    main.addEventListener("change", (e) => {
+      const k = e.target.dataset?.pref; if (!k) return;
+      save({ [k]: e.target.type === "checkbox" ? e.target.checked : e.target.type === "number" ? +e.target.value : e.target.value });
+    });
+    main.addEventListener("click", async (e) => {
+      const th = e.target.closest("button[data-theme]"), ac = e.target.closest("button[data-accent]"), st = e.target.closest("[data-st]")?.dataset.st;
+      if (th) save({ theme: th.dataset.theme });
+      else if (ac) save({ accent: ac.dataset.accent });
+      else if (st === "browse") { const p = await pick({ kind: "dir", folder: true, start: me.home }); if (p) $(".st-folder").path.value = p; }
+      else if (st === "default") { $(".st-folder").path.value = me.default_home; $(".st-folder").path.focus(); }
+      else if (st === "import") importZip();
+    });
+    $(".st-swatches").addEventListener("keydown", (e) => {                       // arrows move along the palette, as radio buttons do
+      if (!["ArrowRight", "ArrowLeft", "ArrowDown", "ArrowUp"].includes(e.key)) return;
+      e.preventDefault();
+      const all = [...main.querySelectorAll("[data-accent]")], i = all.indexOf(document.activeElement);
+      const b = all[(i + (e.key === "ArrowRight" || e.key === "ArrowDown" ? 1 : all.length - 1)) % all.length]; b.focus(); b.click();
+    });
+    $(".st-name").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      try { const u = await api("/api/me", { name: e.target.name.value }, "PATCH"); window.PL.user = u; flashSaved(); root.querySelector(".h-acct-who b").textContent = u.name; }
+      catch (err) { toast({ level: "error", title: "Not saved", detail: err.message }); }
+    });
+    $(".st-pw").addEventListener("submit", async (e) => {
+      e.preventDefault(); const f = e.target, msg = $(".st-pwmsg");
+      if (f.new.value !== f.repeat.value) { msg.innerHTML = `<span class="h-err">The two new passwords are different</span>`; return; }
+      try { await api("/api/me/password", { old: f.old.value, new: f.new.value }); f.reset(); msg.textContent = "Password changed. Other browsers were signed out."; }
+      catch (err) { msg.innerHTML = `<span class="h-err">${esc(err.message)}</span>`; }
+    });
+    $(".st-del").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      if (!(await ask("Delete your account?", "Your settings go; your projects stay in their folder.", "Delete account"))) return;
+      try { await api("/api/me/delete", { password: e.target.password.value }); location.href = "/login"; }
+      catch (err) { $(".st-delmsg").textContent = err.message; }
+    });
+    $(".st-folder").addEventListener("submit", async (e) => {
+      e.preventDefault(); const f = e.target, path = f.path.value.trim();
+      if (!path) { f.path.focus(); return; }
+      if (f.move.checked && !(await ask("Move your projects?", `Everything in ${me.home} moves to ${path}. Keep PartLabeler open until it is done.`, "Move"))) return;
+      try {
+        const r = await api("/api/me/projects-folder", { path, move: f.move.checked });
+        const done = async () => { me = await api("/api/me"); $(".st-home").textContent = me.home; f.path.value = "";
+          main.querySelector('[data-st="default"]').hidden = me.home === me.default_home; flashSaved("Projects folder changed"); };
+        if (r.job) followJob(r.job, $(".st-job"), { onDone: done }); else done();
+      } catch (err) { $(".st-job").innerHTML = `<div class="h-err">${esc(err.message)}</div>`; }
+    });
+    async function importZip() {
+      const path = await pick({ kind: "backup", folder: false }); if (!path) return;
+      const into = $(".st-into").value;
+      try {
+        const { job } = await api(into ? `/api/projects/${enc(into)}/tasks/import` : "/api/backups/restore", { path });
+        followJob(job, $(".st-ijob"), { onDone: (res) => {
+          const name = into || res.name;
+          $(".st-ijob").insertAdjacentHTML("beforeend", `<p class="h-sub">Done: <a href="/projects/${enc(name)}">open ${esc(name)}</a>.</p>`);
+          pollNotes();
+        } });
+      } catch (err) { $(".st-ijob").innerHTML = `<div class="h-err">${esc(err.message)}</div>`; }
+    }
+    if (location.hash) document.getElementById(location.hash.slice(1))?.scrollIntoView();
+  }
+
   // ---- all tasks, all jobs ----------------------------------------------------------------------------
   async function tasksPage() {
     const all = await api("/api/tasks");
@@ -431,7 +721,7 @@ export function page(root, args) {
   }
 
   ({ project: () => projectPage(args.project), "create-task": () => createTaskPage(args.project), task: () => taskPage(args.project, args.task),
-     tasks: tasksPage, jobs: jobsPage })[args.view]?.();
+     tasks: tasksPage, jobs: jobsPage, settings: settingsPage })[args.view]?.();
 }
 
 const FORMAT_NAMES = { yolo: "YOLO (Ultralytics)", coco: "COCO 1.0", cvat: "CVAT for images 1.1", voc: "Pascal VOC", labelstudio: "Label Studio",

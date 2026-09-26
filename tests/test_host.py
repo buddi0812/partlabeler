@@ -1,19 +1,33 @@
 """The start screen's JSON API and the annotator's WebSocket, through FastAPI's test client (no models)."""
 import time
+from contextlib import contextmanager
 
 import pytest
 from fastapi.testclient import TestClient
 
+from engine.accounts import Accounts
 from engine.project import Project
 from tests.test_project import CLASSES, images, video  # noqa: F401  (fixtures)
 from ui import host_fastapi as host
 
+TEST_LOGIN = {"username": "tester", "password": "test-password-1"}     # a throwaway account in tmp_path
+
+
+@contextmanager
+def app_client(tmp_path, signed_in=True):
+    """The app with a fresh projects folder and accounts file; signed in as a test account."""
+    host.state.update(home=tmp_path / "home", sessions={}, clients={}, jobs={}, notes={},
+                      accounts=Accounts(tmp_path / "accounts.json"))
+    (tmp_path / "home").mkdir(exist_ok=True)
+    with TestClient(host.app) as c:
+        if signed_in:
+            assert c.post("/api/auth/signup", json=TEST_LOGIN).status_code == 200
+        yield c
+
 
 @pytest.fixture
 def client(tmp_path):
-    host.state.update(home=tmp_path / "home", sessions={}, clients={}, jobs={}, notes_home=None)
-    (tmp_path / "home").mkdir()
-    with TestClient(host.app) as c:
+    with app_client(tmp_path) as c:
         yield c
 
 
@@ -157,3 +171,50 @@ def test_cvat_style_project_task_job_flow(client, tmp_path, video):
     rs = wait(client, client.post("/api/backups/restore", json={"path": bk["result"]["file"]}).json()["job"])
     assert rs["result"]["name"] == "line_2" and client.get("/api/projects/line_2").json()["tasks"][0]["subset"] == "Validation"
     assert client.delete("/api/projects/line/tasks/1").status_code == 400          # the last task stays
+
+
+def test_sign_in_is_needed_and_each_account_keeps_its_settings_and_folder(tmp_path):
+    with app_client(tmp_path, signed_in=False) as c:
+        r = c.get("/projects/x?item=2", follow_redirects=False)
+        assert r.status_code == 303 and r.headers["location"] == "/login?next=/projects/x%3Fitem%3D2"
+        assert c.get("/api/projects").status_code == 401 and c.get("/ui/theme.css").status_code == 200
+        assert '"first": true' in c.get("/login").text                      # no account yet: create one
+        assert c.post("/api/auth/signup", json={"username": "a", "password": "short"}).status_code == 400
+        assert c.post("/api/auth/signup", json=TEST_LOGIN).status_code == 200
+        assert 'data-theme="light" data-accent="teal"' in c.get("/").text
+        assert c.post("/api/me/prefs", json={"theme": "dark", "accent": "rose", "motion": False, "tips": False}).json()["accent"] == "rose"
+        page = c.get("/settings").text
+        assert 'data-theme="dark" data-accent="rose" data-motion="off"' in page and '"tips": false' in page
+        assert c.post("/api/me/prefs", json={"theme": "neon"}).status_code == 400
+        assert c.post("/api/me/prefs", json={"projects": "x"}).status_code == 400
+
+        assert c.post("/api/projects", json={"name": "p1", "labels": [{"name": "bolt"}]}).status_code == 200
+        mine = tmp_path / "mine"
+        r = c.post("/api/me/projects-folder", json={"path": str(mine), "move": True}).json()
+        assert "p1" in wait(c, r["job"])["result"]["moved"] and (mine / "p1" / "project.json").exists()
+        assert [p["name"] for p in c.get("/api/projects").json()] == ["p1"] and c.get("/api/me").json()["home"] == str(mine.resolve())
+        assert c.post("/api/me/projects-folder", json={"path": "relative/folder"}).status_code == 400
+
+        c.post("/api/auth/logout")
+        assert c.get("/api/projects").status_code == 401
+        assert c.post("/api/auth/login", json={**TEST_LOGIN, "password": "not-it-at-all"}).status_code == 401
+        c.post("/api/auth/signup", json={"username": "second", "password": "another-password"})
+        assert c.get("/api/projects").json() == [] and 'data-theme="light"' in c.get("/").text   # own folder, own look
+        c.post("/api/auth/logout")
+        c.post("/api/auth/login", json=TEST_LOGIN)
+        assert [p["name"] for p in c.get("/api/projects").json()] == ["p1"]
+        assert c.post("/api/me/password", json={"old": "wrong-one", "new": "new-password-2"}).status_code == 400
+        assert c.post("/api/me/password", json={"old": TEST_LOGIN["password"], "new": "new-password-2"}).status_code == 200
+        assert c.get("/api/projects").status_code == 200                    # still signed in here
+
+
+def test_backup_a_task_and_add_it_to_another_project(client, images):
+    for n in ("a", "b"):
+        assert client.post("/api/projects", json={"name": n, "labels": [{"name": "bolt"}]}).status_code == 200
+    assert wait(client, client.post("/api/projects/a/tasks", json={"sources": [str(images)]}).json()["job"])["error"] is None
+    res = wait(client, client.post("/api/projects/a/tasks/1/backup").json()["job"])
+    assert res["error"] is None and res["result"]["tasks"] == ["photos"] and "task_a_photos_backup" in res["result"]["file"]
+    assert client.post("/api/projects/a/tasks/9/backup").status_code == 404
+    res = wait(client, client.post("/api/projects/b/tasks/import", json={"path": res["result"]["file"]}).json()["job"])
+    assert res["error"] is None and res["result"]["items"] == 3
+    assert [t["name"] for t in client.get("/api/projects/b").json()["tasks"]] == ["photos"]

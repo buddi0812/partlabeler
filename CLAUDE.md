@@ -18,4 +18,9 @@
   (`engine/sort.py`: grouping, suggestions, wrong-label check; S10) also drives "Sort parts" in box/outline projects.
 - Updates (`engine/update.py`, start-screen button, `update_windows.bat`, `partlabeler update`): only the app's own
   files change; projects/, data/, .venv and models never; labels are backed up first. Keep it that way.
+- Accounts (`engine/accounts.py`): local only, `~/.partlabeler/accounts.json` (scrypt hashes; PARTLABELER_CONFIG moves it);
+  every page and API call of the local host needs a sign-in (/login); per-account prefs are applied server-side
+  (`themed()`: data-theme/-accent on <html>, `window.PL`) and each account may pick its own projects folder
+  (`home()` per request; background jobs keep it). Notebooks have no sign-in. Theme tokens: `ui/theme.css`
+  (`--c-*`, modules fall back to their light values). Never commit an accounts file.
 - Layout: `engine/` (no UI code; `api.py` is the one message protocol), `ui/` (`canvas.js` annotator, `home.js` start screen, two hosts), `engine/cli.py` (`partlabeler` CLI). User data lives in `data/` and `projects/`, both gitignored: never commit them.

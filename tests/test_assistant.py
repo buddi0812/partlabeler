@@ -86,9 +86,8 @@ def test_key_file_and_http_endpoints(no_key, tmp_path, monkeypatch):
     assistant.save_key("")
     assert assistant.api_key() == (None, "none")
 
-    host.state.update(home=tmp_path / "home", sessions={}, clients={}, jobs={}, notes_home=None)
-    (tmp_path / "home").mkdir()
-    with TestClient(host.app) as c:
+    from tests.test_host import app_client
+    with app_client(tmp_path) as c:
         info = c.get("/api/assistant").json()
         assert info["ready"] is False and info["tips"] and "api_key" not in json.dumps(info)
         r = c.post("/api/assistant/chat", json={"messages": [{"role": "user", "text": "how can I export?"}], "context": {"page": "home"}})

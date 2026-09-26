@@ -1,0 +1,40 @@
+/* PartLabeler themes: set per account in Settings, applied by the server as attributes on <html>:
+   data-theme = light | dark | system, data-accent = a palette name, data-motion = off (animations off).
+   The page modules (home.js, pages.js, canvas.js) read these --c-* tokens with their light look as fallback,
+   so without this file (e.g. in a notebook) or in light mode everything looks as it always did. */
+
+/* palettes: the accent in light mode (-l, -ink-l) and in dark mode (-d) */
+:root                       { --c-accent-l:#0a7c78; --c-accent-ink-l:#075e5b; --c-accent-d:#2bb3a9; }
+:root[data-accent=blue]     { --c-accent-l:#2563c9; --c-accent-ink-l:#1b4a99; --c-accent-d:#62a0f2; }
+:root[data-accent=indigo]   { --c-accent-l:#4f46c8; --c-accent-ink-l:#3b33a3; --c-accent-d:#8f89f2; }
+:root[data-accent=violet]   { --c-accent-l:#7c3aca; --c-accent-ink-l:#5f2a9e; --c-accent-d:#b48bef; }
+:root[data-accent=rose]     { --c-accent-l:#c2305a; --c-accent-ink-l:#9c2549; --c-accent-d:#f07c9c; }
+:root[data-accent=orange]   { --c-accent-l:#b4530a; --c-accent-ink-l:#8c4008; --c-accent-d:#f19a4c; }
+:root[data-accent=green]    { --c-accent-l:#287a36; --c-accent-ink-l:#1e5e29; --c-accent-d:#5fc27c; }
+:root[data-accent=graphite] { --c-accent-l:#4b5a66; --c-accent-ink-l:#34414b; --c-accent-d:#a9b7c1; }
+:root { --c-accent:var(--c-accent-l); --c-accent-ink:var(--c-accent-ink-l);
+  --c-accent-soft:color-mix(in srgb, var(--c-accent-l) 12%, #fff); }
+
+/* dark: written twice, for "dark" and for "system" when the computer is in dark mode */
+:root[data-theme=dark] { color-scheme:dark;
+  --c-bg:#11171b; --c-bg-2:#1d262c; --c-panel:#182025; --c-panel-2:#1f292f; --c-ink:#e2e8eb; --c-ink-2:#c3cdd2; --c-muted:#98a6ae;
+  --c-line:#2d3940; --c-line-2:#243037; --c-line-hi:#43525b; --c-hover:#1e282e; --c-top:rgba(17,23,27,.86); --c-empty:rgba(24,32,37,.6);
+  --c-st0:#2a353c; --c-on-accent:#0b1215;
+  --c-ok-soft:#173a26; --c-ok-ink:#83d9a4; --c-warn-soft:#3b2d0f; --c-warn-ink:#f2c46b; --c-warn-line:#6b5220;
+  --c-bad-soft:#3e1e1a; --c-bad-ink:#f4a699; --c-bad-line:#7a3a30; --c-info-soft:#1b2c45; --c-info-ink:#9cc2f5;
+  --c-accent:var(--c-accent-d); --c-accent-ink:color-mix(in srgb, var(--c-accent-d) 70%, #fff);
+  --c-accent-soft:color-mix(in srgb, var(--c-accent-d) 18%, #182025); }
+@media (prefers-color-scheme: dark) {
+  :root[data-theme=system] { color-scheme:dark;
+    --c-bg:#11171b; --c-bg-2:#1d262c; --c-panel:#182025; --c-panel-2:#1f292f; --c-ink:#e2e8eb; --c-ink-2:#c3cdd2; --c-muted:#98a6ae;
+    --c-line:#2d3940; --c-line-2:#243037; --c-line-hi:#43525b; --c-hover:#1e282e; --c-top:rgba(17,23,27,.86); --c-empty:rgba(24,32,37,.6);
+    --c-st0:#2a353c; --c-on-accent:#0b1215;
+    --c-ok-soft:#173a26; --c-ok-ink:#83d9a4; --c-warn-soft:#3b2d0f; --c-warn-ink:#f2c46b; --c-warn-line:#6b5220;
+    --c-bad-soft:#3e1e1a; --c-bad-ink:#f4a699; --c-bad-line:#7a3a30; --c-info-soft:#1b2c45; --c-info-ink:#9cc2f5;
+    --c-accent:var(--c-accent-d); --c-accent-ink:color-mix(in srgb, var(--c-accent-d) 70%, #fff);
+    --c-accent-soft:color-mix(in srgb, var(--c-accent-d) 18%, #182025); } }
+
+/* animations off (Settings), on top of the computer's own reduce-motion setting */
+:root[data-motion=off] *, :root[data-motion=off] *::before, :root[data-motion=off] *::after {
+  animation-duration:.001ms !important; animation-delay:0s !important; animation-iteration-count:1 !important;
+  transition-duration:.001ms !important; transition-delay:0s !important; scroll-behavior:auto !important; }

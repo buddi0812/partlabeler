@@ -42,6 +42,7 @@ from engine import masks as M
 
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff", ".webp"}
 TASKS = ("detect", "segment", "classify")
+TASK_NAMES = {"detect": "an object detection", "segment": "a segmentation", "classify": "a classification"}
 FRAME_FORMATS = ("jpg", "webp")
 BOX_FORMATS = ("yolo", "coco", "cvat", "voc", "labelstudio")
 CLASSIFY_FORMATS = ("folders", "yolo", "csv")
@@ -49,6 +50,8 @@ FRAME_RE = re.compile(r"_f(\d+)$")
 JOB_STAGES = ("annotation", "validation", "acceptance")
 JOB_STATES = ("new", "in progress", "rejected", "completed")
 SORTING = ("lexicographical", "natural")
+TABLES = ("boxes", "reviewed", "tags", "touched")         # every table with a row per item
+OFFSET = 1_000_000_000                                    # parks item numbers while renumbering
 
 
 def read_classes(path: Path) -> list[str]:
@@ -201,11 +204,11 @@ class Project:
         with self.db:
             labels = self.db.execute("SELECT COUNT(*) FROM boxes WHERE item >= ? AND item < ?", (a, b)).fetchone()[0]
             labels += self.db.execute("SELECT COUNT(*) FROM tags WHERE item >= ? AND item < ?", (a, b)).fetchone()[0]
-            for table in ("boxes", "reviewed", "tags", "touched"):
+            for table in TABLES:
                 self.db.execute(f"DELETE FROM {table} WHERE item >= ? AND item < ?", (a, b))
                 # two steps, so no row ever lands on a number another row still has
-                self.db.execute(f"UPDATE {table} SET item = item + 1000000000 WHERE item >= ?", (b,))
-                self.db.execute(f"UPDATE {table} SET item = item - 1000000000 - ? WHERE item >= 1000000000", (n,))
+                self.db.execute(f"UPDATE {table} SET item = item + ? WHERE item >= ?", (OFFSET, b))
+                self.db.execute(f"UPDATE {table} SET item = item - ? - ? WHERE item >= ?", (OFFSET, n, OFFSET))
         if t["kind"] == "video":
             d = self.folder / t["frames"]
             for f in d.glob("f*.*"):                          # only this task's frames: frames/ also holds t1/, t2/...
@@ -241,6 +244,85 @@ class Project:
             first = tasks[0]
             self.set_meta(sources=tasks, kind=first["kind"], source=first["source"], every=first["every"])
         return changed
+
+    def add_tasks_from(self, zip_path) -> dict:
+        """Add the tasks of a backup zip (one task's, or a whole project's) with their frames, labels, confirmed
+        frames and jobs, so unfinished work carries on here. Labels are matched by name; names this project lacks
+        are added. Returns {"tasks": [names], "items", "labels_added": [names]}."""
+        import tempfile
+        tmp = Path(tempfile.mkdtemp(prefix=".import_", dir=self.folder))    # same drive: files move, not copy
+        src = None
+        try:
+            src = Project(restore_project(zip_path, tmp))
+            if src.task != self.task:
+                raise ValueError(f"That backup is {TASK_NAMES[src.task]} project and this one is {TASK_NAMES[self.task]}: "
+                                 "open it as a project of its own instead (Create from backup)")
+            classes, have_colors = list(self.classes), bool(self.meta.get("colors") or src.meta.get("colors"))
+            colors = (list(self.meta.get("colors") or []) + [None] * len(classes))[:len(classes)]
+            src_colors, cmap, added = src.meta.get("colors") or [], {}, []
+            for i, name in enumerate(src.classes):
+                if name not in classes:
+                    classes.append(name)
+                    colors.append(src_colors[i] if i < len(src_colors) else None)
+                    added.append(name)
+                cmap[i] = classes.index(name)
+            tasks, names = [dict(t) for t in self.sources], []
+            tid = max((t["id"] for t in tasks), default=0) + 1
+            nxt, base, obj0, count = int(self.meta.get("next_job", 1)), len(self.items), self.new_obj(), 0
+            rows = {table: [] for table in TABLES}
+            cols = {table: [r[1] for r in src.db.execute(f"PRAGMA table_info({table})")] for table in TABLES}
+            for t in src.sources:
+                a, b = src.ranges.get(t["id"], (0, 0))
+                nt = dict(t, id=tid, created=t.get("created") or _now())
+                taken = {x["name"] for x in tasks}
+                nt["name"] = next(n for n in (t["name"] if k == 1 else f"{t['name']}_{k}" for k in range(1, 10000)) if n not in taken)
+                if t["kind"] == "video":
+                    dest = self.folder / "frames" / f"t{tid}"
+                    dest.mkdir(parents=True, exist_ok=True)
+                    for f in (src.folder / t["frames"]).glob("f*.*"):
+                        if f.is_file() and f.stem[1:].isdigit():
+                            f.replace(dest / f.name)
+                    nt["frames"] = f"frames/t{tid}"
+                else:
+                    dest = self.folder / "images" / f"t{tid}"
+                    dest.parent.mkdir(parents=True, exist_ok=True)
+                    Path(t["source"]).replace(dest)
+                    nt["source"] = str(dest)
+                nt["jobs"] = []
+                for j in t.get("jobs") or []:
+                    nt["jobs"].append(dict(j, id=nxt))
+                    nxt += 1
+                for table in TABLES:
+                    for r in src.db.execute(f"SELECT {', '.join(cols[table])} FROM {table} WHERE item >= ? AND item < ?", (a, b)):
+                        r = dict(zip(cols[table], r))
+                        r["item"] += base - a
+                        if r.get("cls") is not None:
+                            r["cls"] = cmap.get(r["cls"], r["cls"])
+                        if table == "boxes":
+                            r["obj"] += obj0
+                        rows[table].append(r)
+                base += b - a
+                count += b - a
+                tasks.append(nt)
+                names.append(nt["name"])
+                tid += 1
+            with self.db:
+                for table, rs in rows.items():
+                    for r in rs:
+                        self.db.execute(f"INSERT OR REPLACE INTO {table} ({', '.join(r)}) VALUES ({', '.join('?' * len(r))})",
+                                        list(r.values()))
+            first = tasks[0]
+            meta = dict(sources=tasks, classes=classes, next_job=nxt, kind=first["kind"], source=first["source"], every=first["every"])
+            if have_colors:
+                meta["colors"] = colors
+            self.set_meta(**meta)
+            self._index()
+            self._ensure_jobs()
+            return {"tasks": names, "items": count, "labels_added": added}
+        finally:
+            if src is not None:
+                src.db.close()
+            shutil.rmtree(tmp, ignore_errors=True)
 
     def _index(self) -> None:
         self.items = self._list_items()
@@ -1077,25 +1159,47 @@ def place_image(src: Path, dst: Path, link: bool) -> None:
 
 
 # ---- backup and restore (CVAT's "Backup project" / "Create from backup") ------------------------------
-def backup_project(folder, out_zip) -> dict:
+def backup_project(folder, out_zip, tasks=None) -> dict:
     """Zip a project: project.json, a consistent copy of labels.sqlite, the stored frames, and the pictures of
     image-folder tasks (they normally stay where they are, so a backup is complete on another computer).
-    Pictures are stored without re-compression. Exports and caches are left out."""
+    Pictures are stored without re-compression. Exports and caches are left out.
+    With `tasks` (task ids): only those tasks, with their labels, confirmed frames and jobs (CVAT's "Backup task").
+    Such a zip opens as a project of its own (restore_project) or joins another one (Project.add_tasks_from)."""
     import zipfile
     folder, out_zip = Path(folder), Path(out_zip)
     p = Project(folder)
+    keep = [t for t in p.sources if tasks is None or t["id"] in set(tasks)]
+    if tasks is not None and not keep:
+        p.db.close()
+        raise KeyError(f"no task {', '.join(map(str, tasks))}")
+    meta = dict(p.meta)
+    if tasks is not None:
+        meta.update(sources=keep, kind=keep[0]["kind"], source=keep[0]["source"], every=keep[0]["every"])
     out_zip.parent.mkdir(parents=True, exist_ok=True)
     n = 0
     with zipfile.ZipFile(out_zip, "w", zipfile.ZIP_STORED) as z:
-        z.writestr("project.json", json.dumps(p.meta, indent=1), compress_type=zipfile.ZIP_DEFLATED)
+        z.writestr("project.json", json.dumps(meta, indent=1), compress_type=zipfile.ZIP_DEFLATED)
         tmp = out_zip.with_suffix(".sqlite.tmp")
         dst = sqlite3.connect(tmp)
         with dst:
             p.db.backup(dst)
+            if tasks is not None:                         # only these tasks' rows, numbered as the smaller project will be
+                spans, new = [], 0
+                for t in keep:
+                    a, b = p.ranges.get(t["id"], (0, 0))
+                    spans.append((a, b, new - a))
+                    new += b - a
+                for table in TABLES:
+                    rows = dst.execute(f"SELECT rowid, item FROM {table}").fetchall()
+                    gone = [(r,) for r, i in rows if not any(a <= i < b for a, b, _ in spans)]
+                    dst.executemany(f"DELETE FROM {table} WHERE rowid = ?", gone)
+                    for a, b, shift in spans:             # via a high offset, so no row lands on a number still in use
+                        dst.execute(f"UPDATE {table} SET item = item + ? WHERE item >= ? AND item < ?", (OFFSET + shift, a, b))
+                    dst.execute(f"UPDATE {table} SET item = item - ? WHERE item >= ?", (OFFSET, OFFSET))
         dst.close()
         z.write(tmp, "labels.sqlite", compress_type=zipfile.ZIP_DEFLATED)
         tmp.unlink()
-        for t in p.sources:
+        for t in keep:
             a, b = p.ranges.get(t["id"], (0, 0))
             for k in range(a, b):
                 path = Path(p.items[k]["path"])
@@ -1104,7 +1208,7 @@ def backup_project(folder, out_zip) -> dict:
                 z.write(path, arc)
                 n += 1
     p.db.close()
-    return {"file": str(out_zip), "items": n, "size": out_zip.stat().st_size}
+    return {"file": str(out_zip), "items": n, "size": out_zip.stat().st_size, "tasks": [t["name"] for t in keep]}
 
 
 def restore_project(zip_path, home, name: str | None = None) -> Path:

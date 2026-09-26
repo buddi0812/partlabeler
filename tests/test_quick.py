@@ -59,8 +59,8 @@ def test_quick_transfer_writes_a_reviewable_run(tmp_path, video, monkeypatch):
     # lamps are in every source frame (presence capped at 0.98): the 2nd percentile of the 4 frames' best scores
     assert fake.thresholds[0] == {"lamp": pytest.approx(0.5406)} and r["sources"][str(video)]["thresholds"] == {"lamp": 0.541}
 
-    host.state.update(home=tmp_path / "home", sessions={}, clients={}, jobs={}, notes_home=None)
-    with TestClient(host.app) as c:
+    from tests.test_host import app_client
+    with app_client(tmp_path) as c:
         [listed] = c.get("/api/runs").json()
         assert listed["mode"] == "quick" and listed["outputs"][0]["summary"]["mode"] == "quick"
         assert c.post("/api/transfer", json={"run": "quick_src", "sources": [str(video)]}).status_code == 400

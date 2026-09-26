@@ -7,8 +7,10 @@
 import { notificationCenter, assistant, webAssistant } from "/ui/canvas.js";
 
 const CSS = `
-:root { --alu:#e7ecef; --alu-2:#dde4e8; --paper:#fff; --ink:#1f2a30; --steel:#53636c; --line:#d3dbe0;
-  --teal:#0a7c78; --teal-deep:#075e5b; --teal-soft:#e0f0ee; --amber:#f2a900; --amber-ink:#7d5200; --amber-soft:#fdf1d2;
+:root { --alu:var(--c-bg,#e7ecef); --alu-2:var(--c-bg-2,#dde4e8); --paper:var(--c-panel,#fff); --ink:var(--c-ink,#1f2a30);
+  --steel:var(--c-muted,#53636c); --line:var(--c-line,#d3dbe0); --line-hi:var(--c-line-hi,#c2ccd2); --ink-2:var(--c-ink-2,#3d4b53);
+  --teal:var(--c-accent,#0a7c78); --teal-deep:var(--c-accent-ink,#075e5b); --teal-soft:var(--c-accent-soft,#e0f0ee); --on-teal:var(--c-on-accent,#fff);
+  --ok-soft:var(--c-ok-soft,#dcf1e4); --ok-ink:var(--c-ok-ink,#1f7a44); --bad-soft:var(--c-bad-soft,#fde8e5); --amber:#f2a900; --amber-ink:var(--c-warn-ink,#7d5200); --amber-soft:var(--c-warn-soft,#fdf1d2);
   --ok:#2f9e5b; --lab:#4f8fe0; --bad:#c2412f; --stage:#16232a;
   --display:"Bahnschrift SemiCondensed",Bahnschrift,"DIN Alternate","Barlow Semi Condensed","Segoe UI",system-ui,sans-serif;
   --numeric:Bahnschrift,"DIN Alternate","Segoe UI",system-ui,sans-serif;
@@ -21,10 +23,10 @@ body { background:var(--alu); color:var(--ink); font:14px/1.5 var(--text); -webk
 [hidden] { display:none !important; }
 a { color:var(--teal-deep); }
 button, input, select, textarea { font:inherit; color:inherit; }
-input[type=text], input[type=number], select, textarea { border:1px solid var(--line); border-radius:8px; padding:7px 10px; background:var(--paper);
+input[type=text], input[type=password], input[type=number], select, textarea { border:1px solid var(--line); border-radius:8px; padding:7px 10px; background:var(--paper);
   transition:border-color .15s, box-shadow .15s; }
-input[type=text]:hover, input[type=number]:hover, select:hover, textarea:hover { border-color:#b9c5cc; }
-input:focus-visible, select:focus-visible, textarea:focus-visible { outline:none; border-color:var(--teal); box-shadow:0 0 0 3px rgba(10,124,120,.18); }
+input[type=text]:hover, input[type=password]:hover, input[type=number]:hover, select:hover, textarea:hover { border-color:var(--line-hi); }
+input:focus-visible, select:focus-visible, textarea:focus-visible { outline:none; border-color:var(--teal); box-shadow:0 0 0 3px color-mix(in srgb, var(--teal) 18%, transparent); }
 textarea { min-height:92px; resize:vertical; font-family:ui-monospace,"Cascadia Mono",Consolas,monospace; font-size:12.5px; }
 input[type=number] { width:88px; font-variant-numeric:tabular-nums; }
 button { border:1px solid var(--line); background:var(--paper); border-radius:8px; padding:7px 14px; cursor:pointer; white-space:nowrap;
@@ -32,13 +34,13 @@ button { border:1px solid var(--line); background:var(--paper); border-radius:8p
 button:hover:not(:disabled) { border-color:var(--teal); }
 button:active:not(:disabled) { transform:scale(.97); }
 button:disabled { opacity:.5; cursor:default; }
-button.primary { background:var(--teal); border-color:var(--teal); color:#fff; font-weight:600; }
+button.primary { background:var(--teal); border-color:var(--teal); color:var(--on-teal); font-weight:600; }
 button.primary:hover:not(:disabled) { background:var(--teal-deep); border-color:var(--teal-deep); }
 button.danger { background:var(--bad); border-color:var(--bad); color:#fff; font-weight:600; }
 button:focus-visible, a:focus-visible, summary:focus-visible { outline:2px solid var(--teal); outline-offset:2px; }
 
 /* top bar */
-.h-top { position:sticky; top:0; z-index:20; background:rgba(231,236,239,.86); backdrop-filter:saturate(1.3) blur(10px);
+.h-top { position:sticky; top:0; z-index:20; background:var(--c-top,rgba(231,236,239,.86)); backdrop-filter:saturate(1.3) blur(10px);
   border-bottom:1px solid transparent; transition:border-color .2s, box-shadow .2s; }
 .h-top.scrolled { border-bottom-color:var(--line); box-shadow:0 6px 18px rgba(31,42,48,.06); }
 .h-top-in { max-width:1240px; margin:0 auto; padding:10px 20px; display:flex; align-items:center; gap:12px; }
@@ -58,19 +60,19 @@ button:focus-visible, a:focus-visible, summary:focus-visible { outline:2px solid
 .h-upd:hover { border-color:var(--amber); }
 .h-upd.quiet { color:var(--steel); background:var(--paper); border-color:var(--line); font-weight:500; }
 .h-upd.quiet:hover { border-color:var(--teal); color:var(--ink); }
-.h-upd.restart { color:#1f7a44; background:#dcf1e4; border-color:rgba(47,158,91,.4); cursor:default; }
+.h-upd.restart { color:var(--ok-ink); background:var(--ok-soft); border-color:rgba(47,158,91,.4); cursor:default; }
 .h-upd svg { width:14px; height:14px; flex:none; }
 .h-upd.busy svg { animation:h-spin 1s linear infinite; } @keyframes h-spin { to { transform:rotate(360deg); } }
-.h-update ul { margin:0; padding:4px 20px 6px 38px; max-height:40vh; overflow:auto; color:#3d4b53; font-size:13.5px; }
+.h-update ul { margin:0; padding:4px 20px 6px 38px; max-height:40vh; overflow:auto; color:var(--ink-2); font-size:13.5px; }
 .h-update .h-updjob { padding:0 20px; }
 
-.h-wrap { max-width:1240px; margin:0 auto; padding:8px 20px 120px; display:grid; gap:28px; }
+.h-wrap { max-width:1240px; margin:0 auto; padding:8px 20px 120px; display:grid; gap:28px; overflow-x:clip; }   /* the lock-on brackets must not widen the page */
 
 /* hero */
 .h-hero { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.08fr); gap:36px; align-items:center; padding:30px 0 8px; }
 .h-hero h1 { font:600 clamp(30px, 3.6vw, 44px)/1.06 var(--display); letter-spacing:-.005em; margin:0 0 14px; max-width:15ch; text-wrap:balance; }
 .h-hero h1 span { display:block; }
-.h-lede { font-size:15.5px; color:#3d4b53; margin:0 0 20px; max-width:52ch; }
+.h-lede { font-size:15.5px; color:var(--ink-2); margin:0 0 20px; max-width:52ch; }
 .h-actions { display:flex; flex-wrap:wrap; gap:10px; align-items:center; }
 .h-actions button { padding:9px 18px; font-size:14.5px; }
 .h-home { color:var(--steel); font-size:12.5px; margin:16px 0 0; overflow-wrap:anywhere; }
@@ -95,7 +97,7 @@ button:focus-visible, a:focus-visible, summary:focus-visible { outline:2px solid
 .h-proj { position:relative; background:var(--paper); border:1px solid var(--line); border-radius:12px;
   animation:h-rise .55s var(--out) both; animation-delay:calc(280ms + var(--i, 0) * 55ms);
   transition:transform .25s var(--spring), box-shadow .25s, border-color .2s; }
-.h-proj:hover, .h-proj:focus-within { transform:translateY(-3px); border-color:#c2ccd2; box-shadow:0 14px 30px rgba(31,42,48,.10); }
+.h-proj:hover, .h-proj:focus-within { transform:translateY(-3px); border-color:var(--line-hi); box-shadow:0 14px 30px rgba(31,42,48,.10); }
 .h-proj-link { display:grid; gap:6px; padding:16px 16px 14px; color:inherit; text-decoration:none; border-radius:12px; min-width:0; }
 .h-preview { display:block; height:120px; margin:-16px -16px 6px; border-radius:12px 12px 0 0; background:var(--stage) center/cover no-repeat; }
 .h-preview.none { background:repeating-linear-gradient(135deg, #1b2a32 0 10px, #16232a 10px 20px); }
@@ -126,9 +128,17 @@ button:focus-visible, a:focus-visible, summary:focus-visible { outline:2px solid
 .h-panel > .h-brk i:nth-child(3) { border-width:0 4px 4px 0; } .h-panel > .h-brk i:nth-child(4) { border-width:0 0 4px 4px; }
 .lock > .h-brk { animation:h-lock 1.6s ease-in-out; }
 @keyframes h-lock { 0%, 60% { opacity:1; } 100% { opacity:0; } }
-.h-empty { display:grid; justify-items:start; gap:10px; padding:26px; border:1.5px dashed #c3ccd2; border-radius:12px; color:var(--steel); background:rgba(255,255,255,.5); }
+.h-empty { display:grid; justify-items:start; gap:10px; padding:26px; border:1.5px dashed var(--line-hi); border-radius:12px; color:var(--steel); background:var(--c-empty,rgba(255,255,255,.5)); }
 .h-empty b { font:600 17px var(--display); color:var(--ink); }
 .h-filter { width:min(240px, 100%); }
+
+/* account menu */
+.h-menu.h-acct { position:relative; top:auto; right:auto; }
+.h-menu.h-acct summary { width:auto; height:auto; padding:1px; border-radius:50%; }
+.h-avatar { width:32px; height:32px; border-radius:50%; background:var(--teal); color:var(--on-teal); display:grid; place-items:center; font:600 13px/1 var(--numeric); letter-spacing:.02em; }
+.h-acct .h-menu-list { right:0; top:40px; min-width:220px; }
+.h-acct-who { display:grid; gap:1px; padding:8px 11px 9px; margin-bottom:4px; border-bottom:1px solid var(--line); min-width:0; }
+.h-acct-who b, .h-acct-who small { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; } .h-acct-who small { color:var(--steel); font-size:12px; }
 
 /* project menu */
 .h-menu { position:absolute; top:10px; right:10px; z-index:3; }
@@ -142,7 +152,7 @@ button:focus-visible, a:focus-visible, summary:focus-visible { outline:2px solid
 .h-menu-list a, .h-menu-list button { text-align:left; border:0; background:none; padding:8px 11px; border-radius:7px; color:var(--ink); text-decoration:none; font-size:13.5px; }
 .h-menu-list a:hover, .h-menu-list button:hover { background:var(--teal-soft); }
 .h-menu-list .danger { color:var(--bad); background:none; font-weight:400; }
-.h-menu-list .danger:hover { background:#fde8e5; }
+.h-menu-list .danger:hover { background:var(--bad-soft); }
 
 /* labels constructor (CVAT's): colour, name, remove */
 .h-labels { display:grid; gap:6px; }
@@ -189,7 +199,7 @@ button:focus-visible, a:focus-visible, summary:focus-visible { outline:2px solid
 @keyframes h-draw { to { stroke-dashoffset:0; } }
 .h-err { color:var(--bad); font-size:12.5px; white-space:pre-wrap; }
 .h-chip { font-size:11.5px; font-weight:600; padding:2px 9px; border-radius:99px; background:var(--alu-2); color:var(--steel); vertical-align:middle; }
-.h-chip.ok { background:#dcf1e4; color:#1f7a44; } .h-chip.warn { background:var(--amber-soft); color:var(--amber-ink); }
+.h-chip.ok { background:var(--ok-soft); color:var(--ok-ink); } .h-chip.warn { background:var(--amber-soft); color:var(--amber-ink); }
 .h-check-row { display:grid; grid-template-columns:auto 1fr; gap:2px 8px; align-items:center; font-size:13px; font-weight:600; cursor:pointer; }
 .h-check-row input { width:16px; height:16px; accent-color:var(--teal); margin:0; }
 .h-check-row small { grid-column:2; color:var(--steel); font-weight:400; font-size:12px; }
@@ -221,14 +231,14 @@ button:focus-visible, a:focus-visible, summary:focus-visible { outline:2px solid
 
 /* toasts, dialogs */
 .h-toasts { position:fixed; right:108px; bottom:22px; display:grid; gap:8px; z-index:30; width:min(380px, calc(100vw - 140px)); }
-.h-toast { background:var(--ink); color:#fff; padding:10px 14px; border-radius:12px; box-shadow:0 12px 28px rgba(31,42,48,.28);
+.h-toast { background:var(--ink); color:var(--paper); padding:10px 14px; border-radius:12px; box-shadow:0 12px 28px rgba(31,42,48,.28);
   animation:h-toast-in .45s var(--spring); display:grid; gap:1px; }
 .h-toast.out { animation:h-toast-out .25s ease-in forwards; }
-.h-toast.error { background:var(--bad); } .h-toast.warning { background:#8a5304; } .h-toast.success { border-left:4px solid #5fd08f; }
+.h-toast.error { background:var(--bad); color:#fff; } .h-toast.warning { background:#8a5304; color:#fff; } .h-toast.success { border-left:4px solid #5fd08f; }
 .h-toast b { font-weight:600; } .h-toast small { opacity:.85; overflow-wrap:anywhere; }
 @keyframes h-toast-in { from { opacity:0; transform:translateX(30px) scale(.96); } }
 @keyframes h-toast-out { to { opacity:0; transform:translateX(20px); } }
-dialog { border:1px solid var(--line); border-radius:16px; padding:0; width:min(720px, calc(100vw - 32px)); max-height:82vh; color:var(--ink);
+dialog { border:1px solid var(--line); border-radius:16px; padding:0; width:min(720px, calc(100vw - 32px)); max-height:82vh; color:var(--ink); background:var(--paper);
   box-shadow:0 30px 70px rgba(31,42,48,.3); }
 dialog[open] { animation:h-dlg .28s var(--spring); }
 dialog::backdrop { background:rgba(31,42,48,.45); backdrop-filter:blur(2px); }
@@ -236,7 +246,7 @@ dialog[open]::backdrop { animation:h-fade .25s ease-out; }
 @keyframes h-dlg { from { opacity:0; transform:translateY(14px) scale(.96); } }
 @keyframes h-fade { from { opacity:0; } }
 .h-confirm { width:min(460px, calc(100vw - 32px)); }
-.h-confirm h2 { margin:0; padding:20px 20px 0; font:600 19px var(--display); } .h-confirm p { margin:0; padding:10px 20px 6px; color:#3d4b53; }
+.h-confirm h2 { margin:0; padding:20px 20px 0; font:600 19px var(--display); } .h-confirm p { margin:0; padding:10px 20px 6px; color:var(--ink-2); }
 .b-head { display:flex; gap:6px; align-items:center; padding:12px; border-bottom:1px solid var(--line); }
 .b-head input { flex:1; min-width:0; }
 .b-body { overflow:auto; max-height:52vh; padding:6px; }
@@ -286,7 +296,8 @@ export const size = (n) => (n > 1e9 ? `${(n / 1e9).toFixed(1)} GB` : n > 1e6 ? `
 const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
 export const ago = (t) => { if (typeof t === "string") t = Date.parse(t) / 1000; const s = Math.round(t - Date.now() / 1000);
   return Math.abs(s) < 60 ? "just now" : Math.abs(s) < 3600 ? rtf.format(Math.round(s / 60), "minute") : Math.abs(s) < 86400 ? rtf.format(Math.round(s / 3600), "hour") : rtf.format(Math.round(s / 86400), "day"); };
-export const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+export const prefs = () => window.PL?.prefs || {};                  // the account's Settings (ui/host_fastapi.py themed())
+export const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches || document.documentElement.dataset.motion === "off";
 
 // The top bar of every page: logo, Projects / Tasks / Jobs (as CVAT's), update button, device, bell.
 export function header(active) {
@@ -296,8 +307,21 @@ export function header(active) {
     <a class="h-logo" href="/">${ICON.logo}<span>PartLabeler</span></a><nav class="h-nav" aria-label="Main">${nav}</nav>
     <button type="button" class="h-upd" hidden></button>
     <span class="h-device" hidden><i aria-hidden="true"></i><span></span></span>
-    <span class="h-bellmount"></span></div></header>`;
+    <span class="h-bellmount"></span>${account()}</div></header>`;
 }
+
+// The account menu at the right of the top bar: who is signed in, Settings, Sign out.
+function account() {
+  const me = window.PL?.user; if (!me) return "";
+  const initials = me.name.split(/[\s._-]+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join("") || "?";
+  return `<details class="h-menu h-acct"><summary aria-label="Account: ${esc(me.name)}" title="${esc(me.name)}"><span class="h-avatar" aria-hidden="true">${esc(initials)}</span></summary>
+    <div class="h-menu-list"><div class="h-acct-who"><b translate="no">${esc(me.name)}</b><small translate="no">${esc(me.username)}</small></div>
+      <a href="/settings">Settings</a><button type="button" data-signout>Sign out</button></div></details>`;
+}
+document.addEventListener("click", (e) => {
+  if (e.target.closest("[data-signout]")) api("/api/auth/logout", {}).finally(() => { location.href = "/login"; });
+  document.querySelectorAll("details.h-acct[open]").forEach((d) => { if (!d.contains(e.target)) d.open = false; });
+});
 
 // Choose a file or folder on this computer (the server lists folders). pick({kind, folder, start}) resolves to
 // the chosen path, or null when cancelled. kind: video | images | classes | dir | backup | any.
@@ -510,7 +534,7 @@ export default function home(root) {
         <div class="h-sec-head"><h2 id="h-projects-h">Projects</h2><span class="h-count h-pcount"></span><span class="h-sp"></span>
           <input type="text" class="h-filter" name="project-filter" autocomplete="off" aria-label="Search projects" placeholder="Search…">
           <select class="h-sort" name="project-sort" aria-label="Sort projects"><option value="updated">Updated date</option><option value="name">Name</option><option value="created">Created date</option></select>
-          <details class="h-menu h-plus" style="position:relative;top:auto;right:auto"><summary aria-label="Create" title="Create" style="width:34px;height:34px;background:var(--teal);color:#fff;border-radius:9px">+</summary><div class="h-menu-list">
+          <details class="h-menu h-plus" style="position:relative;top:auto;right:auto"><summary aria-label="Create" title="Create" style="width:34px;height:34px;background:var(--teal);color:var(--on-teal);border-radius:9px">+</summary><div class="h-menu-list">
             <button type="button" data-go="new">Create a new project</button><button type="button" data-go="restore">Create from backup…</button></div></details></div>
         <div class="h-projects"><div class="h-empty">Loading…</div></div>
         <details class="h-panel h-trash" style="margin-top:22px" hidden><summary>Trash <span class="h-count h-trash-count"></span></summary>
@@ -655,6 +679,7 @@ export default function home(root) {
   }
 
   function toast(n) {
+    if (prefs().toasts === false && n.level !== "error" && n.level !== "warning") return;   // Settings: only problems pop up
     const t = document.createElement("div");
     t.className = `h-toast ${n.level || "info"}`; t.setAttribute("role", n.level === "error" ? "alert" : "status");
     t.innerHTML = "<b></b><small></small>"; t.querySelector("b").textContent = n.title; t.querySelector("small").textContent = n.detail || "";
@@ -926,6 +951,7 @@ export default function home(root) {
     teachForm.querySelector("button[type=submit]").disabled = !i.teach;
     if (!i.teach) { transferForm.run.value = QUICK; showQuick(); }                // quick transfer needs no Teach extras
     if (i.restart) showRestart(i.restart);
+    else if (prefs().update_check === false && location.hash !== "#update") renderUpd("quiet", "Check for updates", "Automatic checks are off in Settings. Click to check now.");
     else checkUpdate(location.hash === "#update").then(() => { if (location.hash === "#update" && (upd?.available || upd?.can_update === false)) $(".h-upd").click(); });
   }).catch(() => ($(".h-home").textContent = "Can't reach the PartLabeler server. Restart the app (run_windows.bat) and reload this page."));
   renderSources(); loadProjects(); loadRuns();

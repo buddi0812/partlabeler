@@ -54,14 +54,18 @@ Models download on first install (about 4 GB; SAM 3 from a checksum-verified mir
 
 ## Use
 
-Start the app (`run_windows.bat`, `./run.sh` or `python -m engine.cli app`). It opens a start screen at
-http://127.0.0.1:8765 where you can:
+Start the app (`run_windows.bat`, `./run.sh` or `python -m engine.cli app`). It opens at http://127.0.0.1:8765;
+the first time, create your account (it stays on this computer and keeps your settings, theme and projects
+folder; teammates sharing the computer add their own). The start screen is where you can:
 
 - **create a project**: name it, pick a video (every Nth frame is kept) or an image folder, and type the
   class names or load them from `classes.txt` / `data.yaml`. You can also import existing YOLO labels to
   review or finish, and set a *parent object*, the thing the parts sit on (for example "engine block").
   Suggestions then search inside it, which helps when the camera or distance changes;
 - **open a project** to annotate;
+- open **Settings** (the round account button, top right): light, dark or system theme, colour palettes,
+  animations, Rivet and pop-ups on or off, default track length, brush size, export format and new-task values,
+  and your projects folder (it can move your projects there);
 - **Teach & Transfer**: pick a labeled dataset folder (`images/`, `labels/`, `classes.txt`) and start
   teaching. When it finishes, add the videos or folders to label and start labeling. "Review in annotator"
   opens each result as a project.
@@ -119,6 +123,9 @@ python -m engine.cli new projects/sorting --images messy_folder --classes classe
 python -m engine.cli add projects/line2 --video line3.mp4 --subset Train --segment-size 200   # a task (--images DIR for a folder)
 python -m engine.cli export projects/line2 --format cvat --reviewed-only   # --task line3 / --job 4: part of it
 python -m engine.cli backup projects/line2                               # one zip; restore it with: restore <zip>
+python -m engine.cli backup projects/line2 --task line3                  # one unfinished task; continue it with:
+python -m engine.cli import-task projects/other projects/_backups/task_line2_line3_backup_<time>.zip
+python -m engine.cli account reset ana                                   # forgotten password (also: account list | remove)
 python -m engine.cli teach data/line2_labeled --run projects/_teach/line2_v1 --parent "engine block"
 python -m engine.cli transfer projects/_teach/line2_v1 line3.mp4 line4.mp4 --out projects/_teach/line2_v1/labels
 python -m engine.cli quick data/line2_labeled line3.mp4 --run projects/_teach/quick_line2   # no training, rough preview

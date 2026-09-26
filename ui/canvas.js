@@ -4,8 +4,9 @@
 // Also exports notificationCenter(), shared with the start screen (ui/home.js).
 
 const CSS = `
-.pl { --bg:#eef1f4; --panel:#fff; --ink:#15202b; --muted:#56636f; --line:#d5dbe1; --accent:#0a7c78; --accent-ink:#075e5b;
-  --accent-soft:#e1f0ef; --st0:#dfe4e9; --st1:#b8a8e6; --st2:#6aa6f2; --st3:#27a79b; --st4:#2f9e5b; --flag:#e09a2c; --bad:#c2412f;
+.pl { --bg:var(--c-bg,#eef1f4); --panel:var(--c-panel,#fff); --ink:var(--c-ink,#15202b); --muted:var(--c-muted,#56636f);
+  --line:var(--c-line,#d5dbe1); --accent:var(--c-accent,#0a7c78); --accent-ink:var(--c-accent-ink,#075e5b);
+  --accent-soft:var(--c-accent-soft,#e1f0ef); --st0:var(--c-st0,#dfe4e9); --st1:#b8a8e6; --st2:#6aa6f2; --st3:#27a79b; --st4:#2f9e5b; --flag:#e09a2c; --bad:#c2412f;
   font:14px/1.45 "Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,sans-serif; color:var(--ink); background:var(--bg);
   display:grid; grid-template-rows:auto auto minmax(0,1fr) auto; gap:8px; padding:0 12px 10px; outline:none; position:relative;
   -webkit-tap-highlight-color:transparent; }
@@ -22,8 +23,8 @@ const CSS = `
 .pl-title { font-weight:600; font-size:15px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
 .pl-where { color:var(--muted); font-variant-numeric:tabular-nums; white-space:nowrap; }
 .pl-chip { font-size:12px; font-weight:600; padding:2px 9px; border-radius:99px; white-space:nowrap; }
-.pl-chip.rev { background:#dcf1e4; color:#1f7a44; } .pl-chip.pl-type { background:var(--accent-soft); color:var(--accent-ink); }
-.pl-chip.pl-type:empty { display:none; } .pl-chip.flag { background:#fbecd3; color:#8a5304; }
+.pl-chip.rev { background:var(--c-ok-soft,#dcf1e4); color:var(--c-ok-ink,#1f7a44); } .pl-chip.pl-type { background:var(--accent-soft); color:var(--accent-ink); }
+.pl-chip.pl-type:empty { display:none; } .pl-chip.flag { background:var(--c-warn-soft,#fbecd3); color:var(--c-warn-ink,#8a5304); }
 .pl-sp { flex:1; }
 .pl-saved { color:var(--muted); font-size:13px; white-space:nowrap; display:inline-flex; gap:5px; align-items:center; }
 .pl-saved svg { width:14px; height:14px; } .pl-saved.lost { color:var(--bad); font-weight:600; }
@@ -32,9 +33,9 @@ const CSS = `
 .pl-group-label { color:var(--muted); font-size:13px; margin-right:2px; }
 .pl button { font:inherit; font-size:13.5px; border:1px solid var(--line); background:var(--panel); color:var(--ink); border-radius:7px;
   padding:5px 11px; cursor:pointer; white-space:nowrap; touch-action:manipulation; }
-.pl button:hover:not(:disabled) { border-color:var(--accent); background:#f7fbfb; }
+.pl button:hover:not(:disabled) { border-color:var(--accent); background:var(--c-hover,#f7fbfb); }
 .pl button:disabled { opacity:.45; cursor:default; }
-.pl button.primary { background:var(--accent); border-color:var(--accent); color:#fff; font-weight:600; }
+.pl button.primary { background:var(--accent); border-color:var(--accent); color:var(--c-on-accent,#fff); font-weight:600; }
 .pl button.primary:hover:not(:disabled) { background:var(--accent-ink); }
 .pl button.icon { padding:5px 8px; }
 .pl :focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
@@ -57,7 +58,7 @@ const CSS = `
   gap:14px; overflow:auto; max-height:calc(100vh - 150px); overscroll-behavior:contain; }
 .pl-side h2 { margin:0 0 6px; font-size:13px; font-weight:600; color:var(--ink); }
 .pl-side section { display:flex; flex-direction:column; }
-.pl-tools { display:flex; gap:4px; flex-wrap:wrap; align-items:center; } .pl-tools button[aria-pressed=true] { background:var(--ink); color:#fff; border-color:var(--ink); }
+.pl-tools { display:flex; gap:4px; flex-wrap:wrap; align-items:center; } .pl-tools button[aria-pressed=true] { background:var(--ink); color:var(--panel); border-color:var(--ink); }
 .pl-list { display:flex; flex-direction:column; gap:2px; overflow:auto; overscroll-behavior:contain; }
 .pl-classes { max-height:24vh; } .pl-boxes { max-height:18vh; }
 .pl-row { display:grid; grid-template-columns:12px minmax(16px, auto) minmax(0,1fr) auto; gap:7px; align-items:center; width:100%;
@@ -82,20 +83,20 @@ const CSS = `
 .pl-bar i { display:block; height:100%; background:var(--accent); width:0; }
 .pl-legend { display:flex; gap:12px; flex-wrap:wrap; } .pl-legend span { display:inline-flex; gap:5px; align-items:center; }
 .pl-toasts { position:fixed; right:16px; bottom:16px; display:flex; flex-direction:column; gap:8px; z-index:30; max-width:400px; }
-.pl-toast { background:var(--ink); color:#fff; padding:9px 12px; border-radius:8px; box-shadow:0 6px 18px rgba(0,0,0,.22); display:flex; gap:10px; align-items:flex-start; }
+.pl-toast { background:var(--ink); color:var(--panel); padding:9px 12px; border-radius:8px; box-shadow:0 6px 18px rgba(0,0,0,.22); display:flex; gap:10px; align-items:flex-start; }
 .pl-toast b { font-weight:600; display:block; } .pl-toast small { opacity:.8; display:block; margin-top:1px; overflow-wrap:anywhere; }
-.pl-toast.error { background:var(--bad); } .pl-toast.warning { background:#8a5304; }
-.pl-toast button { background:transparent; color:#fff; border-color:rgba(255,255,255,.45); padding:2px 9px; margin-left:auto; }
-.pl-banner { background:#fde8e5; color:#8b2a1d; border:1px solid #f3b8ae; border-radius:8px; padding:8px 12px; font-weight:600; }
-.pl-banner.info { background:#fdf1d2; color:#6b4700; border-color:#f0d08a; font-weight:500; }
-.pl-help-dlg { border:1px solid var(--line); border-radius:12px; padding:0; width:min(720px, calc(100vw - 32px)); max-height:85vh; color:var(--ink); }
+.pl-toast.error { background:var(--bad); color:#fff; } .pl-toast.warning { background:#8a5304; color:#fff; }
+.pl-toast button { background:transparent; color:inherit; border-color:color-mix(in srgb, currentColor 45%, transparent); padding:2px 9px; margin-left:auto; }
+.pl-banner { background:var(--c-bad-soft,#fde8e5); color:var(--c-bad-ink,#8b2a1d); border:1px solid var(--c-bad-line,#f3b8ae); border-radius:8px; padding:8px 12px; font-weight:600; }
+.pl-banner.info { background:var(--c-warn-soft,#fdf1d2); color:var(--c-warn-ink,#6b4700); border-color:var(--c-warn-line,#f0d08a); font-weight:500; }
+.pl-help-dlg { border:1px solid var(--line); border-radius:12px; padding:0; width:min(720px, calc(100vw - 32px)); max-height:85vh; color:var(--ink); background:var(--panel); }
 .pl-help-dlg::backdrop { background:rgba(21,32,43,.45); }
 .pl-help-dlg header { display:flex; align-items:center; padding:14px 18px; border-bottom:1px solid var(--line); }
 .pl-help-dlg h2 { margin:0; font-size:16px; } .pl-help-dlg header button { margin-left:auto; }
 .pl-help-grid { display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:4px 28px; padding:14px 18px 18px; overflow:auto; }
 .pl-help-grid h3 { grid-column:1 / -1; margin:10px 0 2px; font-size:13px; color:var(--muted); font-weight:600; }
-.pl-help-grid div { display:flex; justify-content:space-between; gap:12px; padding:3px 0; border-bottom:1px solid #eef1f4; font-size:13.5px; }
-.pl kbd, .pl-help-dlg kbd { font:12px/1.2 ui-monospace,"Cascadia Mono",Consolas,monospace; border:1px solid var(--line); border-bottom-width:2px; border-radius:5px; padding:1px 5px; background:#f7f9fa; white-space:nowrap; }
+.pl-help-grid div { display:flex; justify-content:space-between; gap:12px; padding:3px 0; border-bottom:1px solid var(--c-line-2,#eef1f4); font-size:13.5px; }
+.pl kbd, .pl-help-dlg kbd { font:12px/1.2 ui-monospace,"Cascadia Mono",Consolas,monospace; border:1px solid var(--line); border-bottom-width:2px; border-radius:5px; padding:1px 5px; background:var(--c-panel-2,#f7f9fa); white-space:nowrap; }
 .pl-jobmenu { position:relative; }
 .pl-jobmenu > summary { list-style:none; cursor:pointer; font-size:12.5px; font-weight:600; padding:3px 10px; border-radius:99px; border:1px solid var(--line);
   background:var(--panel); white-space:nowrap; display:inline-flex; gap:6px; align-items:center; }
@@ -106,14 +107,14 @@ const CSS = `
 .pl-jm label { display:grid; grid-template-columns:52px minmax(0,1fr); gap:8px; align-items:center; font-size:13px; }
 .pl-jm .pl-tools { justify-content:space-between; }
 .pl-jobstate { font-size:11.5px; font-weight:600; padding:1px 8px; border-radius:99px; background:var(--bg); color:var(--muted); }
-.pl-jobstate.completed { background:#dcf1e4; color:#1f7a44; }
-.pl-brush { display:flex;.pl-brush { display:flex; gap:8px; align-items:center; font-size:13px; margin-top:6px; } .pl-brush input { flex:1; accent-color:var(--accent); }
+.pl-jobstate.completed { background:var(--c-ok-soft,#dcf1e4); color:var(--c-ok-ink,#1f7a44); }
+.pl-brush { display:flex; gap:8px; align-items:center; font-size:13px; margin-top:6px; } .pl-brush input { flex:1; accent-color:var(--accent); }
 .pl-gridwrap { display:flex; flex-direction:column; gap:8px; min-height:0; background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:10px 12px; }
 .pl-gridbar { display:flex; flex-wrap:wrap; gap:6px 12px; align-items:center; }
 .pl-gridbar h2 { margin:0; font-size:15px; font-weight:600; }
 .pl-filters { display:flex; gap:4px; flex-wrap:wrap; }
 .pl-filters button { padding:3px 10px; border-radius:99px; font-size:12.5px; }
-.pl-filters button[aria-pressed=true] { background:var(--ink); color:#fff; border-color:var(--ink); }
+.pl-filters button[aria-pressed=true] { background:var(--ink); color:var(--panel); border-color:var(--ink); }
 .pl-filters b { font-weight:600; font-variant-numeric:tabular-nums; margin-left:3px; opacity:.75; }
 .pl-grid { overflow:auto; max-height:calc(100vh - 205px); min-height:260px; overscroll-behavior:contain; display:flex; flex-direction:column; gap:14px; padding:2px 4px 8px 2px; }
 .pl.big .pl-grid { max-height:calc(var(--plh) - 165px); }
@@ -144,9 +145,9 @@ const CSS = `
 `;
 
 const NOTE_CSS = `
-.pln-bell { position:relative; display:inline-flex; align-items:center; justify-content:center; width:36px; height:32px; border:1px solid #d5dbe1;
-  border-radius:8px; background:#fff; color:#15202b; cursor:pointer; padding:0; }
-.pln-bell:hover { border-color:#0a7c78; } .pln-bell:focus-visible { outline:2px solid #0a7c78; outline-offset:2px; }
+.pln-bell { position:relative; display:inline-flex; align-items:center; justify-content:center; width:36px; height:32px; border:1px solid var(--c-line,#d5dbe1);
+  border-radius:8px; background:var(--c-panel,#fff); color:var(--c-ink,#15202b); cursor:pointer; padding:0; }
+.pln-bell:hover { border-color:var(--c-accent,#0a7c78); } .pln-bell:focus-visible { outline:2px solid var(--c-accent,#0a7c78); outline-offset:2px; }
 .pln-bell svg { width:18px; height:18px; flex:none; transform-origin:50% 10%; }
 .pln-bell.ring svg { animation:pln-ring .9s ease-in-out; }
 .pln-badge.pop { animation:pln-pop .35s cubic-bezier(.2,.9,.3,1.5); }
@@ -154,26 +155,26 @@ const NOTE_CSS = `
 @keyframes pln-pop { from { transform:scale(.4); } }
 .pln-badge { position:absolute; top:-6px; right:-7px; min-width:18px; height:18px; padding:0 5px; border-radius:9px; background:#c2412f; color:#fff;
   font:600 11px/18px system-ui,sans-serif; font-variant-numeric:tabular-nums; text-align:center; }
-.pln-drawer { position:fixed; top:0; right:0; bottom:0; width:min(420px, 100vw); background:#fff; border-left:1px solid #d5dbe1; z-index:40;
-  box-shadow:-10px 0 30px rgba(21,32,43,.14); display:flex; flex-direction:column; color:#15202b; overscroll-behavior:contain;
+.pln-drawer { position:fixed; top:0; right:0; bottom:0; width:min(420px, 100vw); background:var(--c-panel,#fff); border-left:1px solid var(--c-line,#d5dbe1); z-index:40;
+  box-shadow:-10px 0 30px rgba(21,32,43,.14); display:flex; flex-direction:column; color:var(--c-ink,#15202b); overscroll-behavior:contain;
   font:14px/1.45 "Segoe UI Variable Text","Segoe UI",system-ui,sans-serif; transition:transform .18s ease-out; }
 .pln-drawer[hidden] { display:flex; transform:translateX(105%); visibility:hidden; }
 .pln-head { display:flex; align-items:center; gap:8px; padding:14px 16px 10px; }
 .pln-head h2 { margin:0; font-size:16px; font-weight:600; margin-right:auto; }
-.pln-drawer button { font:inherit; font-size:13px; border:1px solid #d5dbe1; background:#fff; color:#15202b; border-radius:7px; padding:4px 10px; cursor:pointer; }
-.pln-drawer button:hover { border-color:#0a7c78; } .pln-drawer button:focus-visible { outline:2px solid #0a7c78; outline-offset:2px; }
-.pln-filter { display:flex; gap:4px; padding:0 16px 10px; border-bottom:1px solid #e6eaee; }
-.pln-filter button[aria-pressed=true] { background:#15202b; color:#fff; border-color:#15202b; }
+.pln-drawer button { font:inherit; font-size:13px; border:1px solid var(--c-line,#d5dbe1); background:var(--c-panel,#fff); color:var(--c-ink,#15202b); border-radius:7px; padding:4px 10px; cursor:pointer; }
+.pln-drawer button:hover { border-color:var(--c-accent,#0a7c78); } .pln-drawer button:focus-visible { outline:2px solid var(--c-accent,#0a7c78); outline-offset:2px; }
+.pln-filter { display:flex; gap:4px; padding:0 16px 10px; border-bottom:1px solid var(--c-line-2,#e6eaee); }
+.pln-filter button[aria-pressed=true] { background:var(--c-ink,#15202b); color:var(--c-panel,#fff); border-color:var(--c-ink,#15202b); }
 .pln-list { list-style:none; margin:0; padding:6px 0 16px; overflow:auto; flex:1; }
-.pln-item { display:grid; grid-template-columns:4px minmax(0,1fr); gap:12px; padding:10px 16px; border-bottom:1px solid #f0f2f4; }
-.pln-item.unread { background:#f5fafa; }
+.pln-item { display:grid; grid-template-columns:4px minmax(0,1fr); gap:12px; padding:10px 16px; border-bottom:1px solid var(--c-line-2,#f0f2f4); }
+.pln-item.unread { background:var(--c-hover,#f5fafa); }
 .pln-mark { border-radius:2px; } .pln-item.success .pln-mark { background:#2f9e5b; } .pln-item.info .pln-mark { background:#6aa6f2; }
 .pln-item.warning .pln-mark { background:#e09a2c; } .pln-item.error .pln-mark { background:#c2412f; }
-.pln-title { font-weight:600; overflow-wrap:anywhere; } .pln-detail { color:#56636f; font-size:13px; overflow-wrap:anywhere; margin-top:1px; }
-.pln-meta { color:#56636f; font-size:12px; margin-top:4px; font-variant-numeric:tabular-nums; }
+.pln-title { font-weight:600; overflow-wrap:anywhere; } .pln-detail { color:var(--c-muted,#56636f); font-size:13px; overflow-wrap:anywhere; margin-top:1px; }
+.pln-meta { color:var(--c-muted,#56636f); font-size:12px; margin-top:4px; font-variant-numeric:tabular-nums; }
 .pln-actions { display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; }
-.pln-empty { color:#56636f; padding:28px 16px; text-align:center; }
-.pln-item.unread { animation:pln-in .3s ease-out; } @keyframes pln-in { from { background:#e1f0ef; } }
+.pln-empty { color:var(--c-muted,#56636f); padding:28px 16px; text-align:center; }
+.pln-item.unread { animation:pln-in .3s ease-out; } @keyframes pln-in { from { background:var(--c-accent-soft,#e1f0ef); } }
 @media (prefers-reduced-motion: reduce) { .pln-drawer { transition:none; } .pln-bell svg, .pln-badge, .pln-item { animation:none !important; } }
 `;
 
@@ -181,6 +182,15 @@ const STATUS = ["No boxes", "Suggestions", "Tracked or imported", "Has your boxe
 const FORMAT_NAMES = { yolo: "YOLO", coco: "COCO", cvat: "CVAT", voc: "Pascal VOC", labelstudio: "Label Studio",
                        folders: "Class folders", csv: "CSV list" };
 const TASK_NAMES = { detect: "Object detection", segment: "Segmentation", classify: "Classification" };
+// The signed-in account's preferences (Settings): the local app puts them in window.PL; notebooks have none,
+// so there the defaults and this browser's storage apply.
+const PREFS = window.PL?.prefs || {};
+function savePref(key, value) {                                       // keep an account setting in step with a change made here
+  if (!window.PL) return false;
+  PREFS[key] = value;
+  fetch("/api/me/prefs", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ [key]: value }) }).catch(() => {});
+  return true;
+}
 let LABEL_COLORS = [];                                                // the project's label colours (#rrggbb), when set
 function rgbOf(i) {                                                   // colorOf(i) as [r, g, b]
   const hex = LABEL_COLORS[i];
@@ -296,14 +306,15 @@ export function notificationCenter({ mount, onRead, onClear, onAction, actionAva
 // Shared by the start screen (floating, bottom right), the annotator (in the header) and notebooks.
 // Answers come from the local server, which asks Gemini Flash-Lite or, without a key, the guide.
 const RIVET_CSS = `
-.rv, .rv-panel { --rv-ink:#1f2a30; --rv-alu:#e9eef1; --rv-steel:#9aa9b1; --rv-teal:#0a7c78; --rv-teal-deep:#075e5b;
-  --rv-amber:#f2a900; --rv-screen:#0f3534; --rv-glow:#8ff5e6; --rv-line:#d5dbe1; --rv-muted:#56636f; }
+.rv, .rv-panel { --rv-ink:#1f2a30; --rv-alu:#e9eef1; --rv-steel:#9aa9b1; --rv-teal:var(--c-accent,#0a7c78); --rv-teal-deep:var(--c-accent-ink,#075e5b);
+  --rv-amber:#f2a900; --rv-screen:#0f3534; --rv-glow:#8ff5e6; --rv-line:var(--c-line,#d5dbe1); --rv-muted:var(--c-muted,#56636f);
+  --rv-fg:var(--c-ink,#1f2a30); --rv-bg:var(--c-panel,#fff); --rv-bg-2:var(--c-panel-2,#f0f3f5); --rv-on:var(--c-on-accent,#fff); }
 .rv [hidden], .rv-panel [hidden] { display:none !important; }
-.rv { position:relative; display:inline-block; font:14px/1.45 "Segoe UI Variable Text","Segoe UI",system-ui,sans-serif; color:var(--rv-ink); }
+.rv { position:relative; display:inline-block; font:14px/1.45 "Segoe UI Variable Text","Segoe UI",system-ui,sans-serif; color:var(--rv-fg); }
 .rv-fab { position:fixed; right:16px; bottom:12px; z-index:35; }
 .rv-launch { position:relative; display:block; border:0; background:none; padding:0; margin:0; cursor:pointer; color:inherit; -webkit-tap-highlight-color:transparent; }
 .rv-fab .rv-launch { width:76px; height:86px; }
-.rv-top .rv-launch { width:38px; height:32px; border:1px solid var(--rv-line); border-radius:8px; background:#fff; display:inline-flex; align-items:center; justify-content:center; }
+.rv-top .rv-launch { width:38px; height:32px; border:1px solid var(--rv-line); border-radius:8px; background:var(--rv-bg); display:inline-flex; align-items:center; justify-content:center; }
 .rv-top .rv-launch:hover { border-color:var(--rv-teal); }
 .rv-launch:focus-visible { outline:2px solid var(--rv-teal); outline-offset:3px; border-radius:12px; }
 .rv-float { display:block; width:100%; height:100%; }
@@ -353,29 +364,29 @@ const RIVET_CSS = `
 @keyframes rv-eq { from { transform:scaleY(.35); } to { transform:scaleY(1.5); } }
 @keyframes rv-wave { 0%, 100% { transform:rotate(0); } 20% { transform:rotate(-130deg); } 40% { transform:rotate(-98deg); }
   60% { transform:rotate(-134deg); } 80% { transform:rotate(-104deg); } }
-.rv-tip { position:absolute; right:4px; bottom:94px; width:max-content; max-width:min(300px, calc(100vw - 36px)); background:#fff; color:var(--rv-ink);
+.rv-tip { position:absolute; right:4px; bottom:94px; width:max-content; max-width:min(300px, calc(100vw - 36px)); background:var(--rv-bg); color:var(--rv-fg);
   border:1px solid var(--rv-line); border-radius:16px 16px 4px 16px; padding:12px 14px; box-shadow:0 14px 34px rgba(31,42,48,.2);
   transform-origin:bottom right; animation:rv-pop .45s cubic-bezier(.2,.9,.3,1.35); z-index:1; }
 .rv-top .rv-tip { top:42px; bottom:auto; right:0; border-radius:16px 4px 16px 16px; transform-origin:top right; }
 .rv-tip.out { animation:rv-out .2s ease-in forwards; }
 .rv-tip p { margin:0; font-size:13.5px; } .rv-tip p b { display:block; font-size:12.5px; color:var(--rv-teal-deep); margin-bottom:2px; }
 .rv-tip-row { display:flex; gap:6px; margin-top:9px; align-items:center; }
-.rv-tip button, .rv-panel button { font:inherit; font-size:13px; border:1px solid var(--rv-line); background:#fff; color:var(--rv-ink); border-radius:99px; padding:4px 12px; cursor:pointer; }
+.rv-tip button, .rv-panel button { font:inherit; font-size:13px; border:1px solid var(--rv-line); background:var(--rv-bg); color:var(--rv-fg); border-radius:99px; padding:4px 12px; cursor:pointer; }
 .rv-tip button:hover, .rv-panel button:hover { border-color:var(--rv-teal); }
-.rv-tip button.go, .rv-panel button.go { background:var(--rv-teal); border-color:var(--rv-teal); color:#fff; font-weight:600; }
+.rv-tip button.go, .rv-panel button.go { background:var(--rv-teal); border-color:var(--rv-teal); color:var(--rv-on); font-weight:600; }
 .rv-tip .x, .rv-ph .x { border:0; background:none; color:var(--rv-muted); padding:2px 8px; margin-left:auto; font-size:15px; }
 .rv-tip :focus-visible, .rv-panel :focus-visible { outline:2px solid var(--rv-teal); outline-offset:2px; }
 @keyframes rv-pop { from { opacity:0; transform:scale(.55) translateY(10px); } }
 @keyframes rv-out { to { opacity:0; transform:scale(.85); } }
 .rv-panel { position:fixed; right:16px; bottom:108px; width:min(410px, calc(100vw - 32px)); height:min(600px, calc(100vh - 136px)); z-index:45;
-  display:flex; flex-direction:column; background:#fff; color:var(--rv-ink); border:1px solid var(--rv-line); border-radius:18px;
+  display:flex; flex-direction:column; background:var(--rv-bg); color:var(--rv-fg); border:1px solid var(--rv-line); border-radius:18px;
   box-shadow:0 26px 64px rgba(31,42,48,.26); font:14px/1.5 "Segoe UI Variable Text","Segoe UI",system-ui,sans-serif; overflow:hidden;
   transform-origin:bottom right; transition:opacity .2s ease-out, transform .3s cubic-bezier(.2,.9,.3,1.15), visibility 0s; }
 .rv-panel.at-top { top:54px; bottom:auto; right:12px; transform-origin:top right; height:min(600px, calc(100vh - 72px)); }
 .rv-panel[hidden] { display:flex; opacity:0; transform:scale(.9) translateY(14px); visibility:hidden; pointer-events:none;
   transition:opacity .2s ease-out, transform .3s cubic-bezier(.2,.9,.3,1.15), visibility 0s .3s; }
 .rv-panel.at-top[hidden] { transform:scale(.9) translateY(-14px); }
-.rv-ph { display:flex; align-items:center; gap:10px; padding:10px 10px 10px 12px; border-bottom:1px solid #e6eaee; background:#f3f6f7; }
+.rv-ph { display:flex; align-items:center; gap:10px; padding:10px 10px 10px 12px; border-bottom:1px solid var(--c-line-2,#e6eaee); background:var(--rv-bg-2); }
 .rv-avatar { width:40px; height:38px; flex:none; }
 .rv-ph-t { min-width:0; flex:1; } .rv-ph-t b { font:600 16px/1.2 Bahnschrift,"DIN Alternate","Segoe UI",system-ui,sans-serif; letter-spacing:.01em; display:block; }
 .rv-ph-t small { display:block; color:var(--rv-muted); font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
@@ -383,34 +394,34 @@ const RIVET_CSS = `
 .rv-ph .rv-ph-b[aria-pressed=false] { color:var(--rv-muted); }
 .rv-log { flex:1; overflow:auto; padding:14px; display:flex; flex-direction:column; gap:10px; overscroll-behavior:contain; }
 .rv-msg { max-width:90%; padding:9px 12px; border-radius:16px; animation:rv-in .24s ease-out; overflow-wrap:anywhere; }
-.rv-msg.bot { align-self:flex-start; background:#f0f3f5; border-bottom-left-radius:4px; }
-.rv-msg.me { align-self:flex-end; background:var(--rv-teal); color:#fff; border-bottom-right-radius:4px; white-space:pre-wrap; }
-.rv-msg.err { background:#fde8e5; color:#8b2a1d; }
+.rv-msg.bot { align-self:flex-start; background:var(--rv-bg-2); border-bottom-left-radius:4px; }
+.rv-msg.me { align-self:flex-end; background:var(--rv-teal); color:var(--rv-on); border-bottom-right-radius:4px; white-space:pre-wrap; }
+.rv-msg.err { background:var(--c-bad-soft,#fde8e5); color:var(--c-bad-ink,#8b2a1d); }
 .rv-msg p { margin:0 0 7px; } .rv-msg p:last-child { margin-bottom:0; }
 .rv-msg ul, .rv-msg ol { margin:4px 0 7px; padding-left:20px; } .rv-msg li { margin:2px 0; }
-.rv-msg code { font:12.5px ui-monospace,"Cascadia Mono",Consolas,monospace; background:#e2e7eb; padding:1px 4px; border-radius:4px; }
-.rv-msg kbd { font:12px/1.2 ui-monospace,"Cascadia Mono",Consolas,monospace; border:1px solid #c9d2d8; border-bottom-width:2px; border-radius:5px; padding:1px 5px; background:#fff; }
+.rv-msg code { font:12.5px ui-monospace,"Cascadia Mono",Consolas,monospace; background:var(--c-bg-2,#e2e7eb); padding:1px 4px; border-radius:4px; }
+.rv-msg kbd { font:12px/1.2 ui-monospace,"Cascadia Mono",Consolas,monospace; border:1px solid var(--rv-line); border-bottom-width:2px; border-radius:5px; padding:1px 5px; background:var(--rv-bg); }
 .rv-msg h4 { margin:2px 0 4px; font-size:14px; }
 .rv-note { font-size:11.5px; color:var(--rv-muted); margin-top:6px; }
 .rv-dos { display:flex; gap:6px; flex-wrap:wrap; margin-top:9px; }
 .rv-panel .rv-do { border-color:var(--rv-teal); color:var(--rv-teal-deep); font-weight:600; }
-.rv-panel .rv-do:hover { background:#e1f0ef; }
+.rv-panel .rv-do:hover { background:var(--c-accent-soft,#e1f0ef); }
 .rv-typing { display:inline-flex; gap:4px; padding:4px 0; } .rv-typing i { width:7px; height:7px; border-radius:50%; background:#8a9aa3; animation:rv-dot 1s ease-in-out infinite; }
 .rv-typing i:nth-child(2) { animation-delay:.15s; } .rv-typing i:nth-child(3) { animation-delay:.3s; }
 @keyframes rv-dot { 0%, 60%, 100% { transform:translateY(0); opacity:.5; } 30% { transform:translateY(-5px); opacity:1; } }
 @keyframes rv-in { from { opacity:0; transform:translateY(6px); } }
 .rv-chips { display:flex; flex-wrap:wrap; gap:6px; padding:2px 14px 10px; }
 .rv-panel .rv-chip { animation:rv-in .3s ease-out both; animation-delay:calc(var(--i, 0) * 70ms); text-align:left; }
-.rv-keybox { margin:0 14px 10px; padding:10px 12px; border:1px dashed #c3ccd2; border-radius:12px; background:#fafbfc; font-size:12.5px; display:grid; gap:7px; }
+.rv-keybox { margin:0 14px 10px; padding:10px 12px; border:1px dashed var(--c-line-hi,#c3ccd2); border-radius:12px; background:var(--rv-bg-2); font-size:12.5px; display:grid; gap:7px; }
 .rv-keybox p { margin:0; color:var(--rv-muted); } .rv-keybox a { color:var(--rv-teal-deep); font-weight:600; }
 .rv-keyrow { display:flex; gap:6px; } .rv-keyrow input { flex:1; min-width:0; font:inherit; border:1px solid var(--rv-line); border-radius:8px; padding:5px 9px; }
 .rv-keyerr { color:#b3321f; }
-.rv-form { display:flex; gap:8px; align-items:flex-end; padding:10px 12px 12px; border-top:1px solid #e6eaee; }
+.rv-form { display:flex; gap:8px; align-items:flex-end; padding:10px 12px 12px; border-top:1px solid var(--c-line-2,#e6eaee); }
 .rv-form textarea { flex:1; resize:none; font:inherit; color:inherit; border:1px solid var(--rv-line); border-radius:14px; padding:8px 12px; max-height:120px; min-height:40px; line-height:1.4; }
 .rv-form textarea:focus-visible { outline:2px solid var(--rv-teal); outline-offset:0; border-color:transparent; }
-.rv-panel .rv-send { width:40px; height:40px; border-radius:50%; padding:0; background:var(--rv-teal); border-color:var(--rv-teal); color:#fff; display:grid; place-items:center; flex:none; transition:transform .15s; }
+.rv-panel .rv-send { width:40px; height:40px; border-radius:50%; padding:0; background:var(--rv-teal); border-color:var(--rv-teal); color:var(--rv-on); display:grid; place-items:center; flex:none; transition:transform .15s; }
 .rv-panel .rv-send:active { transform:scale(.92); } .rv-panel .rv-send svg { width:18px; height:18px; }
-.rv-panel .rv-send.stop { background:var(--rv-ink); border-color:var(--rv-ink); }
+.rv-panel .rv-send.stop { background:var(--rv-fg); border-color:var(--rv-fg); color:var(--rv-bg); }
 @media (max-width: 600px) {
   .rv-panel, .rv-panel.at-top { inset:0; width:auto; height:auto; border-radius:0; border:0; }
   .rv-fab .rv-launch { width:62px; height:70px; } .rv-tip { bottom:78px; } }
@@ -499,10 +510,11 @@ function widgetAssistant(model) {
 }
 
 export function assistant({ mount, transport, variant = "fab", context = () => ({}), actions = {}, starters = [], firstTip = 25000 }) {
+  if (PREFS.rivet === false) return { open() {}, close() {}, toggle() {}, ask() {}, isOpen: false };   // turned off in Settings
   if (!document.getElementById("rv-css")) {
     document.head.appendChild(Object.assign(document.createElement("style"), { id: "rv-css", textContent: RIVET_CSS }));
   }
-  const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+  const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches || document.documentElement.dataset.motion === "off";
   const store = (k, v) => { try { v === undefined ? null : sessionStorage.setItem(k, v); return sessionStorage.getItem(k); } catch { return null; } };
   const local = (k, v) => { try { if (v !== undefined) localStorage.setItem(k, v); return localStorage.getItem(k); } catch { return null; } };
   const root = document.createElement("div");
@@ -529,7 +541,7 @@ export function assistant({ mount, transport, variant = "fab", context = () => (
       <button type="submit" class="rv-send" aria-label="Send">${SEND}</button></form>`;
   document.body.appendChild(panel);
   const $ = (s) => panel.querySelector(s), launch = root.querySelector(".rv-launch"), tipEl = root.querySelector(".rv-tip");
-  const S = { msgs: [], info: null, busy: null, tipsOn: local("pl-rivet-tips") !== "off", tipTimer: null, moodTimer: null };
+  const S = { msgs: [], info: null, busy: null, tipsOn: window.PL ? PREFS.tips !== false : local("pl-rivet-tips") !== "off", tipTimer: null, moodTimer: null };
   try { S.msgs = JSON.parse(store("pl-rivet-chat") || "[]").filter((m) => m && typeof m.text === "string"); } catch { S.msgs = []; }
 
   function mood(state, ms) {
@@ -662,7 +674,7 @@ export function assistant({ mount, transport, variant = "fab", context = () => (
     const t = e.target.closest("button"); if (!t) return;
     if (t.dataset.r === "close") close();
     else if (t.dataset.r === "new") { S.busy?.abort(); S.msgs = []; save(); renderLog(); $("textarea").focus(); }
-    else if (t.dataset.r === "tips") { S.tipsOn = !S.tipsOn; local("pl-rivet-tips", S.tipsOn ? "on" : "off"); renderTips(); }
+    else if (t.dataset.r === "tips") { S.tipsOn = !S.tipsOn; if (!savePref("tips", S.tipsOn)) local("pl-rivet-tips", S.tipsOn ? "on" : "off"); renderTips(); }
     else if (t.dataset.ask) ask(t.dataset.ask, t.dataset.local ? S.info?.[t.dataset.local] : undefined);
     else if (t.dataset.do && actions[t.dataset.do]) {
       if (window.innerWidth <= 600 || variant !== "fab") close();
@@ -733,7 +745,7 @@ function render({ model, el }) {
       <span class="pl-group pl-video">
         <span class="pl-group-label" id="pl-track-label">Track</span>
         <button type="button" data-a="trackBack" title="Track this frame's boxes backwards (R; Shift+R to the start)">◀ Back</button>
-        <input type="number" class="pl-n" min="1" value="20" name="track-frames" autocomplete="off" aria-label="Frames to track" title="Frames to track">
+        <input type="number" class="pl-n" min="1" value="${PREFS.track_n || 20}" name="track-frames" autocomplete="off" aria-label="Frames to track" title="Frames to track">
         <button type="button" data-a="track" title="Track this frame's boxes ahead (T; Shift+T to the end)">Ahead ▶</button>
         <button type="button" data-a="stop" title="Stop the running job (X)">Stop</button>
       </span>
@@ -763,7 +775,7 @@ function render({ model, el }) {
           <button type="button" data-tool="erase" class="pl-seg" title="Erase from the selected outline (E)">Eraser</button>
           <button type="button" data-tool="smartBrush" class="pl-seg" title="Paint roughly: only what the outline model sees as the part is added, so it stops at the part's edge (Shift+P)">Smart brush</button>
           <button type="button" data-tool="smartErase" class="pl-seg" title="Erase roughly: only what the outline model sees as not the part is removed (Shift+E)">Smart eraser</button></div>
-          <label class="pl-brush pl-seg">Brush size <input type="range" class="pl-bsize" min="1" max="120" value="12" name="brush-size" aria-label="Brush size in pixels"><span class="pl-bsize-v">12 px</span></label></section>
+          <label class="pl-brush pl-seg">Brush size <input type="range" class="pl-bsize" min="1" max="120" value="${PREFS.brush || 12}" name="brush-size" aria-label="Brush size in pixels"><span class="pl-bsize-v">12 px</span></label></section>
         <section><h2 id="pl-class-h">Class</h2>
           <input type="search" class="pl-filter" name="class-filter" autocomplete="off" placeholder="Filter classes…" aria-label="Filter classes" hidden>
           <div class="pl-list pl-classes" role="group" aria-labelledby="pl-class-h"></div>
@@ -788,7 +800,7 @@ function render({ model, el }) {
           <p class="pl-sortnote">Select pictures (click, Shift+click, Ctrl+click, Ctrl+A), then press a class number. Double-click to look closer.</p></section>
         <section class="pl-export"><h2>Export dataset</h2><div class="pl-tools">
           <select class="pl-fmt" name="export-format" aria-label="Export format"></select>
-          <label><input type="checkbox" class="pl-revonly" name="confirmed-only"> Confirmed frames only</label>
+          <label><input type="checkbox" class="pl-revonly" name="confirmed-only"${PREFS.confirmed_only ? " checked" : ""}> Confirmed frames only</label>
           <select class="pl-scope" name="export-scope" aria-label="What to export"><option value="job">This job</option><option value="task">This task</option><option value="project">Whole project</option></select>
           <button type="button" class="primary" data-b="export">Export</button></div></section>
         <details class="pl-settings"><summary>Settings</summary>
@@ -855,13 +867,13 @@ function render({ model, el }) {
   const cv = $(".pl-cv"), ctx = cv.getContext("2d"), strip = $(".pl-strip"), sctx = strip.getContext("2d");
   const S = { project: null, statuses: [], flags: [], item: 0, target: 0, data: null, img: null, mask: null,
               maskItem: -1, cls: 0, tool: "click", sel: null, drag: null, busy: false, filter: "",
-              saving: false, savedAt: null, hintHidden: false, started: false, brush: 12, hover: null, paint: null,
+              saving: false, savedAt: null, hintHidden: false, started: false, brush: PREFS.brush || 12, hover: null, paint: null,
               grid: null, zoom: 1, pan: [0, 0], panning: null, space: false };
-  try { S.hintHidden = localStorage.getItem("pl-hint-hidden") === "1"; } catch {}
+  try { S.hintHidden = window.PL ? PREFS.hints === false : localStorage.getItem("pl-hint-hidden") === "1"; } catch {}
   const MUTATING = new Set(["box", "click", "cycle", "delete", "set_class", "review", "accept", "undo", "settings", "paint", "smart_paint", "tag", "accept_tags", "add_class"]);
   const seg = () => S.project?.task === "segment", classify = () => S.project?.task === "classify";
   const send = (m) => { if (MUTATING.has(m.type)) { S.saving = true; renderSaved(); } model.send(m); };
-  const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+  const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches || document.documentElement.dataset.motion === "off";
 
   // ---- notifications ---------------------------------------------------------------------
   const post = (url, body) => fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body || {}) })
@@ -1080,6 +1092,7 @@ function render({ model, el }) {
     const fmt = $(".pl-fmt"), keep = fmt.value;
     fmt.innerHTML = (S.project.formats || ["yolo", "coco"]).map((f) => `<option value="${f}">${FORMAT_NAMES[f] || f}</option>`).join("");
     if (keep) fmt.value = keep;
+    else if ((S.project.formats || []).includes(PREFS.export_format)) fmt.value = PREFS.export_format;
     $(".pl-parent").value = S.project.parent || "";
     $(".pl-typeline").textContent = `Project type: ${TASK_NAMES[S.project.task] || "Object detection"} (chosen when the project was made; its exports follow it).`;
     $(".pl-type").textContent = TASK_NAMES[S.project.task] || "Object detection";
@@ -1101,6 +1114,7 @@ function render({ model, el }) {
   }
 
   function toast({ level = "info", title, detail = "", actionLabel, onClick, ms }) {
+    if (PREFS.toasts === false && level !== "error" && level !== "warning") return;   // Settings: only problems pop up
     const t = document.createElement("div");
     t.className = `pl-toast ${level}`; t.setAttribute("role", level === "error" ? "alert" : "status");
     t.innerHTML = `<div><b></b>${detail ? "<small></small>" : ""}</div>`;
@@ -1214,7 +1228,7 @@ function render({ model, el }) {
     full: () => toggleFull(),
     help: () => $(".pl-help-dlg").showModal(),
     closeHelp: () => $(".pl-help-dlg").close(),
-    hideHint: () => { S.hintHidden = true; try { localStorage.setItem("pl-hint-hidden", "1"); } catch {} renderSide(); el.focus(); },
+    hideHint: () => { S.hintHidden = true; if (!savePref("hints", false)) try { localStorage.setItem("pl-hint-hidden", "1"); } catch {} renderSide(); el.focus(); },
   };
   el.addEventListener("click", (e) => {
     const a = e.target.closest("[data-a]")?.dataset.a; if (a && actions[a]) { actions[a](); return; }
@@ -1229,6 +1243,8 @@ function render({ model, el }) {
   });
   $(".pl-filter").addEventListener("input", (e) => { S.filter = e.target.value; renderSide(); });
   $(".pl-bsize").addEventListener("input", (e) => { S.brush = +e.target.value; renderSide(); });
+  $(".pl-bsize").addEventListener("change", (e) => savePref("brush", +e.target.value));           // remembered in the account
+  $(".pl-n").addEventListener("change", () => savePref("track_n", trackN()));
   $(".pl-addcls").addEventListener("submit", (e) => {
     e.preventDefault();
     const name = $(".pl-newcls").value.trim(); if (!name) return;

@@ -5,10 +5,13 @@
 
 Everything lives in the home folder: one sub-folder per project, `_teach/<run>` per Teach run,
 `_trash/` for projects moved to the trash, `.partlabeler/notifications.json` for the notification history.
+Each account (engine/accounts.py) may pick its own home folder in Settings; --home is the default one.
 The server listens on 127.0.0.1 only; the file browser shows this computer's folders to this computer.
+Every page and API call needs a signed-in account, except /login, /api/auth/* and the UI files.
 """
 import argparse
 import asyncio
+import contextvars
 import json
 import os
 import shutil
@@ -25,11 +28,12 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 import uvicorn
-from fastapi import Body, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse, HTMLResponse, Response, StreamingResponse
+from fastapi import Body, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from engine import assistant
+from engine.accounts import Accounts
 from engine.api import Session
 from engine.notify import Notifications
 from engine.project import IMAGE_EXTS, Project, read_classes
@@ -37,11 +41,12 @@ from engine.project import IMAGE_EXTS, Project, read_classes
 UI_DIR = Path(__file__).parent
 VIDEO_EXTS = {".mp4", ".avi", ".mov", ".mkv", ".webm", ".m4v", ".mpg", ".mpeg", ".wmv"}
 CLASS_EXTS = {".txt", ".yaml", ".yml"}
-HEAD = """<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+HEAD = """<!doctype html><html lang="en"%%THEME%%><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#ffffff">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect x='2' y='3' width='12' height='10' rx='2' fill='none' stroke='%230a7c78' stroke-width='2'/></svg>">"""
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect x='2' y='3' width='12' height='10' rx='2' fill='none' stroke='%230a7c78' stroke-width='2'/></svg>">
+<link rel="stylesheet" href="/ui/theme.css">%%PREFS%%"""
 ANNOTATOR = HEAD + """<title>{name} · PartLabeler</title>
-<body style="margin:0;background:#eef1f4"><div id="app"></div>
+<body style="margin:0;background:var(--c-bg,#eef1f4)"><div id="app"></div>
 <script type="module">
 import canvas from "/ui/canvas.js";
 const handlers = [], queue = [];
@@ -65,35 +70,62 @@ PAGE = HEAD + """<title>{title} · PartLabeler</title>
 <body style="margin:0"><div id="page"></div>
 <script type="module">import {{ page }} from "/ui/pages.js"; page(document.getElementById("page"), {args});</script>"""
 
-state: dict = {"home": Path("projects"), "sessions": {}, "clients": {}, "jobs": {}, "update_check": None, "restart": None}
+state: dict = {"home": Path("projects"), "sessions": {}, "clients": {}, "jobs": {}, "update_check": None, "restart": None,
+               "notes": {}, "accounts": None}
 UPDATE_CHECK_S = 6 * 3600                                    # ask GitHub at most this often
+COOKIE = "pl_session"
+USER: contextvars.ContextVar = contextvars.ContextVar("user", default=None)   # who is signed in, per request
+
+
+# ---- accounts ---------------------------------------------------------------------------------
+def accounts() -> Accounts:
+    if state["accounts"] is None:
+        state["accounts"] = Accounts()
+    return state["accounts"]
+
+
+def home() -> Path:
+    """The projects folder of whoever is signed in (Settings), else the app's default."""
+    custom = accounts().prefs(USER.get())["projects"] if USER.get() else ""
+    return Path(custom) if custom else state["home"]
+
+
+def themed(html: str) -> str:
+    """A page for the signed-in person: their theme on <html>, their preferences for the scripts."""
+    user = USER.get()
+    prefs = accounts().prefs(user)
+    attrs = f' data-theme="{prefs["theme"]}" data-accent="{prefs["accent"]}"' + ("" if prefs["motion"] else ' data-motion="off"')
+    data = json.dumps({"prefs": {k: v for k, v in prefs.items() if k != "projects"},
+                       "user": accounts().profile(user) if user else None}).replace("<", "\\u003c")
+    return html.replace("%%THEME%%", attrs, 1).replace("%%PREFS%%", f"<script>window.PL = {data};</script>", 1)
 
 
 # ---- projects and sessions --------------------------------------------------------------
 def project_dir(name: str) -> Path:
-    folder = (state["home"] / name).resolve()
-    if folder.parent != state["home"].resolve() or not (folder / "project.json").exists():
+    folder = (home() / name).resolve()
+    if folder.parent != home().resolve() or not (folder / "project.json").exists():
         raise HTTPException(404, f"no project called {name!r}")
     return folder
 
 
 def session(name: str) -> Session:
-    if name not in state["sessions"]:
-        p = Project(project_dir(name))
-        state["clients"].setdefault(name, set())
-        state["sessions"][name] = Session(p, lambda m, n=name: broadcast(n, m),
-                                          image_src=lambda item, n=name: f"/items/{n}/{item}.jpg", notes=notes())
-        state["sessions"][name].thumb_src = lambda of, key, n=name: f"/thumbs/{quote(n)}/{of}/{key}.jpg"
-    return state["sessions"][name]
+    """The project's session, one per project folder, shared by every tab (and account) that opens it."""
+    key = str(project_dir(name))
+    if key not in state["sessions"]:
+        p = Project(Path(key))
+        state["clients"].setdefault(key, set())
+        state["sessions"][key] = Session(p, lambda m, k=key: broadcast(k, m),
+                                         image_src=lambda item, n=name: f"/items/{n}/{item}.jpg", notes=notes())
+        state["sessions"][key].thumb_src = lambda of, key, n=name: f"/thumbs/{quote(n)}/{of}/{key}.jpg"
+    return state["sessions"][key]
 
 
 def notes() -> Notifications:
     """The notification history of the current projects folder, shared by the start screen and every tab."""
-    home = state["home"].resolve()
-    if state.get("notes_home") != home:
-        state["notes"] = Notifications(home / ".partlabeler" / "notifications.json", on_change=broadcast_all)
-        state["notes_home"] = home
-    return state["notes"]
+    h = home().resolve()
+    if h not in state["notes"]:
+        state["notes"][h] = Notifications(h / ".partlabeler" / "notifications.json", on_change=lambda m, h=h: broadcast_home(h, m))
+    return state["notes"][h]
 
 
 def note(level: str, title: str, detail: str = "", project: str | None = None, action: dict | None = None) -> dict:
@@ -109,17 +141,19 @@ def project(name: str) -> Project:
     return session(name).p
 
 
-def broadcast_all(msg: dict) -> None:
-    for name in list(state["clients"]):
-        broadcast(name, msg)
+def broadcast_home(h: Path, msg: dict) -> None:
+    """To the tabs of every project in the projects folder `h`."""
+    for key in list(state["clients"]):
+        if Path(key).parent == h:
+            broadcast(key, msg)
 
 
-def broadcast(name: str, msg: dict) -> None:
-    """Thread-safe: background jobs call this; each open tab has its own outgoing queue."""
+def broadcast(key: str, msg: dict) -> None:
+    """To the open tabs of one project (key: its folder). Thread-safe: background jobs call this."""
     loop = state.get("loop")
     if loop is None:
         return
-    for q in list(state["clients"].get(name, ())):
+    for q in list(state["clients"].get(key, ())):
         loop.call_soon_threadsafe(q.put_nowait, msg)
 
 
@@ -134,10 +168,11 @@ def summary(folder: Path) -> dict:
            "parent": meta.get("parent"), "modified": (folder / "labels.sqlite").stat().st_mtime
            if (folder / "labels.sqlite").exists() else (folder / "project.json").stat().st_mtime}
     try:
-        p = state["sessions"][folder.name].p if folder.name in state["sessions"] else Project(folder)
+        key = str(folder.resolve())
+        p = state["sessions"][key].p if key in state["sessions"] else Project(folder)
         st = p.statuses()
         out.update(items=len(st), labeled=sum(s >= 2 for s in st), confirmed=sum(s == 4 for s in st))
-        if folder.name not in state["sessions"]:
+        if key not in state["sessions"]:
             p.db.close()
     except Exception as e:                                   # a moved source folder should not hide the project
         out.update(items=0, labeled=0, confirmed=0, problem=f"{type(e).__name__}: {e}")
@@ -150,7 +185,7 @@ def start_job(kind: str, fn, on_done=None, fail_title: str | None = None) -> str
     on_done(result) records the success notification; a failure is recorded as `fail_title`."""
     jid = uuid.uuid4().hex[:10]
     job = {"id": jid, "kind": kind, "done": 0, "total": 0, "text": "Starting…", "log": [], "finished": False,
-           "error": None, "result": None, "stop": False, "started": time.time()}
+           "error": None, "result": None, "stop": False, "started": time.time(), "user": USER.get()}
     state["jobs"][jid] = job
 
     def progress(done, total, text=""):
@@ -172,7 +207,7 @@ def start_job(kind: str, fn, on_done=None, fail_title: str | None = None) -> str
         finally:
             job["finished"] = True
 
-    threading.Thread(target=run, daemon=True).start()
+    threading.Thread(target=contextvars.copy_context().run, args=(run,), daemon=True).start()   # same account inside
     return jid
 
 
@@ -216,13 +251,171 @@ async def revalidate_ui(request, call_next):
     return response
 
 
+OPEN = ("/login", "/api/auth/", "/ui/")                  # reachable before signing in
+
+
+@app.middleware("http")
+async def signed_in(request, call_next):
+    """Pages send people to /login until they sign in; API calls answer 401. Sets USER for the request."""
+    user = accounts().user_for(request.cookies.get(COOKIE))
+    path = request.url.path
+    if user is None and not path.startswith(OPEN):
+        if request.method == "GET" and not path.startswith(("/api/", "/items/", "/thumbs/", "/previews/")):
+            back = path + (f"?{request.url.query}" if request.url.query else "")
+            return RedirectResponse(f"/login?next={quote(back)}", status_code=303)
+        return JSONResponse({"detail": "Sign in first (open the start page)"}, status_code=401)
+    token = USER.set(user)
+    try:
+        return await call_next(request)
+    finally:
+        USER.reset(token)
+
+
+def _signed_in_as(response: Response, user: str, keep: bool) -> dict:
+    response.set_cookie(COOKIE, accounts().sign_in(user, keep), max_age=30 * 86400 if keep else None,
+                        httponly=True, samesite="strict", path="/")
+    return accounts().profile(user)
+
+
+@app.get("/login", response_class=HTMLResponse)
+def login_page(next: str = "/"):
+    if USER.get():
+        return RedirectResponse(next if next.startswith("/") and not next.startswith("//") else "/", status_code=303)
+    return _page("Sign in", view="login", first=not accounts().users())
+
+
+@app.post("/api/auth/login")
+def login(response: Response, body: dict = Body(...)) -> dict:
+    # ponytail: no attempt limit; the server only listens on 127.0.0.1, where the files themselves are readable
+    user = accounts().verify(body.get("username", ""), body.get("password", ""))
+    if not user:
+        raise HTTPException(401, "Wrong username or password")
+    return _signed_in_as(response, user, bool(body.get("keep")))
+
+
+@app.post("/api/auth/signup")
+def signup(response: Response, body: dict = Body(...)) -> dict:
+    try:
+        user = accounts().create(body.get("username", ""), body.get("password", ""), body.get("name", ""))["username"]
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return _signed_in_as(response, user, bool(body.get("keep")))
+
+
+@app.post("/api/auth/logout")
+def logout(request: Request, response: Response) -> dict:
+    accounts().sign_out(request.cookies.get(COOKIE))
+    response.delete_cookie(COOKIE, path="/")
+    return {"ok": True}
+
+
+@app.get("/settings", response_class=HTMLResponse)
+def settings_page() -> str:
+    return _page("Settings", view="settings")
+
+
+@app.get("/api/me")
+def me() -> dict:
+    user = USER.get()
+    return {"user": accounts().profile(user), "prefs": accounts().prefs(user), "home": str(home().resolve()),
+            "default_home": str(state["home"].resolve())}
+
+
+@app.patch("/api/me")
+def update_me(body: dict = Body(...)) -> dict:
+    return accounts().rename(USER.get(), body.get("name", ""))
+
+
+@app.post("/api/me/prefs")
+def update_prefs(body: dict = Body(...)) -> dict:
+    """Change preferences (not the projects folder: that has its own call, which can move the projects)."""
+    if "projects" in body:
+        raise HTTPException(400, "Change the projects folder with /api/me/projects-folder")
+    try:
+        return accounts().set_prefs(USER.get(), body)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.post("/api/me/password")
+def change_password(request: Request, response: Response, body: dict = Body(...)) -> dict:
+    user = USER.get()
+    if not accounts().verify(user, body.get("old", "")):
+        raise HTTPException(400, "The current password is not right")
+    try:
+        accounts().set_password(user, body.get("new", ""))           # signs out everywhere…
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return _signed_in_as(response, user, True)                        # …except here
+
+
+@app.post("/api/me/delete")
+def delete_me(response: Response, body: dict = Body(...)) -> dict:
+    """Remove the account (after its password); the projects stay where they are."""
+    user = USER.get()
+    if not accounts().verify(user, body.get("password", "")):
+        raise HTTPException(400, "The password is not right")
+    accounts().delete(user)
+    response.delete_cookie(COOKIE, path="/")
+    return {"ok": True}
+
+
+@app.post("/api/me/projects-folder")
+def set_projects_folder(body: dict = Body(...)) -> dict:
+    """Use another projects folder ("" = the app's default). With move, everything in the current folder moves
+    there first (a background job): projects, trash, backups, Teach runs."""
+    user, old = USER.get(), home().resolve()
+    raw = str(body.get("path", "")).strip().strip('"')
+    new = Path(raw).expanduser() if raw else state["home"]
+    if not new.is_absolute() and raw:
+        raise HTTPException(400, "Give the folder's full path, e.g. D:\\PartLabeler\\projects")
+    new = new.resolve()
+    value = "" if new == state["home"].resolve() else str(new)
+    if new == old:
+        return {"home": str(old), "job": None}
+    try:
+        new.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        raise HTTPException(400, f"Could not use {new}: {e}")
+    if not body.get("move"):
+        accounts().set_prefs(user, {"projects": value})
+        return {"home": str(new), "job": None}
+    if old in new.parents or new in old.parents:
+        raise HTTPException(400, "One folder is inside the other: pick a separate folder to move the projects to")
+    if any(not j["finished"] for j in state["jobs"].values()) or any(
+            s.running for k, s in state["sessions"].items() if Path(k).parent == old):
+        raise HTTPException(409, "A job is running (tracking, export, Teach…). Let it finish or stop it, then move the projects.")
+    for k in [k for k in state["sessions"] if Path(k).parent == old]:      # let go of the files before moving them
+        state["sessions"].pop(k).p.db.close()
+
+    def job(progress, should_stop):
+        accounts().set_prefs(user, {"projects": value})
+        entries, moved, skipped = sorted(old.iterdir()) if old.exists() else [], [], []
+        for k, e in enumerate(entries):
+            progress(k, len(entries), f"Moving {e.name}")
+            if (new / e.name).exists():
+                skipped.append(e.name)
+                continue
+            shutil.move(str(e), str(new / e.name))
+            moved.append(e.name)
+        return {"home": str(new), "moved": moved, "skipped": skipped}
+
+    def done(res):
+        n = len(res['moved'])
+        note("success", f"Moved {n} item{'' if n == 1 else 's'} to {res['home']}",
+             f"Already there, so left in {old}: {', '.join(res['skipped'])}" if res["skipped"] else "The projects folder is now there.",
+             action={"type": "folder", "path": res["home"], "label": "Open folder"})
+
+    return {"home": str(new), "job": start_job("move", job, done, f"Could not move everything out of {old}; the rest is still there")}
+
+
 @app.get("/", response_class=HTMLResponse)
 def home_page() -> str:
-    return HOME
+    return themed(HOME)
 
 
 def _page(title: str, **args) -> str:
-    return PAGE.format(title=title.replace("<", "&lt;"), args=json.dumps(args).replace("</", "<\\/"))
+    return themed(PAGE.format(title=title.replace("<", "&lt;"), args=json.dumps(args).replace("</", "<\\/")))
 
 
 @app.get("/p/{name}", response_class=HTMLResponse)
@@ -259,7 +452,7 @@ def task_page(name: str, tid: int) -> str:
 @app.get("/projects/{name}/tasks/{tid}/jobs/{jid}", response_class=HTMLResponse)
 def job_page(name: str, tid: int, jid: int) -> str:
     project_dir(name)
-    return ANNOTATOR.format(name=name.replace("<", "&lt;"), name_js=json.dumps(name)[1:-1], job=int(jid))
+    return themed(ANNOTATOR.format(name=name.replace("<", "&lt;"), name_js=json.dumps(name)[1:-1], job=int(jid)))
 
 
 
@@ -298,14 +491,15 @@ def project_detail(name: str) -> dict:
 
 def refresh(name: str, reload: bool = False) -> None:
     """Tell open annotator tabs: tasks, jobs or labels changed (reload: item numbers moved)."""
-    if name in state["sessions"]:
-        s_ = state["sessions"][name]
+    key = str(project_dir(name))
+    if key in state["sessions"]:
+        s_ = state["sessions"][key]
         if reload:
-            state["sessions"].pop(name)
-            broadcast(name, {"type": "reload"})
+            state["sessions"].pop(key)
+            broadcast(key, {"type": "reload"})
         else:
-            broadcast(name, s_.project_msg())
-            broadcast(name, s_.status_msg())
+            broadcast(key, s_.project_msg())
+            broadcast(key, s_.status_msg())
 
 
 @app.get("/api/projects/{name}")
@@ -465,14 +659,57 @@ def backup(name: str) -> dict:
 
     def job(progress, should_stop):
         progress(0, 1, "Packing the project")
-        out = state["home"] / "_backups" / f"project_{name}_backup_{time.strftime('%Y_%m_%d_%H_%M_%S')}.zip"
-        return backup_project(state["home"] / name, out)
+        out = home() / "_backups" / f"project_{name}_backup_{time.strftime('%Y_%m_%d_%H_%M_%S')}.zip"
+        return backup_project(home() / name, out)
 
     def done(res):
-        note("success", f"Backed up {name}", f"{res['items']} frames or images, {res['size'] / 2**20:.0f} MB. {res['file']}", name,
+        note("success", f"Backed up {name}", f"{res['items']} frames or images, {res['size'] / 2**20:.1f} MB. {res['file']}", name,
              {"type": "folder", "path": str(Path(res["file"]).parent), "label": "Open folder"})
 
     return {"job": start_job("backup", job, done, f"Could not back up {name}")}
+
+
+@app.post("/api/projects/{name}/tasks/{tid}/backup")
+def backup_task(name: str, tid: int) -> dict:
+    """CVAT's "Backup task": one task with its frames, labels, confirmed frames and jobs, as a zip."""
+    from engine.project import backup_project
+    folder = project_dir(name)
+    t = next((t for t in project(name).sources if t["id"] == tid), None)
+    if t is None:
+        raise HTTPException(404, f"no task {tid} in {name}")
+
+    def job(progress, should_stop):
+        progress(0, 1, f"Packing task {t['name']}")
+        out = home() / "_backups" / f"task_{name}_{t['name']}_backup_{time.strftime('%Y_%m_%d_%H_%M_%S')}.zip"
+        return backup_project(folder, out, tasks=[tid])
+
+    def done(res):
+        note("success", f"Backed up task {t['name']}", f"{res['items']} frames or images, {res['size'] / 2**20:.1f} MB. {res['file']}", name,
+             {"type": "folder", "path": str(Path(res["file"]).parent), "label": "Open folder"})
+
+    return {"job": start_job("backup", job, done, f"Could not back up task {t['name']}")}
+
+
+@app.post("/api/projects/{name}/tasks/import")
+def import_tasks(name: str, body: dict = Body(...)) -> dict:
+    """Add the task(s) of a backup zip to this project, with their progress (a task or a project backup)."""
+    project_dir(name)
+    path = Path(str(body.get("path", "")).strip().strip('"'))
+    if not path.is_file():
+        raise HTTPException(400, f"Not a file: {path}")
+
+    def job(progress, should_stop):
+        progress(0, 1, "Unpacking the backup")
+        res = project(name).add_tasks_from(path)
+        refresh(name)
+        return res
+
+    def done(res):
+        extra = f" New labels: {', '.join(res['labels_added'])}." if res["labels_added"] else ""
+        note("success", f"Added {', '.join(res['tasks'])} to {name}", f"{res['items']} frames or images with their labels.{extra}",
+             name, open_action(name))
+
+    return {"job": start_job("import", job, done, f"Could not add the backup to {name}")}
 
 
 @app.post("/api/backups/restore")
@@ -485,7 +722,7 @@ def restore(body: dict = Body(...)) -> dict:
 
     def job(progress, should_stop):
         progress(0, 1, "Unpacking the backup")
-        dest = restore_project(path, state["home"], (body.get("name") or "").strip() or None)
+        dest = restore_project(path, home(), (body.get("name") or "").strip() or None)
         return {"name": dest.name}
 
     def done(res):
@@ -549,14 +786,21 @@ def thumb(name: str, of: str, key: int):
 @app.websocket("/ws/{name}")
 async def ws(sock: WebSocket, name: str):
     await sock.accept()
+    user = accounts().user_for(sock.cookies.get(COOKIE))
+    if user is None:
+        await sock.send_json({"type": "error", "text": "Signed out: open the start page and sign in again"})
+        await sock.close()
+        return
+    USER.set(user)                                            # this connection's task only
     try:
         sess = await asyncio.to_thread(session, name)
     except HTTPException as e:
         await sock.send_json({"type": "error", "text": e.detail})
         await sock.close()
         return
+    key = str(sess.p.folder)
     q: asyncio.Queue = asyncio.Queue()
-    state["clients"][name].add(q)
+    state["clients"][key].add(q)
 
     async def pump():
         while True:
@@ -571,7 +815,7 @@ async def ws(sock: WebSocket, name: str):
         pass
     finally:
         sender.cancel()
-        state["clients"][name].discard(q)
+        state["clients"][key].discard(q)
 
 
 @app.get("/api/info")
@@ -581,7 +825,7 @@ def info() -> dict:
         version = (update.current()["sha"] or "")[:7]
     except Exception:
         version = ""
-    return {"home": str(state["home"].resolve()), "device": hw.describe(), "gpu": hw.memory(),
+    return {"home": str(home().resolve()), "device": hw.describe(), "gpu": hw.memory(),
             "teach": _has_teach(), "version": version, "restart": state["restart"]}
 
 
@@ -611,7 +855,7 @@ def update_now() -> dict:
         raise HTTPException(409, "A job is running (tracking, Teach, Transfer…). Let it finish or stop it, then update.")
 
     def job(progress, should_stop):
-        return update.update(state["home"], packages_now=False, log=lambda text: progress(0, 0, text))
+        return update.update(home(), packages_now=False, log=lambda text: progress(0, 0, text))
 
     def done(res):
         state["restart"] = res
@@ -637,9 +881,9 @@ def _has_teach() -> bool:
 
 @app.get("/api/projects")
 def list_projects() -> list:
-    home = state["home"]
-    found = [f for f in home.iterdir() if (f / "project.json").exists() and not f.name.startswith((".", "_trash"))] \
-        if home.exists() else []
+    h = home()
+    found = [f for f in h.iterdir() if (f / "project.json").exists() and not f.name.startswith((".", "_trash"))] \
+        if h.exists() else []
     return sorted((summary(f) for f in found), key=lambda s: -s["modified"])
 
 
@@ -648,7 +892,7 @@ def create_project(body: dict = Body(...)) -> dict:
     """Create a project (CVAT: name + labels). With no video or folder it is made at once, empty, and tasks are
     added on its page; with one, it is made in the background with that first task."""
     name = safe_name(body.get("name", ""))
-    folder = state["home"] / name
+    folder = home() / name
     if (folder / "project.json").exists():
         raise HTTPException(400, f"A project called {name!r} already exists")
     colors = None
@@ -706,7 +950,7 @@ def create_project(body: dict = Body(...)) -> dict:
 
 @app.get("/api/jobs")
 def list_jobs() -> list:
-    return [public(j) for j in sorted(state["jobs"].values(), key=lambda j: -j["started"])]
+    return [public(j) for j in sorted(state["jobs"].values(), key=lambda j: -j["started"]) if j.get("user") == USER.get()]
 
 
 @app.get("/api/jobs/{jid}")
@@ -735,7 +979,7 @@ def classes_file(path: str) -> dict:
 def browse(path: str = "", kind: str = "any") -> dict:
     """Folders and matching files under `path`; with no path, the drives and handy starting points."""
     if not path:
-        places = [str(Path.home()), str(state["home"].resolve()), str(UI_DIR.parent)]
+        places = [str(Path.home()), str(home().resolve()), str(UI_DIR.parent)]
         if os.name == "nt":                                   # listing drives must not touch them: slow network drives
             places += list(os.listdrives()) if hasattr(os, "listdrives") else [
                 f"{d}:\\" for i, d in enumerate(string.ascii_uppercase) if __import__("ctypes").windll.kernel32.GetLogicalDrives() >> i & 1]
@@ -768,7 +1012,7 @@ def browse(path: str = "", kind: str = "any") -> dict:
 
 # ---- Teach & Transfer ---------------------------------------------------------------------
 def runs_dir() -> Path:
-    return state["home"] / "_teach"
+    return home() / "_teach"
 
 
 @app.get("/api/runs")
@@ -885,7 +1129,7 @@ def review(body: dict = Body(...)) -> dict:
     if not source:
         raise HTTPException(400, "This output does not record its source video; create the project by hand")
     name = safe_name(body.get("name") or f"review_{out.name}")
-    folder = state["home"] / name
+    folder = home() / name
     if (folder / "project.json").exists():
         return {"name": name}
     classes = settings["classes"]
@@ -925,14 +1169,14 @@ def clear_notifications() -> dict:
 
 
 def trash_dir() -> Path:
-    return state["home"] / "_trash"
+    return home() / "_trash"
 
 
 @app.post("/api/projects/{name}/trash")
 def trash_project(name: str) -> dict:
     """Move a project to <home>/_trash (recoverable from the notification or the Trash list)."""
     folder = project_dir(name)
-    sess = state["sessions"].pop(name, None)
+    sess = state["sessions"].pop(str(folder), None)
     if sess:
         sess.p.db.close()
     entry = f"{name}__{time.strftime('%Y%m%d_%H%M%S')}"
@@ -960,9 +1204,9 @@ def restore_project(entry: str) -> dict:
     if src.parent != trash_dir().resolve() or not (src / "project.json").exists():
         raise HTTPException(404, "That project is no longer in the trash")
     name = entry.rsplit("__", 1)[0]
-    target, k = state["home"] / name, 2
+    target, k = home() / name, 2
     while target.exists():
-        target, k = state["home"] / f"{name}_{k}", k + 1
+        target, k = home() / f"{name}_{k}", k + 1
     shutil.move(str(src), str(target))
     note("success", f"Restored {target.name}", "", target.name, open_action(target.name))
     return {"name": target.name}
@@ -972,8 +1216,8 @@ def restore_project(entry: str) -> dict:
 def open_folder(body: dict = Body(...)) -> dict:
     """Show a folder in the file manager; only folders inside the projects folder."""
     path = Path(body.get("path", "")).resolve()
-    home = state["home"].resolve()
-    if not path.is_dir() or (path != home and home not in path.parents):
+    h = home().resolve()
+    if not path.is_dir() or (path != h and h not in path.parents):
         raise HTTPException(400, "Only folders inside the projects folder can be opened")
     if os.name == "nt":
         os.startfile(str(path))                                     # noqa: S606 (local desktop app)
@@ -1012,9 +1256,10 @@ def assistant_chat(body: dict = Body(...)):
 def serve(home: Path = Path("projects"), port: int = 8765, open_browser: bool = True, project: str | None = None) -> None:
     state["home"] = Path(home)
     state["home"].mkdir(parents=True, exist_ok=True)
-    notes()
     url = f"http://127.0.0.1:{port}/" + (f"p/{project}" if project else "")
     print(f"PartLabeler: {url}   (projects in {state['home'].resolve()}; Ctrl+C to quit)", flush=True)
+    if not accounts().users():
+        print("First start: the page asks you to create your account.", flush=True)
     if open_browser:
         threading.Timer(1.5, lambda: webbrowser.open(url)).start()
     uvicorn.run(app, host="127.0.0.1", port=port, log_level="warning")

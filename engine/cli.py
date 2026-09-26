@@ -3,7 +3,9 @@
     partlabeler app                                   the annotator start page in the browser
     partlabeler new PROJECT --video V --classes F     a project from a video (or --images DIR)
     partlabeler add PROJECT --video V                 another video (or --images DIR) as a new task
-    partlabeler backup PROJECT | restore ZIP          a project as one zip, and back
+    partlabeler backup PROJECT [--task T] | restore ZIP   a project (or some tasks) as one zip, and back
+    partlabeler import-task PROJECT ZIP               add a backup's tasks, with their progress, to a project
+    partlabeler account list | reset NAME | remove NAME   accounts of the local app (forgotten password: reset)
     partlabeler export PROJECT --format coco          write the dataset
     partlabeler teach DATASET --run RUN               learn a labeled source (Teach & Transfer)
     partlabeler transfer RUN VIDEO... --out DIR       label similar videos / image folders like the source
@@ -147,11 +149,21 @@ def add(project: Path = typer.Argument(..., exists=True, file_okay=False, help="
 
 @app.command()
 def backup(project: Path = typer.Argument(..., exists=True, file_okay=False, help="Project folder."),
+           task: list[str] = typer.Option(None, "--task", help="Only this task (name), as CVAT's Backup task; repeat for several."),
            out: Path | None = typer.Option(None, help="Zip file (default: <projects>/_backups/project_<name>_backup_<time>.zip).")):
     """Back up a project into one zip (settings, labels, frames and folder pictures), as CVAT's Backup project."""
-    from engine.project import backup_project
-    out = out or project.parent / "_backups" / f"project_{project.name}_backup_{time.strftime('%Y_%m_%d_%H_%M_%S')}.zip"
-    res = backup_project(project, out)
+    from engine.project import Project, backup_project
+    ids = None
+    if task:
+        p = Project(project)
+        by_name = {t["name"]: t["id"] for t in p.sources}
+        p.db.close()
+        if missing := [t for t in task if t not in by_name]:
+            raise typer.BadParameter(f"no task {', '.join(missing)}; tasks: {', '.join(by_name)}", param_hint="--task")
+        ids = [by_name[t] for t in task]
+    kind = f"task_{project.name}_{'_'.join(task)}" if task else f"project_{project.name}"
+    out = out or project.parent / "_backups" / f"{kind}_backup_{time.strftime('%Y_%m_%d_%H_%M_%S')}.zip"
+    res = backup_project(project, out, tasks=ids)
     typer.echo(f"backed up {res['items']} frames or images, {res['size'] / 2**20:.0f} MB -> {res['file']}")
 
 
@@ -162,6 +174,54 @@ def restore(backup_zip: Path = typer.Argument(..., exists=True, dir_okay=False, 
     """Create a project from a backup zip (CVAT's Create from backup)."""
     from engine.project import restore_project
     typer.echo(f"restored -> {restore_project(backup_zip, home, name)}")
+
+
+@app.command("import-task")
+def import_task(project: Path = typer.Argument(..., exists=True, file_okay=False, help="Project folder."),
+                backup_zip: Path = typer.Argument(..., exists=True, dir_okay=False, help="A task or project backup zip.")):
+    """Add the tasks of a backup zip to a project with their frames, labels, confirmed frames and jobs."""
+    from engine.project import Project
+    res = Project(project).add_tasks_from(backup_zip)
+    typer.echo(f"added {', '.join(res['tasks'])}: {res['items']} frames or images"
+               + (f"; new labels: {', '.join(res['labels_added'])}" if res["labels_added"] else ""))
+
+
+account_app = typer.Typer(help="Accounts of the local app: each keeps its settings and projects folder.", no_args_is_help=True)
+app.add_typer(account_app, name="account")
+
+
+@account_app.command("list")
+def account_list():
+    """The accounts on this computer."""
+    from engine.accounts import Accounts
+    for u in Accounts().users() or [{"username": "(none yet: the app asks for one on first start)", "name": ""}]:
+        typer.echo(f"{u['username']}  {u['name'] if u['name'] != u['username'] else ''}".rstrip())
+
+
+@account_app.command("reset")
+def account_reset(username: str = typer.Argument(..., help="The account's username.")):
+    """Set a new password (for a forgotten one); signs the account out everywhere."""
+    from engine.accounts import Accounts
+    acc = Accounts()
+    if not any(u["username"].lower() == username.lower() for u in acc.users()):
+        raise typer.BadParameter(f"no account called {username}")
+    password = typer.prompt("New password", hide_input=True, confirmation_prompt=True)
+    try:
+        acc.set_password(username, password)
+    except ValueError as e:
+        raise typer.BadParameter(str(e))
+    typer.echo(f"New password set for {username}.")
+
+
+@account_app.command("remove")
+def account_remove(username: str = typer.Argument(..., help="The account's username.")):
+    """Remove an account and its settings; its projects stay where they are."""
+    from engine.accounts import Accounts
+    try:
+        Accounts().delete(username)
+    except KeyError as e:
+        raise typer.BadParameter(str(e.args[0]))
+    typer.echo(f"Removed {username}.")
 
 
 @app.command()
