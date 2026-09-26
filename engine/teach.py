@@ -209,7 +209,7 @@ def _save(img: Image.Image, path: Path) -> None:
 
 
 def write_data_yaml(folder, classes, train: str = "images", val: str = "images") -> None:
-    Path(folder, "data.yaml").write_text(f"path: .\ntrain: {train}\nval: {val}\n\nnc: {len(classes)}\nnames:\n" +
+    Path(folder, "data.yaml").write_text(f"train: {train}\nval: {val}\n\nnc: {len(classes)}\nnames:\n" +
                                          "".join(f"  {i}: {n}\n" for i, n in enumerate(classes)), encoding="utf-8")
 
 

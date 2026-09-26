@@ -88,6 +88,7 @@ def test_outline_project_exports_every_format(tmp_path, images):
         assert (res["images"], res["boxes"], res["no_outline"]) == (3, 2, 1), fmt
     line = (tmp_path / "yolo/labels/a.txt").read_text().split()
     assert line[0] == "1" and len(line) > 7
+    assert "path:" not in (tmp_path / "yolo/data.yaml").read_text()     # tools then use the yaml's own folder
     coco = json.loads((tmp_path / "coco/annotations.json").read_text())
     assert isinstance(coco["annotations"][0]["segmentation"], dict) and coco["annotations"][0]["area"] == int(ring().sum())
     seg = coco["annotations"][1]["segmentation"]                 # small pieces: polygons would lose too much

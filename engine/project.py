@@ -368,7 +368,9 @@ class Project:
             n_img += 1
             n_boxes += len(lines)
         (out / "classes.txt").write_text("\n".join(self.classes) + "\n", encoding="utf-8")
-        (out / "data.yaml").write_text("path: .\ntrain: images\nval: images\n\n"
+        # No "path:": Ultralytics and RF-DETR then use this file's own folder ("path: ." meant the folder the
+        # training was started from, so training from anywhere else found no images).
+        (out / "data.yaml").write_text("train: images\nval: images\n\n"
                                        f"nc: {len(self.classes)}\nnames:\n" +
                                        "".join(f"  {i}: {n}\n" for i, n in enumerate(self.classes)), encoding="utf-8")
         return self._result(n_img, n_boxes, folder=str(out))
