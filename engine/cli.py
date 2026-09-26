@@ -2,6 +2,7 @@
 
     partlabeler app                                   the annotator start page in the browser
     partlabeler new PROJECT --video V --classes F     a project from a video (or --images DIR)
+    partlabeler add PROJECT --video V                 another video (or --images DIR) as a new task
     partlabeler export PROJECT --format coco          write the dataset
     partlabeler teach DATASET --run RUN               learn a labeled source (Teach & Transfer)
     partlabeler transfer RUN VIDEO... --out DIR       label similar videos / image folders like the source
@@ -99,15 +100,18 @@ def new(project: Path = typer.Argument(..., help="New project folder."),
         classes: Path = typer.Option(..., exists=True, dir_okay=False, help="classes.txt or data.yaml."),
         every: int = typer.Option(5, min=1, help="Video: keep 1 frame in N."),
         task: str = typer.Option("detect", click_type=click.Choice(["detect", "segment", "classify"]),
-                                 help="What to label: boxes (detect), outlines (segment) or one class per image (classify)."),
+                                 help="Project type, fixed once made: detect (object detection, boxes), segment (segmentation, outlines) or classify (classification, one class per image)."),
+        frames: str = typer.Option("jpg", click_type=click.Choice(["jpg", "webp"]),
+                                   help="Video frames: jpg (compact, visually lossless) or webp (lossless, about 2x the space)."),
         labels: Path | None = typer.Option(None, exists=True, file_okay=False, help="YOLO labels to import.")):
-    """Create a project from a video or an image folder, optionally with existing YOLO labels."""
+    """Create a project from a video or an image folder (more can be added: `partlabeler add`), optionally with existing YOLO labels."""
     from engine.project import Project
     if (video is None) == (images is None):
         raise typer.BadParameter("give exactly one of --video or --images")
     names = _classes(classes)
     with _bar() as progress:
-        p = Project.create(project, names, video=video, images=images, every=every, progress=progress, task=task)
+        p = Project.create(project, names, video=video, images=images, every=every, progress=progress, task=task,
+                           frame_format=frames)
     typer.echo(f"{p.folder}: {len(p.items)} {'frames' if video else 'images'}, {len(names)} classes")
     if labels:
         st = p.import_yolo(labels)
@@ -116,14 +120,36 @@ def new(project: Path = typer.Argument(..., help="New project folder."),
 
 
 @app.command()
+def add(project: Path = typer.Argument(..., exists=True, file_okay=False, help="Project folder."),
+        video: Path | None = typer.Option(None, exists=True, dir_okay=False, help="A video to add as a task."),
+        images: Path | None = typer.Option(None, exists=True, file_okay=False, help="An image folder to add as a task."),
+        every: int = typer.Option(5, min=1, help="Video: keep 1 frame in N.")):
+    """Add a video or an image folder to a project as a new task."""
+    from engine.api import describe
+    from engine.project import Project
+    if (video is None) == (images is None):
+        raise typer.BadParameter("give exactly one of --video or --images")
+    p = Project(project)
+    with _bar() as progress:
+        t = p.add_source(video=video, images=images, every=every, progress=progress)
+    a, b = p.ranges[t["id"]]
+    typer.echo(f"added task {t['name']}: {b - a} {'frames' if video else 'images'} ({describe(t)}); "
+               f"the project has {len(p.sources)} tasks, {len(p.items)} frames/images")
+
+
+@app.command()
 def export(project: Path = typer.Argument(..., exists=True, file_okay=False, help="Project folder."),
            fmt: str = typer.Option("yolo", "--format", click_type=click.Choice(FORMATS), help="Dataset format."),
            reviewed_only: bool = typer.Option(False, "--reviewed-only", help="Only frames/images marked reviewed."),
+           task: list[str] = typer.Option(None, "--task", help="Only this task (name); repeat for several. Default: all."),
            out: Path | None = typer.Option(None, help="Output folder (default PROJECT/exports/<format>_<time>).")):
-    """Write the project's labels as a dataset."""
+    """Write the project's labels as a dataset: every task, or the ones named with --task."""
     from engine.project import Project
     out = out or project / "exports" / f"{fmt}_{time.strftime('%Y%m%d_%H%M%S')}"
-    res = Project(project).export(fmt, out, reviewed_only)
+    try:
+        res = Project(project).export(fmt, out, reviewed_only, tasks=task or None)
+    except ValueError as e:
+        raise typer.BadParameter(str(e), param_hint="--task" if task else "--format")
     what = f", {res['boxes']} boxes" if "boxes" in res else ""
     typer.echo(f"exported {res['images']} images{what} -> {res.get('folder') or res.get('file')}")
     if res.get("no_outline"):

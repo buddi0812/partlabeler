@@ -23,28 +23,54 @@ restore projects from the Trash. Each project card has a ⋯ menu with Open, Sho
 ## Create a project
 
 1. On the start screen, find **New project** and type a name (for example `gearbox_line2`).
-2. Pick the **Label type**: **Boxes**, **Outlines** or **Image classes** (see Label types below).
+2. Pick the **Project type**: **Object detection**, **Segmentation** or **Classification** (see Project types
+   below). It is fixed for the project, and so are its export formats.
 3. Choose **Video** or **Image folder**, then click **Browse…** to pick the file or folder.
 4. For a video, set **Keep every Nth frame** (5 keeps one frame in five; use 1 for every frame).
 5. Type the class names, one per line (for example `bolt`, `bracket`, `connector`), or click
    **Load from classes.txt / data.yaml…**. Names starting with `left_` / `right_` are treated as mirror twins.
-   Image-class projects may start with no classes: you name them while sorting. More classes can be added
+   Classification projects may start with no classes: you name them while sorting. More classes can be added
    later in any project (**New class…** under Class in the side panel).
 6. Optional, under **More options**: import existing YOLO labels to review or finish (boxes, or polygons for
-   outline projects), and set a **parent object** (see Settings).
+   segmentation projects), and set a **parent object** (see Settings).
 7. Click **Create project**. A progress bar shows the frames being prepared, then the annotator opens.
 
-## Label types: boxes, outlines, image classes
+## Tasks: several videos in one project
 
-- **Boxes** (object detection): a box around every part. The default.
-- **Outlines** (instance segmentation): the exact shape of every part, as a mask. Everything that makes a box
+A project can hold several videos and image folders, each a **task** (for example one video per production
+line or per camera). They share the project's type and classes, and labels from one help Suggest on the others.
+
+- The **Tasks** list at the top of the side panel shows each task with its details: resolution, frame rate,
+  length, codec and file size, how many frames were kept (every Nth) and the space they take. Click a task to
+  work on it: the timeline, the frame counter and the arrows then cover that task, and tracking never runs from
+  one video into the next.
+- **Add a video or image folder**: type its path under the list (or click **Browse…**), set **every** (keep every
+  Nth frame of a video) and click **Add**. Items already labeled keep their labels. From the command line:
+  `python -m engine.cli add projects/<name> --video line3.mp4`. On Colab, list several paths in Step 6's SOURCE.
+- **Export** one task, several or all: tick them under **Tasks to export** (shown when there is more than one).
+  The export folder is named after the task when there is one. Command line: `--task NAME` (repeat for several).
+- In a classification project, clicking a task shows only its pictures in the grid (click again for all).
+
+**Frames and disk space.** A video's frames are stored when the task is added: **Compact** (JPEG at quality 95,
+visually lossless; the default) or **Lossless** (WebP with the exact decoded pixels, about twice the space),
+chosen per project under More options when it is made. Truly lossless images are always larger than JPEG, so
+that is the trade. Exports never copy the stored frames: they link to them (a hard link on the same drive), so
+an export takes almost no extra space and its images are identical to what you labeled. If you edit exported
+images in place, edit a copy, since they share the file with the project.
+
+## Project types: object detection, segmentation, classification
+
+Chosen once, when the project is made: a project holds one kind of label, and its exports follow it.
+
+- **Object detection**: a box around every part. The default.
+- **Segmentation** (instance segmentation): the exact shape of every part, as a mask ("outlines" in this guide). Everything that makes a box
   makes an outline here: clicking, drawing a box (SAM 3 outlines the part inside it), tracking, Suggest and Find
   similar. The brush and eraser fix edges. Exports hold polygons or masks.
-- **Image classes** (classification): one class per image, labeled on a grid of pictures with smart grouping.
-  Good for sorting a messy folder (for example ok / scratch / dent, or one folder per part type).
+- **Classification**: one class per image, labeled on a grid of pictures with smart grouping ("image classes"
+  in this guide). Good for sorting a messy folder (for example ok / scratch / dent, or one folder per part type).
 
-A box project can be switched to outlines later: **Settings → Label type → Outlines**, then **Outline boxes**
-(… **on every frame**) under Find parts turns every existing box into an outline. Switching back keeps the outlines.
+Boxes imported into a segmentation project (existing YOLO labels, Teach & Transfer results) become outlines with
+**Outline boxes** (… **on every frame**) under Find parts. The annotator shows the type next to the project name.
 
 ## The annotator screen
 
@@ -68,6 +94,15 @@ dotted = suggestions.
 3. To fix a box: Ctrl+click selects it, then Shift+click grows it and Alt+click shrinks it.
 4. Picking a class while a box is selected re-labels that box. **Del** deletes the selected box, **Esc**
    deselects, **Ctrl+Z** undoes (up to 50 steps).
+
+## Zoom in and out
+
+Hold **Ctrl** and turn the mouse wheel (or pinch on a touchpad) to zoom in or out at the pointer, up to 800%.
+**+** and **−** zoom from the keyboard, **Z** shows the whole frame again, and the buttons at the bottom right of
+the picture do the same. When zoomed in, the wheel moves the view (Shift+wheel sideways), and so does dragging
+with **Space** held or with the middle mouse button. The zoom stays when you go to the next frame, so one small
+part can be checked through a whole video; from about 3 screen pixels per image pixel on, the pixels show
+sharp, for exact edge work.
 
 ## Draw a box by hand
 
@@ -95,7 +130,7 @@ export). Click **Unconfirm frame** to undo a confirmation.
 
 ## Outlines (segmentation)
 
-In an outline project the side panel's Tool section has four tools:
+In a segmentation project the side panel's Tool section has these tools:
 
 1. **Click to outline** (C): click a part and SAM 3 outlines it; **M** steps to the next larger outline, Shift+click
    adds to it and Alt+click takes away from it, as for boxes.
@@ -103,11 +138,17 @@ In an outline project the side panel's Tool section has four tools:
 3. **Brush** (P): paint onto the selected outline (Ctrl+click an outline to select it). With nothing selected,
    the brush paints a new part of the current class.
 4. **Eraser** (E): erase from the selected outline. Erasing all of it deletes the part.
+5. **Smart brush** (Shift+P): paint roughly over what is missing. The outline model (SAM 3) looks at the part and
+   the stroke, and only what it sees as the part is added: the paint stops at the part's edge even when the
+   brush spills over it. With nothing selected it starts a new part.
+6. **Smart eraser** (Shift+E): erase roughly over what does not belong (a spill onto the background or a
+   neighbour). Only what the outline model sees as not the part is removed; the part's own edge stays.
 
-**,** and **.** make the brush smaller and larger (or use the Brush size slider). Tracking (T) carries the
+The plain brush and eraser paint exactly where you drag; use them where the outline model gets an edge wrong
+(for example on blurry frames). A smart stroke that changes nothing says so. **,** and **.** make the brush
+smaller and larger (or use the Brush size slider). Tracking (T) carries the
 outlines through the video, and Suggest, Find similar and Accept all work as for boxes, with outlines.
-**Outline boxes** outlines every box on the frame that has none yet (imported boxes, boxes drawn before the
-switch to outlines, Teach & Transfer results); **…on every frame** does the whole project.
+**Outline boxes** outlines every box on the frame that has none yet (imported boxes, Teach & Transfer results); **…on every frame** does the whole project.
 
 Export: YOLO gets segmentation polygons (one line per part, pieces and holes joined as Ultralytics expects),
 COCO gets polygons, or RLE masks for parts with holes or that are too small for a faithful polygon, CVAT gets
@@ -116,7 +157,7 @@ polygons (holes are not kept there). Boxes without an outline are left out and c
 
 ## Image classes and smart sorting
 
-An image-class project opens as a grid of pictures instead of one frame at a time.
+A classification project opens as a grid of pictures instead of one frame at a time.
 
 - **Select** pictures: click one, Shift+click a range, Ctrl+click to add or remove, Ctrl+A for everything shown.
   Then press a class number (1–9, 0) or click the class in the side panel. Del clears the class.
@@ -143,7 +184,7 @@ classes nobody accepted are never exported.
 
 ## Sort parts: name or fix classes in bulk
 
-In a box or outline project, **Sort parts** (G, under Find parts) shows every part as a picture (a tracked part
+In an object detection or segmentation project, **Sort parts** (G, under Find parts) shows every part as a picture (a tracked part
 once), with the same grid tools: Group by look, the Groups slider, Check labels, selecting and class numbers.
 Giving a part a class changes it on every frame it appears in. Double-click a part to go to its frame.
 This allows "label now, name later": outline or box every part as one class (for example `part`), add the real
@@ -162,8 +203,9 @@ look-alikes. **Back to frames** (Esc) returns to the annotator.
 ## Export the dataset
 
 Click **Export** in the top bar: it jumps to the Export dataset controls in the side panel. Pick the format
-(YOLO, COCO, CVAT, Pascal VOC or Label Studio; image-class projects: class folders, YOLO or CSV), tick
-**Confirmed frames only** if you want just the frames you checked, and click **Export**. Outline projects export
+(YOLO, COCO, CVAT, Pascal VOC or Label Studio; classification projects: class folders, YOLO or CSV), choose the
+tasks to include if there are several, tick
+**Confirmed frames only** if you want just the frames you checked, and click **Export**. Segmentation projects export
 outlines (see Outlines). The files go into the project's `exports/` folder, in a new sub-folder
 named after the format and time. A notification offers **Open folder**. Export as often as you like;
 nothing is overwritten. From the command line: `python -m engine.cli export projects/<name> --format coco`.
@@ -226,7 +268,8 @@ Click: new part · M: next larger outline · Shift/Alt+click: grow/shrink the se
 select · B: draw box · C: click mode · 1–9, 0, [ ]: class · Del: delete · Esc: deselect · Ctrl+Z: undo ·
 ← → (A / D): previous / next frame · Shift+→: next to check · Enter: confirm · T / Shift+T: track ahead /
 to the end · R / Shift+R: track back / to the start · X: stop · S: suggest · F: find similar · Y: accept all ·
-N: notifications · ?: all shortcuts. Outlines: P brush · E eraser · , and . brush size. G: sort parts (grid: group
+N: notifications · ?: all shortcuts. Ctrl+wheel / + / −: zoom · Z: whole frame · Space+drag or wheel: move when zoomed. Outlines: P brush · E eraser ·
+Shift+P smart brush · Shift+E smart eraser · , and . brush size. G: sort parts (grid: group
 by look). Grid: 1–9 and 0 give the selected pictures a class · Ctrl+A select all shown · Del clear · Space or
 double-click: closer look · Esc: clear the selection, then back to frames.
 

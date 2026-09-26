@@ -153,7 +153,7 @@ button:focus-visible, a:focus-visible, summary:focus-visible { outline:2px solid
 .h-seg button { position:relative; border:0; background:none; padding:6px 10px; border-radius:8px; color:var(--steel); font-weight:600; }
 .h-seg button[aria-pressed=true] { color:var(--ink); }
 .h-seg button:active:not(:disabled) { transform:none; }
-.h-seg.three { grid-template-columns:repeat(3, 1fr); width:min(420px, 100%); } .h-seg.three .h-seg-thumb { width:calc(33.333% - 2px); }
+.h-seg.three { grid-template-columns:repeat(3, 1fr); width:min(460px, 100%); } .h-seg.three button { padding:6px 4px; font-size:13px; } .h-seg.three .h-seg-thumb { width:calc(33.333% - 2px); }
 
 /* jobs */
 .h-job { border:1px solid var(--line); border-radius:12px; padding:12px 14px; display:grid; gap:8px; background:var(--paper); animation:h-rise .35s var(--out); }
@@ -244,7 +244,7 @@ dialog[open]::backdrop { animation:h-fade .25s ease-out; }
   *, *::before, *::after { animation-duration:.001ms !important; animation-delay:0s !important; transition-duration:.001ms !important; transition-delay:0s !important; } }
 `;
 
-const TASKS = { detect: "Boxes", segment: "Outlines", classify: "Image classes" };
+const TASKS = { detect: "Object detection", segment: "Segmentation", classify: "Classification" };
 const ICON = {
   video: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="m16 10 5-3v10l-5-3"/></svg>`,
   images: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 16-5-5-9 9"/></svg>`,
@@ -386,10 +386,10 @@ export default function home(root) {
         <p class="h-sub" style="margin-bottom:14px">A video or a folder of images, and the part names to label.</p>
         <form class="h-form h-new" autocomplete="off">
           <label class="h-field"><span>Name</span><input type="text" name="name" required placeholder="e.g. gearbox_line2…"></label>
-          <div class="h-field"><span>Label type</span>
-            <div class="h-seg three h-taskseg" role="group" aria-label="Label type"><span class="h-seg-thumb" aria-hidden="true"></span>
-              <button type="button" data-task="detect" aria-pressed="true">Boxes</button><button type="button" data-task="segment" aria-pressed="false">Outlines</button><button type="button" data-task="classify" aria-pressed="false">Image classes</button></div>
-            <small class="h-taskhint">A box around every part (object detection).</small></div>
+          <div class="h-field"><span>Project type</span>
+            <div class="h-seg three h-taskseg" role="group" aria-label="Project type"><span class="h-seg-thumb" aria-hidden="true"></span>
+              <button type="button" data-task="detect" aria-pressed="true">Object detection</button><button type="button" data-task="segment" aria-pressed="false">Segmentation</button><button type="button" data-task="classify" aria-pressed="false">Classification</button></div>
+            <small class="h-taskhint">A box around every part.</small></div>
           <div class="h-field"><span>Source</span>
             <div class="h-seg h-srcseg" role="group" aria-label="Source type"><span class="h-seg-thumb" aria-hidden="true"></span>
               <button type="button" data-kind="video" aria-pressed="true">Video</button><button type="button" data-kind="images" aria-pressed="false">Image folder</button></div>
@@ -405,6 +405,10 @@ export default function home(root) {
             <div class="h-form" style="margin-top:12px">
               <div class="h-field"><span>Existing YOLO labels to import (optional)</span>
                 <div class="h-row"><input type="text" name="labels" aria-label="YOLO labels folder" placeholder="A labels/ folder to review or finish…"><button type="button" data-browse="labels">Browse…</button></div></div>
+              <label class="h-field"><span>Frames</span><select name="frames">
+                <option value="jpg">Compact: JPEG, visually lossless (default)</option>
+                <option value="webp">Lossless: exact pixels, about twice the disk space</option></select>
+                <small>How a video's frames are stored. Exports link to them, so they take no extra space.</small></label>
               <label class="h-field"><span>Parent object (optional)</span><input type="text" name="parent" placeholder="What the parts sit on, e.g. engine block…">
                 <small>Suggestions then search inside it. Can be changed later in the annotator.</small></label>
             </div></details>
@@ -490,7 +494,7 @@ export default function home(root) {
     const href = `/p/${encodeURIComponent(p.name)}`, unit = p.kind === "video" ? "frames" : "images";
     return `<article class="h-proj" style="--i:${i}">${BRK}<a class="h-proj-link" href="${href}" title="${esc(p.source)}">
       <span class="h-proj-top"><span class="h-kind">${p.kind === "video" ? ICON.video : ICON.images}</span><b class="h-proj-name" translate="no">${esc(p.name)}</b></span>
-      <span class="h-proj-meta">${p.kind === "video" ? "Video" : "Image folder"}, ${TASKS[p.task] || "Boxes"}, ${p.classes.length} class${p.classes.length === 1 ? "" : "es"}, ${p.items} ${unit}</span>
+      <span class="h-proj-meta">${(p.tasks?.length || 1) > 1 ? `${p.tasks.length} tasks` : p.kind === "video" ? "Video" : "Image folder"}, ${TASKS[p.task] || "Boxes"}, ${p.classes.length} class${p.classes.length === 1 ? "" : "es"}, ${p.items} ${unit}</span>
       ${p.problem ? `<span class="h-err">${esc(p.problem)}</span>` : ""}
       <span class="h-meter" role="img" aria-label="${p.confirmed} confirmed and ${Math.max(0, p.labeled - p.confirmed)} more labeled out of ${p.items}"><i class="rev" style="--w:${rev}%;--i:${i}"></i><i class="lab" style="--w:${lab}%;--i:${i}"></i></span>
       <span class="h-proj-foot"><b>${p.confirmed}</b> of ${p.items} ${p.task === "classify" ? "classed" : "confirmed"}<span class="h-ago">${ago(p.modified)}</span></span></a>
@@ -614,12 +618,13 @@ export default function home(root) {
     newForm.querySelectorAll("[data-kind]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.kind === k));
     $(".h-srcseg").style.setProperty("--x", k === "video" ? 0 : 1);
     newForm.source.placeholder = k === "video" ? "Path to the video file…" : "Path to the image folder…";
-    $(".h-srchint").textContent = k === "video" ? "Every Nth frame is kept for labeling." : "All images in the folder and its sub-folders.";
+    $(".h-srchint").textContent = (k === "video" ? "Every Nth frame is kept for labeling." : "All images in the folder and its sub-folders.")
+      + " More videos or folders can be added to the project later, as tasks.";
     $(".h-every").hidden = k !== "video";
   }
-  const TASK_HINT = { detect: "A box around every part (object detection).",
-                      segment: "The exact outline of every part (instance segmentation). Exports polygons or masks.",
-                      classify: "One class per image, labeled on a grid with smart grouping: good for sorting a messy folder." };
+  const TASK_HINT = { detect: "A box around every part. Set once for the project: its exports follow it.",
+                      segment: "The exact outline (mask) of every part; exports polygons or masks. Set once for the project.",
+                      classify: "One class per image, on a grid with smart grouping: good for sorting a messy folder. Set once for the project." };
   function setTask(t) {
     task = t;
     newForm.querySelectorAll("[data-task]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.task === t));
@@ -638,6 +643,7 @@ export default function home(root) {
     const f = newForm, msg = $(".h-newmsg"), btn = f.querySelector("button[type=submit]");
     msg.textContent = "";
     const body = { name: f.name.value.trim(), [kind]: f.source.value.trim(), every: f.every.value, classes: f.classes.value, task,
+                   frame_format: f.frames.value,
                    ...(task === "classify" ? {} : { labels: f.labels.value.trim(), parent: f.parent.value.trim() }) };
     btn.disabled = true;
     try {

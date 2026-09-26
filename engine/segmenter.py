@@ -35,6 +35,19 @@ class Segmenter:
         """The three nested masks SAM proposes for a prompt (e.g. part / sub-part / whole object)."""
         return self._run(points, labels, box, multimask=True)
 
+    def smart_edit(self, old: np.ndarray, stroke, radius: float, erase: bool = False) -> np.ndarray:
+        """The smart brush (erase=False) or smart eraser on the image set last: only the pixels a round brush of
+        `radius` covers along `stroke` can change, and only where SAM 3 agrees. Brush: SAM outlines what is under
+        the stroke together with the part (points deep inside `old`); the footprint inside that outline is added.
+        Eraser: SAM outlines what is under the stroke, told the part's inside is not it; the footprint inside that
+        outline is removed. Returns the new mask (specks and pinholes cleaned)."""
+        from engine import masks as M
+        foot = M.footprint(stroke, radius, old.shape)
+        along, inside = M.along(stroke), M.inner_points(old & ~foot)
+        seen = self.segment(along + inside, [1] * len(along) + [0 if erase else 1] * len(inside))[0]
+        change = foot & seen
+        return M.clean(old & ~change if erase else old | change)
+
     @torch.inference_mode()
     def _run(self, points, labels, box, multimask: bool):
         prompt = {}

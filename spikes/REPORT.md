@@ -250,3 +250,41 @@ closest 90% of neighbour pairs in the collection are to each other:
 Each round of accepting and suggesting again reaches further. Caveat: crops of one video's parts are easier to
 group than a real messy folder; whole-image folders were only tried by hand (240 part pictures: 19 groups in
 6 s including model loading, 2 sets of near-duplicates).
+
+## S11 — smart brush and smart eraser (`s11_smart_brush.py`, `Segmenter.smart_edit`) — adopted
+60 labeled parts on real frames, RTX 3060. SAM 3 outlines each part from its labeled box (the reference). Brush
+test: a notch is cut out of the outline at its edge and painted back with a stroke as wide as the notch, so it
+also spills over the edge. Eraser test: a blob leaks out of the outline and is erased the same way, so the
+stroke also cuts into the part. "Aimed" strokes run over the spot to fix; "sloppy" ones run along the edge,
+partly on the wrong side. Scores: IoU with the reference.
+
+| Test | Before | Plain | Smart | Smart better / worse (per part) |
+|---|---|---|---|---|
+| brush, aimed | 0.948 | 0.938 | **0.956** | 65% / 0% |
+| brush, sloppy | 0.948 | 0.884 | **0.906** | 65% / 0% |
+| eraser, aimed | 0.947 | 0.971 | **0.979** | 45% / 10% |
+| eraser, sloppy | 0.947 | 0.909 | **0.923** | 45% / 25% |
+
+Design: the stroke limits where anything can change (the brush's footprint); inside it, SAM 3 decides. Brush:
+the stroke's points plus points deep inside the part are "this", and the footprint inside SAM's outline is added.
+Eraser: the stroke's points are "this", the part's inside is "not this", and the footprint inside SAM's outline
+is removed. An alternative that trusted only SAM's own view of the part (points inside it) scored higher here
+(0.96-0.98), but only because the reference outlines come from SAM itself: in real use it cannot add what SAM
+missed or remove a neighbour SAM merged in, which is what these tools are for. The plain tools stay for frames
+where SAM's edges are wrong. In the app, a smart stroke changed only pixels inside its footprint (1,887 removed,
+721 kept as part, 0 outside).
+
+## S12 — storing video frames: compact vs lossless (measured, adopted)
+One frame each of the public circuit-board sample (1280x720) and the example video (960x540), Ryzen 7 3700X.
+
+| Format | 1280x720 | 960x540 | Encode | Pixels |
+|---|---|---|---|---|
+| **JPEG quality 95, optimized coding** (default, "compact") | 117 KB | 165 KB | ~6 ms | visually lossless |
+| JPEG quality 95 (before) | 119 KB | 170 KB | ~17 ms | visually lossless |
+| **WebP lossless, method 1** ("lossless" option) | 234 KB | 316 KB | ~270 ms (4 threads while decoding) | exact |
+| PNG, level 6 | 420 KB | 559 KB | ~60 ms | exact |
+| WebP lossless, method 0 | 335 KB | | ~90 ms | exact |
+
+Lossless storage cannot be smaller than JPEG: it costs about 2x (WebP) to 3.5x (PNG). So frames stay compact by
+default, lossless WebP (checked pixel-exact against the decoded video) is a per-project option, and exports hard-link
+the stored frames instead of copying them: no extra disk space per export and no re-encoding.

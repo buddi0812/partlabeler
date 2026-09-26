@@ -77,6 +77,10 @@ TIPS = [
      "ask": "How do I sort a folder of images into classes?", "guide": "Image classes and smart sorting"},
     {"text": "Label now, name later: box every part as 'part', then Sort parts groups them by look for naming.",
      "ask": "How does Sort parts work?", "guide": "Sort parts: name or fix classes in bulk"},
+    {"text": "Outline edges: the smart brush (Shift+P) paints roughly and stops at the part's edge. Ctrl+wheel zooms in.",
+     "ask": "How do the smart brush and smart eraser work?", "guide": "Outlines (segmentation)"},
+    {"text": "One project, many videos: add each as a task, see its resolution and length, and export one task or all.",
+     "ask": "How do I add more videos to a project?", "guide": "Tasks: several videos in one project"},
     {"text": "Updating never touches your projects, and every project's labels are backed up before it starts.",
      "ask": "How do I update PartLabeler?", "guide": "Update PartLabeler"},
 ]

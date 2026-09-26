@@ -7,9 +7,10 @@ export). Protocol:
 In:  ready | goto {item} | box {item, cls, box, obj?} | click {item, x, y, positive, cls, obj?}
      cycle {item, obj} | delete {item, obj} | set_class {obj, cls, item?} | review {item, value}
      accept {item} | undo | track {item, count, direction} | stop | suggest {item}
-     find_all {item, obj} | settings {parent, task?} | export {format, reviewed_only}
-     paint {item, obj?, cls, x, y, png} | outline {item, all?}                     (outline projects)
-     add_class {name, of?, keys?} | grid {of} | thumbs {of, keys} | sort {of, k?} | tag {of, keys, cls} | accept_tags {keys}
+     find_all {item, obj} | settings {parent} | export {format, reviewed_only, tasks?}
+     paint {item, obj?, cls, x, y, png} | smart_paint {item, obj?, cls, points, radius, erase}
+     outline {item, all?}                                                          (outline projects)
+     add_task {path, every?} | add_class {name, of?, keys?} | grid {of} | thumbs {of, keys} | sort {of, k?} | tag {of, keys, cls} | accept_tags {keys}
      suggest_tags | odd {of}                       (the grid: of = "images" in class projects, "parts" otherwise)
      notifications_read | notifications_clear | assistant_info | assistant {id, messages, context, actions}
      assistant_key {key}
@@ -52,7 +53,8 @@ MODEL_NAMES = {"seg": "outline", "track": "tracking", "suggest": "matching", "co
 UNDO_WORDS = {"box": "drawing a box", "outline": "outlining a part", "delete": "deleting a box",
               "class change": "a class change", "confirm": "confirming a frame", "accept": "accepting suggestions",
               "tracking": "tracking", "suggestions": "suggestions", "find similar": "find similar",
-              "paint": "painting an outline", "outline boxes": "outlining boxes", "classes": "a class change"}
+              "paint": "painting an outline", "outline boxes": "outlining boxes", "classes": "a class change",
+              "smart brush": "a smart brush stroke"}
 FORMAT_NAMES = {"yolo": "YOLO", "coco": "COCO", "cvat": "CVAT", "voc": "Pascal VOC", "labelstudio": "Label Studio",
                 "folders": "class folders", "csv": "CSV"}
 THUMB = 224                                               # px, longest side of grid thumbnails
@@ -95,6 +97,22 @@ def release_models() -> None:
     hw.free_gpu_memory()
 
 
+def describe(t: dict) -> str:
+    """A task's details in one line: "1920x1080, 30 fps, 2:14, H264, 45 MB; 402 frames kept (JPEG 38 MB)"."""
+    i = t.get("info") or {}
+    mb = lambda b: f"{b / 2**20:.0f} MB" if b and b >= 2**20 else f"{(b or 0) / 1024:.0f} KB"
+    parts = [f"{i['width']}x{i['height']}" if i.get("width") else None]
+    if t["kind"] == "video":
+        d = i.get("duration")
+        parts += [f"{i['fps']:g} fps" if i.get("fps") else None, f"{int(d // 60)}:{int(d % 60):02d}" if d else None,
+                  (i.get("codec") or "").upper() or None, mb(i.get("size"))]
+        kept = f"{i['kept']} frames kept (every {t.get('every', 1)}), " if i.get("kept") is not None else ""
+        store = "lossless WebP" if t.get("format") == "webp" else "JPEG"
+        return ", ".join(p for p in parts if p) + (f"; {kept}{store} {mb(i.get('stored'))}" if kept else "")
+    parts += [f"{i.get('images', 0)} images", "mixed sizes" if i.get("mixed_sizes") else None, mb(i.get("size"))]
+    return ", ".join(p for p in parts if p)
+
+
 def data_url(img: Image.Image, fmt: str = "JPEG") -> str:
     buf = io.BytesIO()
     img.save(buf, fmt, **({"quality": 90} if fmt == "JPEG" else {"compress_level": 1}))
@@ -133,7 +151,18 @@ class Session:
         return {"type": "goto", "project": self.p.meta["name"], "item": item, "label": "Go to frame"}
 
     def _frame(self, item: int) -> str:
-        return f"{'frame' if self.p.meta['kind'] == 'video' else 'image'} {item + 1}"
+        """"frame 12" (or "image 12"), counted within the item's task, with the task's name when there are several."""
+        t = self.p.task_of(item)
+        a, _ = self.p.ranges[t["id"]]
+        where = f" of {t['name']}" if len(self.p.sources) > 1 else ""
+        return f"{'frame' if t['kind'] == 'video' else 'image'} {item - a + 1}{where}"
+
+    def tasks_msg(self) -> list[dict]:
+        self.p.fill_info()                                # older projects: video details, read once
+        return [{"id": t["id"], "name": t["name"], "kind": t["kind"], "source": t["source"], "every": t.get("every", 1),
+                 "format": t.get("format", "jpg"), "info": t.get("info") or {},
+                 "start": self.p.ranges.get(t["id"], (0, 0))[0], "end": self.p.ranges.get(t["id"], (0, 0))[1]}
+                for t in self.p.sources]
 
     def _remember(self, items, label: str) -> None:
         self.history.append((label, self.p.snapshot(items)))
@@ -149,7 +178,8 @@ class Session:
         return {"type": "project", "name": self.p.meta["name"], "kind": self.p.meta["kind"], "task": self.p.task,
                 "classes": self.p.classes, "count": len(self.p.items),
                 "names": [it["name"] for it in self.p.items], "parent": self.p.meta.get("parent") or "",
-                "device": hw.describe(), "formats": list(self.p.formats), "task": self.p.task, "version": version}
+                "device": hw.describe(), "formats": list(self.p.formats), "task": self.p.task, "version": version,
+                "tasks": self.tasks_msg(), "frame_format": self.p.meta.get("frame_format", "jpg")}
 
     def status_msg(self):
         from engine import hw
@@ -267,11 +297,48 @@ class Session:
         self.send({"type": "select", "item": item, "obj": obj})
         self.refresh(item)
 
+    def on_smart_paint(self, msg):
+        """Smart brush / smart eraser (outline projects): the stroke only changes pixels on the right side of the
+        part's edge, as the outline model (SAM 3) sees it. The page sends the stroke (image-pixel points) and the
+        brush radius. Brush: SAM 3 outlines what is under the stroke together with the part itself (points deep
+        inside it), and the brush's footprint inside that outline is added. Eraser: SAM 3 outlines what is under
+        the stroke while told that the part's inside is not it, and the footprint inside that outline is removed.
+        Without a selected part the smart brush starts a new one of class `cls`."""
+        item, erase = msg["item"], bool(msg.get("erase"))
+        pts = [[float(x), float(y)] for x, y in (msg.get("points") or [])[:4000]]
+        if not pts:
+            return
+        W, H = self._size(item)
+        existing = {b["obj"]: b for b in self.p.boxes(item)}
+        obj = msg.get("obj") if msg.get("obj") in existing else None
+        old = self.p.mask(item, obj) if obj is not None else None
+        old = np.zeros((H, W), bool) if old is None or old.shape != (H, W) else old
+        if erase and not old.any():
+            self.send({"type": "toast", "text": "Select an outline first (Ctrl+click it), then use the smart eraser"})
+            return
+        with self._locks["seg"]:
+            new = self._seg_on(item).smart_edit(old, pts, float(msg.get("radius", 10)), erase)
+        if (new == old).all():
+            self.send({"type": "toast", "text": "The outline model saw no edge to follow there: nothing changed. "
+                                                "The plain brush (P) and eraser (E) paint exactly where you drag"})
+            return
+        self._remember([item], "smart brush")
+        if not new.any():
+            self.p.delete(item, obj)
+            self.refresh(item)
+            return
+        obj = obj or self.p.new_obj()
+        cls = existing[obj]["cls"] if obj in existing else msg.get("cls", 0)
+        self.p.put(item, obj, cls, M.box_of(new), "manual", mask=new)
+        self.points.pop((item, obj), None)
+        self.send({"type": "select", "item": item, "obj": obj})
+        self.refresh(item)
+
     def on_outline(self, msg):
         """Outline every box that has no outline yet: on this item, or with all=True on every item (imported
         boxes, boxes drawn before the project was switched to outlines, Teach & Transfer results)."""
         if not self.outlines_on:
-            self.send({"type": "toast", "text": "Switch the project to outlines first (Settings, Label type)"})
+            self.send({"type": "toast", "text": "Outline boxes works in segmentation projects"})
             return
         todo = {}
         rows = self.p.db.execute("SELECT item, obj, x1, y1, x2, y2 FROM boxes WHERE rle IS NULL AND source != 'suggested'"
@@ -298,7 +365,7 @@ class Session:
                 done += 1
                 self.send({"type": "progress", "task": "Outlining boxes", "done": done, "total": len(todo)})
             self.notify("success", f"Outlined {n} box{'es' if n != 1 else ''} on {done} "
-                                   f"{'frame' if self.p.meta['kind'] == 'video' else 'image'}{'s' if done != 1 else ''}",
+                                   f"{'frame' if self.p.meta.get('kind') == 'video' else 'image'}{'s' if done != 1 else ''}",
                         "Check the outlines; the brush (P) and eraser (E) fix the edges")
             self.send({"type": "item_changed", "items": list(todo)})
 
@@ -429,6 +496,28 @@ class Session:
         self.send({"type": "item_changed", "items": items})
         self.send(self.status_msg())
 
+    def on_add_task(self, msg):
+        """Add a video or an image folder to the project as a new task (frames are extracted in the background)."""
+        path = Path(str(msg.get("path", "")).strip().strip('"'))
+        if not str(path) or not path.exists():
+            self.send({"type": "toast", "text": f"Not found: {path}. Give the path of a video file or an image folder."})
+            return
+        video = path.is_file()
+
+        def job():
+            t0 = time.perf_counter()
+            t = self.p.add_source(video=path if video else None, images=None if video else path,
+                                  every=int(msg.get("every") or 5),
+                                  progress=lambda i, n, text: self.send({"type": "progress", "task": text, "done": i, "total": n or 1}))
+            a, b = self.p.ranges.get(t["id"], (0, 0))
+            self.send(self.project_msg())
+            self.send(self.status_msg())
+            self.notify("success", f"Added task {t['name']}", f"{b - a} {'frames' if video else 'images'}, "
+                        f"{describe(t)}. {time.perf_counter() - t0:.0f} s", {"type": "goto", "project": self.p.meta["name"],
+                                                                             "item": a, "label": "Open task"})
+
+        self._run("Adding a task", job)
+
     def on_add_class(self, msg):
         """A new class at the end of the list (existing labels keep their numbers); with keys, those cards get it."""
         name = " ".join(str(msg.get("name", "")).split())
@@ -444,20 +533,12 @@ class Session:
             self.on_tag({"of": msg.get("of", "images"), "keys": msg["keys"], "cls": self.p.classes.index(name)})
 
     def on_settings(self, msg):
+        """Project settings (the parent object). The project type is chosen once, when the project is made."""
         parent = (msg.get("parent") or "").strip() or None
         self.p.set_meta(parent=parent)
-        task = msg.get("task")
-        switched = task in ("detect", "segment") and self.p.task in ("detect", "segment") and task != self.p.task
-        if switched:
-            self.p.set_meta(task=task)
         self.send(self.project_msg())
-        detail = f"Parent object: {parent}" if parent else "Parent object: none (suggestions search the whole image)"
-        if switched:
-            detail += (". Label type: outlines. Boxes without an outline: use Outline boxes" if task == "segment"
-                       else ". Label type: boxes (outlines are kept)")
-        self.notify("success", "Settings saved", detail)
-        if switched:
-            self.send({"type": "item_changed", "items": list(range(len(self.p.items)))})
+        self.notify("success", "Settings saved",
+                    f"Parent object: {parent}" if parent else "Parent object: none (suggestions search the whole image)")
 
     # ---- background jobs -----------------------------------------------------------------
     def _run(self, name, fn):
@@ -483,13 +564,17 @@ class Session:
         self.job.start()
 
     def on_track(self, msg):
+        """Track within the start item's task: the next video's first frame is another scene."""
         start, count = msg["item"], msg.get("count", 20)
         direction = -1 if (msg.get("direction") or 1) < 0 else 1
+        a, b = self.p.ranges[self.p.items[start]["task"]]
         count = len(self.p.items) if count in (None, -1) else count
-        total = min(count, start if direction < 0 else len(self.p.items) - start - 1)
+        total = min(count, start - a if direction < 0 else b - start - 1)
         if total <= 0:
-            self.send({"type": "toast", "text": f"No frames {'before' if direction < 0 else 'after'} this one"})
+            where = " in this task" if len(self.p.sources) > 1 else ""
+            self.send({"type": "toast", "text": f"No frames {'before' if direction < 0 else 'after'} this one{where}"})
             return
+        count = total
         span = range(start - total, start) if direction < 0 else range(start + 1, start + total + 1)
         self._remember(span, "tracking")
 
@@ -586,8 +671,7 @@ class Session:
         else:
             parts = self._parts()
             keys = sorted(parts) if keys is None else [k for k in keys if k in parts]
-            unit = "frame" if self.p.meta["kind"] == "video" else "image"
-            cards = [{"key": o, "name": f"#{o}, {unit} {parts[o][0] + 1}", "item": parts[o][0], "cls": parts[o][2],
+            cards = [{"key": o, "name": f"#{o}, {self._frame(parts[o][0])}", "item": parts[o][0], "cls": parts[o][2],
                       "source": parts[o][3]} for o in keys]
         if self.thumb_src:
             for c in cards:
@@ -826,11 +910,13 @@ class Session:
         return cls if abs(cx - a) <= abs(cx - b) else other
 
     def on_export(self, msg):
-        fmt, reviewed_only = msg.get("format", "yolo"), msg.get("reviewed_only", False)
+        fmt, reviewed_only, tasks = msg.get("format", "yolo"), msg.get("reviewed_only", False), msg.get("tasks") or None
+        names = [t["name"] for t in self.p.sources if t["id"] in (tasks or [])]
 
         def job():
-            out = self.p.folder / "exports" / f"{fmt}_{time.strftime('%Y%m%d_%H%M%S')}"
-            res = self.p.export(fmt, out, reviewed_only)
+            part = f"_{names[0]}" if len(names) == 1 else f"_{len(names)}tasks" if names and len(names) < len(self.p.sources) else ""
+            out = self.p.folder / "exports" / f"{fmt}{part}_{time.strftime('%Y%m%d_%H%M%S')}"
+            res = self.p.export(fmt, out, reviewed_only, tasks=tasks if names and len(names) < len(self.p.sources) else None)
             what = {"detect": "boxes", "segment": "outlines"}.get(self.p.task)
             detail = f"{res['images']} images" + (f", {res['boxes']} {what}" if what else "")
             if res.get("no_outline"):

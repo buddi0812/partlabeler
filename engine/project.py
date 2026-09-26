@@ -1,9 +1,18 @@
-"""A PartLabeler project: one video or image folder, its class list, and every label.
+"""A PartLabeler project: one or more tasks (videos or image folders), a class list, and every label.
 
 Folder layout:
-    project.json     kind ("video" | "images"), task, source path, sampling step, classes
-    frames/          video only: the sampled frames as JPEG (f000000.jpg, f000005.jpg, ...)
+    project.json     task (label type), classes, and `sources`: the tasks, each {"id", "name", "kind" ("video" |
+                     "images"), "source", "every", "frames" (its frame folder), "format", "info" (resolution, fps...)}
+    frames/          the first video's sampled frames (f000000.jpg, f000005.jpg, ...); frames/t1/, frames/t2/...
+                     for the videos added later. Image folders are read where they are.
     labels.sqlite    boxes, outlines, image classes and review status; every change is committed immediately
+
+Items (frames and images) are numbered across all tasks, in the order the tasks were added, so labels, undo,
+suggestions and sorting work over the whole project; tracking stays inside one task. Frames are stored as
+JPEG at quality 95 with optimized coding ("jpg", visually lossless, the default) or as lossless WebP ("webp",
+pixel-exact, about twice the size; S12 in spikes/REPORT.md). Exports hard-link the stored frames instead of
+copying them, so exporting takes almost no extra disk space and the pixels stay identical.
+Projects made before tasks keep their layout: one task described by the top-level kind/source/every.
 
 The task says what is labeled: "detect" (boxes around parts), "segment" (outlines: a mask per part, its box
 is the mask's box) or "classify" (one class per image). Boxes are stored in image pixels (x1, y1, x2, y2),
@@ -11,6 +20,7 @@ masks as COCO RLE (engine/masks.py), image classes in `tags`. `source` records w
 manual (drawn or clicked by a person), tracked, imported, suggested (not yet accepted).
 """
 import json
+import os
 import re
 import shutil
 import sqlite3
@@ -25,6 +35,7 @@ from engine import masks as M
 
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff", ".webp"}
 TASKS = ("detect", "segment", "classify")
+FRAME_FORMATS = ("jpg", "webp")
 BOX_FORMATS = ("yolo", "coco", "cvat", "voc", "labelstudio")
 CLASSIFY_FORMATS = ("folders", "yolo", "csv")
 FRAME_RE = re.compile(r"_f(\d+)$")
@@ -63,45 +74,120 @@ class Project:
         if "rle" not in {r[1] for r in self.db.execute("PRAGMA table_info(boxes)")}:
             self.db.execute("ALTER TABLE boxes ADD COLUMN rle TEXT")      # projects made before outlines
             self.db.commit()
-        self.items = self._list_items()
+        self._index()
 
     # ---- creation -------------------------------------------------------------------------
     @classmethod
     def create(cls, folder, classes: list[str], video=None, images=None, every: int = 5, progress=None,
-               task: str = "detect"):
+               task: str = "detect", frame_format: str = "jpg"):
+        """A new project with its first task (a video or an image folder); add more with add_source."""
         folder = Path(folder)
         if task not in TASKS:
             raise ValueError(f"unknown task {task!r}; choose one of {', '.join(TASKS)}")
+        if frame_format not in FRAME_FORMATS:
+            raise ValueError(f"unknown frame format {frame_format!r}; choose one of {', '.join(FRAME_FORMATS)}")
         if (folder / "project.json").exists():
             raise FileExistsError(f"{folder} already holds a project; open it instead")
-        folder.mkdir(parents=True, exist_ok=True)
-        if video:
-            meta = {"kind": "video", "source": str(Path(video).resolve()), "every": every}
-            (folder / "frames").mkdir(exist_ok=True)
-            with av.open(str(video)) as c:
-                total = c.streams.video[0].frames or 0
-                for i, fr in enumerate(c.decode(video=0)):
-                    if i % every == 0:
-                        fr.to_image().save(folder / "frames" / f"f{i:06d}.jpg", quality=95)
-                    if progress and i % 50 == 0:
-                        progress(i, total, "Extracting frames")
-        elif images:
-            meta = {"kind": "images", "source": str(Path(images).resolve())}
-        else:
+        if not (video or images):
             raise ValueError("give a video or an image folder")
-        meta.update(name=folder.name, task=task, classes=list(classes), parent=None)
+        folder.mkdir(parents=True, exist_ok=True)
+        meta = {"name": folder.name, "task": task, "classes": list(classes), "parent": None,
+                "frame_format": frame_format, "sources": []}
         (folder / "project.json").write_text(json.dumps(meta, indent=1), encoding="utf-8")
-        return cls(folder)
+        p = cls(folder)
+        p.add_source(video=video, images=images, every=every, progress=progress)
+        return p
+
+    @property
+    def sources(self) -> list[dict]:
+        """The tasks: videos and image folders (see the module notes)."""
+        if "sources" in self.meta:
+            return self.meta["sources"]
+        src = Path(self.meta["source"])                   # a project made before tasks
+        return [{"id": 0, "name": src.stem if self.meta["kind"] == "video" else src.name, "kind": self.meta["kind"],
+                 "source": self.meta["source"], "every": self.meta.get("every", 1), "frames": "frames", "format": "jpg",
+                 "info": self.meta.get("info")}]
+
+    def add_source(self, video=None, images=None, every: int = 5, progress=None, name: str | None = None) -> dict:
+        """Add a task: a video (its every-th frame is stored, see the module notes) or an image folder (read in place).
+        Returns the task. Items already in the project keep their numbers."""
+        if not (video or images) or (video and images):
+            raise ValueError("give a video or an image folder")
+        path = Path(video or images).resolve()
+        if not path.exists():
+            raise FileNotFoundError(path)
+        tasks = [dict(t) for t in self.sources]
+        tid = max((t["id"] for t in tasks), default=-1) + 1
+        base = "".join(c if c.isalnum() or c in "-_." else "_" for c in (name or (path.stem if video else path.name))) or "task"
+        taken, name = {t["name"] for t in tasks}, None
+        for k in range(1, 1000):
+            name = base if k == 1 else f"{base}_{k}"
+            if name not in taken:
+                break
+        t = {"id": tid, "name": name, "kind": "video" if video else "images", "source": str(path),
+             "every": int(every) if video else 1, "frames": "frames" if tid == 0 else f"frames/t{tid}",
+             "format": self.meta.get("frame_format", "jpg")}
+        if video:
+            t["info"] = probe_video(path)
+            kept, stored = extract_frames(path, self.folder / t["frames"], t["every"], t["format"], progress)
+            t["info"].update(kept=kept, stored=stored)
+        else:
+            t["info"] = probe_images(path)
+        tasks.append(t)
+        first = tasks[0]
+        self.set_meta(sources=tasks, kind=first["kind"], source=first["source"], every=first["every"])
+        self._index()
+        return t
+
+    def fill_info(self) -> bool:
+        """Video details for tasks that have none (projects made before tasks): read once from the source and
+        the stored frames, then saved. Returns True when something was added."""
+        tasks, changed = [dict(t) for t in self.sources], False
+        for t in tasks:
+            if t.get("info") is not None:
+                continue
+            try:
+                if t["kind"] == "video":
+                    t["info"] = probe_video(Path(t["source"])) if Path(t["source"]).is_file() else {}
+                    frames = [it["path"] for it in self.items if it["task"] == t["id"]]
+                    t["info"].update(kept=len(frames), stored=sum(f.stat().st_size for f in frames))
+                else:
+                    t["info"] = probe_images(Path(t["source"]))
+                changed = True
+            except (OSError, av.error.FFmpegError, ValueError, IndexError):
+                t["info"] = {}                                # a moved or unreadable source: details unknown
+                changed = True
+        if changed:
+            first = tasks[0]
+            self.set_meta(sources=tasks, kind=first["kind"], source=first["source"], every=first["every"])
+        return changed
+
+    def _index(self) -> None:
+        self.items = self._list_items()
+        self.ranges = {}                                  # task id -> (first item, one past the last)
+        for k, it in enumerate(self.items):
+            a, _ = self.ranges.get(it["task"], (k, k))
+            self.ranges[it["task"]] = (a, k + 1)
 
     def _list_items(self) -> list[dict]:
-        if self.meta["kind"] == "video":
-            stem = Path(self.meta["source"]).stem
-            return [{"name": f"{stem}_{p.stem}", "path": p, "frame": int(p.stem[1:])}
-                    for p in sorted((self.folder / "frames").glob("f*.jpg"))]
-        root = Path(self.meta["source"])
-        files = sorted(p for p in root.rglob("*") if p.suffix.lower() in IMAGE_EXTS)
-        return [{"name": str(p.relative_to(root).with_suffix("")).replace("\\", "/"), "path": p, "frame": None}
-                for p in files]
+        items = []
+        for t in self.sources:
+            if t["kind"] == "video":
+                files = sorted(p for p in (self.folder / t["frames"]).glob("f*.*")
+                               if p.suffix.lower() in (".jpg", ".webp") and p.stem[1:].isdigit())
+                items += [{"name": f"{t['name']}_{p.stem}", "path": p, "frame": int(p.stem[1:]), "task": t["id"]}
+                          for p in files]
+            else:
+                root = Path(t["source"])
+                prefix = "" if t["id"] == 0 else f"{t['name']}/"   # names stay unique across folders
+                files = sorted(p for p in root.rglob("*") if p.suffix.lower() in IMAGE_EXTS) if root.is_dir() else []
+                items += [{"name": prefix + str(p.relative_to(root).with_suffix("")).replace("\\", "/"), "path": p,
+                           "frame": None, "task": t["id"]} for p in files]
+        return items
+
+    def task_of(self, item: int) -> dict:
+        tid = self.items[item]["task"]
+        return next(t for t in self.sources if t["id"] == tid)
 
     # ---- reading --------------------------------------------------------------------------
     @property
@@ -277,7 +363,7 @@ class Project:
             if name in by_name:
                 return by_name[name]
         m = FRAME_RE.search(stem)
-        if m and self.meta["kind"] == "video":
+        if m and self.meta.get("kind") == "video" and len(self.sources) == 1:   # one video: the frame number is enough
             by_frame = {it["frame"]: k for k, it in enumerate(self.items)}
             return by_frame.get(int(m.group(1)))
         return None
@@ -311,9 +397,13 @@ class Project:
 
     def _export_items(self, reviewed_only: bool) -> list[int]:
         """Items that get a label file: reviewed ones (an empty file = checked, nothing there) and,
-        unless reviewed_only, any item with boxes. Unlabeled items are left out, as in YOLO."""
-        st = self.statuses()
-        return [k for k, s in enumerate(st) if s == 4 or (not reviewed_only and s >= 2)]
+        unless reviewed_only, any item with boxes. Unlabeled items are left out, as in YOLO. Only the tasks
+        chosen for this export (self.export_tasks; None = all)."""
+        st, keep = self.statuses(), self.export_tasks
+        return [k for k, s in enumerate(st) if (s == 4 or (not reviewed_only and s >= 2))
+                and (keep is None or self.items[k]["task"] in keep)]
+
+    export_tasks = None
 
     def _export_rows(self, reviewed_only: bool):
         """(item, file stem, image path, W, H, [(cls, obj, x1, y1, x2, y2, mask)]) with boxes clipped to the
@@ -344,11 +434,10 @@ class Project:
                     boxes.append((b["cls"], b["obj"], x1, y1, x2, y2, mask))
             yield k, it["name"].replace("/", "__"), Path(it["path"]), W, H, boxes
 
-    @staticmethod
-    def _copy_image(path: Path, folder: Path, stem: str) -> str:
+    def _copy_image(self, path: Path, folder: Path, stem: str) -> str:
         folder.mkdir(parents=True, exist_ok=True)
         name = stem + path.suffix.lower()
-        shutil.copy(path, folder / name)
+        place_image(path, folder / name, link=self.folder in path.parents)
         return name
 
     def export_yolo(self, out_dir, reviewed_only: bool = False) -> dict:
@@ -508,6 +597,8 @@ class Project:
         for item, t in sorted(self.tags().items()):
             if t["source"] == "suggested" or item >= len(self.items):
                 continue
+            if self.export_tasks is not None and self.items[item]["task"] not in self.export_tasks:
+                continue
             it = self.items[item]
             path = Path(it["path"])
             yield item, it["name"].replace("/", "__") + path.suffix.lower(), path, self.classes[t["cls"]]
@@ -523,7 +614,7 @@ class Project:
         for _, name, path, cls in self._tag_rows(reviewed_only):
             d = out / self._safe_dir(cls)
             d.mkdir(parents=True, exist_ok=True)
-            shutil.copy(path, d / name)
+            place_image(path, d / name, link=self.folder in path.parents)
             n += 1
         out.mkdir(parents=True, exist_ok=True)
         (out / "classes.txt").write_text("\n".join(self.classes) + "\n", encoding="utf-8")
@@ -539,7 +630,7 @@ class Project:
             split = "val" if (item // block) % val_every == val_every - 1 else "train"
             d = out / split / self._safe_dir(cls)
             d.mkdir(parents=True, exist_ok=True)
-            shutil.copy(path, d / name)
+            place_image(path, d / name, link=self.folder in path.parents)
             n[split] += 1
         out.mkdir(parents=True, exist_ok=True)
         (out / "classes.txt").write_text("\n".join(self.classes) + "\n", encoding="utf-8")
@@ -558,10 +649,23 @@ class Project:
         (out / "classes.txt").write_text("\n".join(self.classes) + "\n", encoding="utf-8")
         return {"images": len(rows), "folder": str(out)}
 
-    def export(self, fmt: str, out_dir, reviewed_only: bool = False) -> dict:
-        """Write the dataset in one of self.formats into out_dir."""
+    def export(self, fmt: str, out_dir, reviewed_only: bool = False, tasks=None) -> dict:
+        """Write the dataset in one of self.formats into out_dir: every task, or only `tasks` (ids or names)."""
         if fmt not in self.formats:
             raise ValueError(f"unknown format {fmt!r}; choose one of {', '.join(self.formats)}")
+        self.export_tasks = None
+        if tasks:
+            ids = {t["id"]: t["id"] for t in self.sources} | {t["name"]: t["id"] for t in self.sources}
+            missing = [x for x in tasks if x not in ids]
+            if missing:
+                raise ValueError(f"no task called {', '.join(map(str, missing))}; tasks: {', '.join(t['name'] for t in self.sources)}")
+            self.export_tasks = {ids[x] for x in tasks}
+        try:
+            return self._export(fmt, out_dir, reviewed_only)
+        finally:
+            self.export_tasks = None
+
+    def _export(self, fmt: str, out_dir, reviewed_only: bool) -> dict:
         if self.task == "classify":
             return getattr(self, "export_yolo_classify" if fmt == "yolo" else f"export_{fmt}")(out_dir, reviewed_only)
         if fmt == "coco":
@@ -599,3 +703,75 @@ class Project:
 
     def mirrored_pairs(self) -> bool:
         return mirrored_pairs(self.classes)
+
+
+# ---- tasks: frames, video details, linked export images -------------------------------------------
+def _save_frame(img: Image.Image, path: Path, fmt: str) -> None:
+    if fmt == "webp":                                     # lossless: the pixels as decoded, about 2x JPEG's size
+        img.save(path, "WEBP", lossless=True, quality=50, method=1)
+    else:                                                 # visually lossless; optimize: smaller, same pixels
+        img.save(path, "JPEG", quality=95, optimize=True)
+
+
+def extract_frames(video: Path, out: Path, every: int, fmt: str = "jpg", progress=None) -> tuple[int, int]:
+    """Store every `every`-th frame of the video in `out` (f<frame number>.<fmt>); returns (frames, bytes).
+    Frames are encoded on a few threads while the next ones decode."""
+    from concurrent.futures import ThreadPoolExecutor
+    out.mkdir(parents=True, exist_ok=True)
+    ext = ".webp" if fmt == "webp" else ".jpg"
+    kept, pending = 0, []
+    with av.open(str(video)) as c, ThreadPoolExecutor(max_workers=4) as pool:
+        total = c.streams.video[0].frames or 0
+        for i, fr in enumerate(c.decode(video=0)):
+            if i % every == 0:
+                pending.append(pool.submit(_save_frame, fr.to_image(), out / f"f{i:06d}{ext}", fmt))
+                kept += 1
+                while len(pending) > 16:                  # bounded: decoded frames are large
+                    pending.pop(0).result()
+            if progress and i % 50 == 0:
+                progress(i, total, "Extracting frames" + (" (lossless)" if fmt == "webp" else ""))
+        for f in pending:
+            f.result()
+    return kept, sum(p.stat().st_size for p in out.glob(f"f*{ext}"))
+
+
+def probe_video(path: Path) -> dict:
+    """Resolution, frame rate, length, frame count, codec, bit rate and file size of a video."""
+    with av.open(str(path)) as c:
+        s = c.streams.video[0]
+        fps = float(s.average_rate) if s.average_rate else None
+        dur = float(c.duration) / 1_000_000 if c.duration else (float(s.duration * s.time_base) if s.duration else None)
+        frames = s.frames or (round(dur * fps) if dur and fps else None)
+        return {"width": s.codec_context.width, "height": s.codec_context.height, "fps": round(fps, 3) if fps else None,
+                "duration": round(dur, 2) if dur else None, "frames": frames, "codec": s.codec_context.name,
+                "bitrate": c.bit_rate or None, "size": Path(path).stat().st_size}
+
+
+def probe_images(root: Path, sample: int = 50) -> dict:
+    """Image count, the most common resolution (of up to `sample` images) and total size of a folder."""
+    from collections import Counter
+    files = sorted(p for p in Path(root).rglob("*") if p.suffix.lower() in IMAGE_EXTS)
+    sizes = Counter()
+    for f in files[:: max(1, len(files) // sample)][:sample]:
+        try:
+            with Image.open(f) as im:
+                sizes[im.size] += 1
+        except OSError:
+            pass
+    (w, h), _ = sizes.most_common(1)[0] if sizes else ((None, None), 0)
+    return {"images": len(files), "width": w, "height": h, "mixed_sizes": len(sizes) > 1,
+            "size": sum(f.stat().st_size for f in files)}
+
+
+def place_image(src: Path, dst: Path, link: bool) -> None:
+    """Put an image into an export: a hard link to the project's own stored frame (no extra space, identical
+    pixels; falls back to a copy across drives), a copy of anything else (never a link to a person's own file)."""
+    if dst.exists():
+        dst.unlink()
+    if link:
+        try:
+            os.link(src, dst)
+            return
+        except OSError:
+            pass
+    shutil.copy(src, dst)

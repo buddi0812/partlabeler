@@ -22,7 +22,8 @@ const CSS = `
 .pl-title { font-weight:600; font-size:15px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
 .pl-where { color:var(--muted); font-variant-numeric:tabular-nums; white-space:nowrap; }
 .pl-chip { font-size:12px; font-weight:600; padding:2px 9px; border-radius:99px; white-space:nowrap; }
-.pl-chip.rev { background:#dcf1e4; color:#1f7a44; } .pl-chip.flag { background:#fbecd3; color:#8a5304; }
+.pl-chip.rev { background:#dcf1e4; color:#1f7a44; } .pl-chip.pl-type { background:var(--accent-soft); color:var(--accent-ink); }
+.pl-chip.pl-type:empty { display:none; } .pl-chip.flag { background:#fbecd3; color:#8a5304; }
 .pl-sp { flex:1; }
 .pl-saved { color:var(--muted); font-size:13px; white-space:nowrap; display:inline-flex; gap:5px; align-items:center; }
 .pl-saved svg { width:14px; height:14px; } .pl-saved.lost { color:var(--bad); font-weight:600; }
@@ -42,7 +43,12 @@ const CSS = `
 .pl input[type=number] { width:64px; font-variant-numeric:tabular-nums; }
 .pl-main { display:grid; grid-template-columns:minmax(0,1fr) 300px; gap:10px; min-height:0; }
 .pl-stage { position:relative; background:#0d1217; border-radius:10px; overflow:hidden; display:flex; align-items:center; justify-content:center; min-height:320px; }
-.pl-stage canvas { max-width:100%; max-height:calc(100vh - 250px); display:block; cursor:crosshair; }
+.pl-stage canvas { max-width:100%; max-height:calc(100vh - 250px); display:block; cursor:crosshair; transform-origin:0 0; }
+.pl-stage.panning canvas, .pl-stage.can-pan canvas { cursor:grab; } .pl-stage.panning canvas { cursor:grabbing; }
+.pl-zoom { position:absolute; right:10px; bottom:10px; display:flex; gap:2px; align-items:center; background:rgba(21,32,43,.82); border-radius:9px; padding:3px; z-index:2; }
+.pl .pl-zoom button { background:transparent; color:#fff; border-color:transparent; padding:2px 9px; font-size:14px; }
+.pl .pl-zoom button:hover:not(:disabled) { background:rgba(255,255,255,.14); border-color:transparent; }
+.pl-zoom span { color:#fff; font-size:12.5px; min-width:44px; text-align:center; font-variant-numeric:tabular-nums; }
 .pl-hint { position:absolute; left:50%; top:16px; transform:translateX(-50%); background:rgba(21,32,43,.88); color:#fff; border-radius:10px;
   padding:10px 14px; max-width:min(560px, 90%); font-size:13.5px; display:flex; gap:12px; align-items:flex-start; }
 .pl-hint button { background:transparent; color:#fff; border-color:rgba(255,255,255,.4); padding:2px 8px; }
@@ -90,6 +96,25 @@ const CSS = `
 .pl-help-grid h3 { grid-column:1 / -1; margin:10px 0 2px; font-size:13px; color:var(--muted); font-weight:600; }
 .pl-help-grid div { display:flex; justify-content:space-between; gap:12px; padding:3px 0; border-bottom:1px solid #eef1f4; font-size:13.5px; }
 .pl kbd, .pl-help-dlg kbd { font:12px/1.2 ui-monospace,"Cascadia Mono",Consolas,monospace; border:1px solid var(--line); border-bottom-width:2px; border-radius:5px; padding:1px 5px; background:#f7f9fa; white-space:nowrap; }
+.pl-tasks { display:flex; flex-direction:column; gap:3px; max-height:26vh; overflow:auto; overscroll-behavior:contain; }
+.pl .pl-task { display:grid; grid-template-columns:16px minmax(0,1fr); gap:2px 7px; align-items:start; text-align:left; width:100%; padding:5px 7px; white-space:normal;
+  border:1px solid transparent; border-radius:7px; background:none; font-size:13px; }
+.pl .pl-task:hover:not(:disabled) { background:var(--bg); border-color:transparent; }
+.pl .pl-task[aria-pressed=true] { background:var(--accent-soft); border-color:var(--accent); }
+.pl-task svg { width:15px; height:15px; margin-top:2px; color:var(--muted); }
+.pl-task b { font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.pl-task small { grid-column:2; color:var(--muted); font-size:11.5px; line-height:1.35; overflow-wrap:anywhere; }
+.pl-addtask { display:flex; gap:4px; flex-wrap:wrap; margin-top:6px; } .pl-addtask input[type=text] { flex:1 1 150px; min-width:0; }
+.pl-exptasks { display:flex; flex-direction:column; gap:2px; margin-top:6px; font-size:12.5px; max-height:16vh; overflow:auto; }
+.pl-exptasks label { display:flex; gap:6px; align-items:center; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+.pl-pick { border:1px solid var(--line); border-radius:12px; padding:0; width:min(620px, calc(100vw - 32px)); color:var(--ink); }
+.pl-pick::backdrop { background:rgba(21,32,43,.45); }
+.pl-pick .pk-head, .pl-pick .pk-foot { display:flex; gap:6px; align-items:center; padding:10px 12px; }
+.pl-pick .pk-head { border-bottom:1px solid var(--line); } .pl-pick .pk-foot { border-top:1px solid var(--line); justify-content:flex-end; }
+.pl-pick .pk-head input { flex:1; min-width:0; } .pl-pick .pk-foot span { flex:1; color:var(--muted); font-size:12.5px; }
+.pl-pick .pk-body { max-height:50vh; overflow:auto; padding:6px; }
+.pl .pk-item { display:flex; gap:8px; width:100%; text-align:left; border:0; background:none; padding:6px 8px; border-radius:7px; }
+.pl .pk-item:hover:not(:disabled) { background:var(--accent-soft); } .pk-item small { margin-left:auto; color:var(--muted); }
 .pl-brush { display:flex; gap:8px; align-items:center; font-size:13px; margin-top:6px; } .pl-brush input { flex:1; accent-color:var(--accent); }
 .pl-gridwrap { display:flex; flex-direction:column; gap:8px; min-height:0; background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:10px 12px; }
 .pl-gridbar { display:flex; flex-wrap:wrap; gap:6px 12px; align-items:center; }
@@ -163,7 +188,7 @@ const NOTE_CSS = `
 const STATUS = ["No boxes", "Suggestions", "Tracked or imported", "Has your boxes", "Confirmed"];
 const FORMAT_NAMES = { yolo: "YOLO", coco: "COCO", cvat: "CVAT", voc: "Pascal VOC", labelstudio: "Label Studio",
                        folders: "Class folders", csv: "CSV list" };
-const TASK_NAMES = { detect: "Boxes", segment: "Outlines", classify: "Image classes" };
+const TASK_NAMES = { detect: "Object detection", segment: "Segmentation", classify: "Classification" };
 function rgbOf(i) {                                                   // colorOf(i) as [r, g, b] (hsl 78% 52%)
   const h = (i * 137.508) % 360, s = 0.78, l = 0.52, a = s * Math.min(l, 1 - l);
   const f = (n) => { const k = (n + h / 30) % 12; return Math.round(255 * (l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1)))); };
@@ -689,7 +714,7 @@ function render({ model, el }) {
   el.innerHTML = `
     <header class="pl-head">
       <a class="pl-back" href="/" hidden>← Projects</a>
-      <span class="pl-title">PartLabeler</span><span class="pl-where"></span><span class="pl-chips"></span>
+      <span class="pl-title">PartLabeler</span><span class="pl-chip pl-type" title="Project type"></span><span class="pl-where"></span><span class="pl-chips"></span>
       <span class="pl-sp"></span>
       <span class="pl-saved" role="status" aria-live="polite"></span>
       <span class="pl-bellmount"></span><span class="pl-rivetmount"></span>
@@ -721,15 +746,26 @@ function render({ model, el }) {
       <div class="pl-gridwrap" hidden><div class="pl-gridbar"><h2 class="pl-gtitle">Images</h2><span class="pl-src pl-gcount"></span>
           <div class="pl-filters" role="group" aria-label="Show"></div></div><div class="pl-grid" tabindex="-1"></div></div>
       <div class="pl-stage"><canvas class="pl-cv" aria-label="Frame image. Click a part to box it."></canvas>
+        <div class="pl-zoom" role="group" aria-label="Zoom"><button type="button" data-a="zoomOut" aria-label="Zoom out" title="Zoom out (−)">−</button>
+          <span class="pl-zoom-v" aria-live="polite">100%</span><button type="button" data-a="zoomIn" aria-label="Zoom in" title="Zoom in (+, or Ctrl+wheel at the pointer)">+</button>
+          <button type="button" data-a="zoomFit" title="Show the whole frame (Z)">Fit</button></div>
         <div class="pl-hint" hidden><span><b>Click a part</b> to outline and box it, or press <kbd>B</kbd> and drag to draw a box.
           Pick the class first with <kbd>1</kbd>–<kbd>9</kbd>. Press <kbd>?</kbd> for all shortcuts.</span>
           <button type="button" data-a="hideHint">Got it</button></div></div>
       <aside class="pl-side" aria-label="Labeling tools">
+        <section class="pl-tasksec"><h2 id="pl-task-h">Tasks <span class="pl-src pl-taskcount"></span></h2>
+          <div class="pl-tasks" role="group" aria-labelledby="pl-task-h"></div>
+          <form class="pl-addtask"><input type="text" class="pl-taskpath" name="task-path" autocomplete="off" placeholder="Add a video or image folder: path…" aria-label="Path of a video or an image folder to add">
+            <button type="button" class="pl-webonly" data-b="pickTask" title="Choose a video or a folder on this computer">Browse…</button>
+            <label class="pl-src" title="For a video: keep every Nth frame">every <input type="number" class="pl-taskevery" name="task-every" min="1" value="5" aria-label="Keep every Nth frame"></label>
+            <button type="submit" title="Add it to this project as a new task">Add</button></form></section>
         <section class="pl-toolsec"><h2>Tool</h2><div class="pl-tools" role="group" aria-label="Tool">
           <button type="button" data-tool="click" title="Click a part to outline and box it (C)">Click to outline</button>
           <button type="button" data-tool="box" title="Drag to draw a box (B)">Draw box</button>
           <button type="button" data-tool="brush" class="pl-seg" title="Paint onto the selected outline, or a new part (P)">Brush</button>
-          <button type="button" data-tool="erase" class="pl-seg" title="Erase from the selected outline (E)">Eraser</button></div>
+          <button type="button" data-tool="erase" class="pl-seg" title="Erase from the selected outline (E)">Eraser</button>
+          <button type="button" data-tool="smartBrush" class="pl-seg" title="Paint roughly: only what the outline model sees as the part is added, so it stops at the part's edge (Shift+P)">Smart brush</button>
+          <button type="button" data-tool="smartErase" class="pl-seg" title="Erase roughly: only what the outline model sees as not the part is removed (Shift+E)">Smart eraser</button></div>
           <label class="pl-brush pl-seg">Brush size <input type="range" class="pl-bsize" min="1" max="120" value="12" name="brush-size" aria-label="Brush size in pixels"><span class="pl-bsize-v">12 px</span></label></section>
         <section><h2 id="pl-class-h">Class</h2>
           <input type="search" class="pl-filter" name="class-filter" autocomplete="off" placeholder="Filter classes…" aria-label="Filter classes" hidden>
@@ -756,10 +792,10 @@ function render({ model, el }) {
         <section class="pl-export"><h2>Export dataset</h2><div class="pl-tools">
           <select class="pl-fmt" name="export-format" aria-label="Export format"></select>
           <label><input type="checkbox" class="pl-revonly" name="confirmed-only"> Confirmed frames only</label>
-          <button type="button" class="primary" data-b="export">Export</button></div></section>
+          <button type="button" class="primary" data-b="export">Export</button></div>
+          <div class="pl-exptasks" hidden></div></section>
         <details class="pl-settings"><summary>Settings</summary>
-          <label class="pl-field pl-tasksel">Label type
-            <select class="pl-task" name="label-type"><option value="detect">Boxes</option><option value="segment">Outlines (masks)</option></select></label>
+          <p class="pl-field pl-src pl-typeline"></p>
           <label class="pl-field pl-parentf">Parent object
             <input type="text" class="pl-parent" name="parent-object" autocomplete="off" placeholder="Optional, e.g. engine block…"></label>
           <span class="pl-src pl-parentf">What the parts sit on. Suggestions then search inside it, which helps when the camera or distance changes.
@@ -806,11 +842,19 @@ function render({ model, el }) {
         <h3>Outlines and sorting</h3>
         <div><span>Brush / eraser (outline projects)</span><span><kbd>P</kbd> / <kbd>E</kbd></span></div>
         <div><span>Smaller / larger brush</span><span><kbd>,</kbd> <kbd>.</kbd></span></div>
+        <div><span>Smart brush / smart eraser (stop at the part's edge)</span><span><kbd>Shift</kbd>+<kbd>P</kbd> / <kbd>Shift</kbd>+<kbd>E</kbd></span></div>
+        <div><span>Zoom in / out at the pointer</span><span><kbd>Ctrl</kbd> + wheel, <kbd>+</kbd> <kbd>−</kbd></span></div>
+        <div><span>Whole frame again</span><kbd>Z</kbd></div>
+        <div><span>Move around when zoomed in</span><span>wheel, <kbd>Space</kbd>+drag, middle drag</span></div>
         <div><span>Sort parts / group by look</span><kbd>G</kbd></div>
         <div><span>Grid: give the selected pictures a class</span><span><kbd>1</kbd>–<kbd>9</kbd>, <kbd>0</kbd></span></div>
         <div><span>Grid: select all shown / clear class</span><span><kbd>Ctrl</kbd>+<kbd>A</kbd> / <kbd>Del</kbd></span></div>
         <div><span>Grid: look closer</span><span>Double-click, <kbd>Space</kbd></span></div>
       </div></dialog>
+    <dialog class="pl-pick" aria-label="Choose a video or a folder"><div class="pk-head"><button type="button" data-k="up" aria-label="Up one folder">↑</button>
+      <input type="text" class="pk-path" aria-label="Folder path" autocomplete="off" placeholder="Type a path and press Enter…"><button type="button" data-k="places">Places</button></div>
+      <div class="pk-body"></div><div class="pk-foot"><span class="pk-hint">Pick a video, or open a folder of images and use it</span>
+      <button type="button" data-k="cancel">Cancel</button><button type="button" class="primary" data-k="folder">Use this folder</button></div></dialog>
     <dialog class="pl-peek" aria-label="Picture"><header><b class="pl-peek-t"></b><span class="pl-peek-c"></span>
       <button type="button" data-a="peekPrev" aria-label="Previous">◀</button><button type="button" data-a="peekNext" aria-label="Next">▶</button>
       <button type="button" data-a="closePeek">Close</button></header><img class="pl-peek-img" alt=""></dialog>`;
@@ -819,9 +863,9 @@ function render({ model, el }) {
   const S = { project: null, statuses: [], flags: [], item: 0, target: 0, data: null, img: null, mask: null,
               maskItem: -1, cls: 0, tool: "click", sel: null, drag: null, busy: false, filter: "",
               saving: false, savedAt: null, hintHidden: false, started: false, brush: 12, hover: null, paint: null,
-              grid: null };
+              grid: null, zoom: 1, pan: [0, 0], panning: null, space: false };
   try { S.hintHidden = localStorage.getItem("pl-hint-hidden") === "1"; } catch {}
-  const MUTATING = new Set(["box", "click", "cycle", "delete", "set_class", "review", "accept", "undo", "settings", "paint", "tag", "accept_tags", "add_class"]);
+  const MUTATING = new Set(["box", "click", "cycle", "delete", "set_class", "review", "accept", "undo", "settings", "paint", "smart_paint", "tag", "accept_tags", "add_class"]);
   const seg = () => S.project?.task === "segment", classify = () => S.project?.task === "classify";
   const send = (m) => { if (MUTATING.has(m.type)) { S.saving = true; renderSaved(); } model.send(m); };
   const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
@@ -847,7 +891,8 @@ function render({ model, el }) {
   const helper = assistant({
     mount: $(".pl-rivetmount"), variant: "top", firstTip: 90000,
     transport: web ? webAssistant(model.homeUrl) : widgetAssistant(model),
-    context: () => ({ page: web ? "annotator" : "notebook", kind: S.project?.kind, frame: S.item + 1, frames: S.project?.count,
+    context: () => ({ page: web ? "annotator" : "notebook", kind: taskAt(S.item).kind, frame: S.item - taskAt(S.item).start + 1,
+                      frames: taskAt(S.item).end - taskAt(S.item).start, tasks: tasks().length,
                       confirmed: S.statuses.filter((s) => s === 4).length, to_check: S.flags.length, boxes: S.data?.boxes?.length ?? 0,
                       classes: S.project?.classes?.length, tool: S.tool, busy: S.busy }),
     actions: {
@@ -910,17 +955,17 @@ function render({ model, el }) {
     if (!S.img) return;
     ctx.drawImage(S.img, 0, 0);
     if (S.mask && S.maskItem === S.item && !seg()) ctx.drawImage(S.mask, 0, 0);
-    const lw = Math.max(2, cv.width / 700), fs = Math.max(12, cv.width / 95);
+    const lw = Math.max(0.75, Math.max(2, cv.width / 700) / S.zoom), fs = Math.max(5, Math.max(12, cv.width / 95) / S.zoom);
     ctx.font = `600 ${fs}px system-ui, sans-serif`;
     if (seg()) {
       for (const b of S.data?.boxes || []) {
-        if (!b.mask || (S.paint && b.obj === S.paint.obj)) continue;
+        if (!b.mask || (S.paint && !S.paint.smart && b.obj === S.paint.obj)) continue;
         const t = tinted(b); if (!t) continue;
         ctx.globalAlpha = b.source === "suggested" ? 0.55 : b.obj === S.sel ? 1 : 0.85;
         ctx.drawImage(t.canvas, b.mask[0], b.mask[1]);
       }
       ctx.globalAlpha = 1;
-      if (S.paint) { ctx.globalAlpha = 0.6; ctx.drawImage(S.paint.cv, 0, 0); ctx.globalAlpha = 1; }
+      if (S.paint) { ctx.globalAlpha = S.paint.smart ? 0.45 : 0.6; ctx.drawImage(S.paint.cv, 0, 0); ctx.globalAlpha = 1; }
     }
     for (const b of S.data?.boxes || []) {
       const [x1, y1, x2, y2] = b.box, col = colorOf(b.cls), on = b.obj === S.sel;
@@ -940,24 +985,30 @@ function render({ model, el }) {
       ctx.strokeRect(Math.min(d.x0, d.x1), Math.min(d.y0, d.y1), Math.abs(d.x1 - d.x0), Math.abs(d.y1 - d.y0));
       ctx.setLineDash([]);
     }
-    if (S.hover && (S.tool === "brush" || S.tool === "erase")) {           // the brush's footprint
+    if (S.hover && painting()) {                                          // the brush's footprint
+      const erasing = S.tool === "erase" || S.tool === "smartErase";
       ctx.beginPath(); ctx.arc(S.hover[0], S.hover[1], S.brush, 0, Math.PI * 2);
-      ctx.lineWidth = lw; ctx.strokeStyle = "#fff"; ctx.setLineDash(S.tool === "erase" ? [lw * 2, lw * 2] : []); ctx.stroke(); ctx.setLineDash([]);
+      ctx.lineWidth = lw; ctx.strokeStyle = "#fff"; ctx.setLineDash(erasing ? [lw * 2, lw * 2] : []); ctx.stroke(); ctx.setLineDash([]);
+      if (S.tool.startsWith("smart")) {                                  // smart tools: a small spark in the ring
+        ctx.beginPath(); ctx.arc(S.hover[0], S.hover[1], Math.max(lw * 1.5, S.brush * 0.18), 0, Math.PI * 2);
+        ctx.fillStyle = "#f2a900"; ctx.fill();
+      }
     }
   }
 
-  function drawStrip() {
+  function drawStrip() {                                         // the current task's frames
     const dpr = window.devicePixelRatio || 1, w = strip.clientWidth * dpr, h = strip.clientHeight * dpr;
     strip.width = w; strip.height = h;
-    const n = S.statuses.length; if (!n) return;
+    if (!S.statuses.length || !S.project) return;
+    const t = taskAt(S.item), n = Math.max(1, t.end - t.start);
     const css = getComputedStyle(el), cw = w / n;
     for (let i = 0; i < n; i++) {
-      sctx.fillStyle = css.getPropertyValue(`--st${S.statuses[i]}`);
+      sctx.fillStyle = css.getPropertyValue(`--st${S.statuses[t.start + i] ?? 0}`);
       sctx.fillRect(Math.floor(i * cw), 0, Math.ceil(cw), h);
     }
     sctx.fillStyle = css.getPropertyValue("--flag");
-    for (const f of S.flags) sctx.fillRect(Math.floor(f * cw), 0, Math.max(2, Math.ceil(cw)), h * 0.3);
-    const x = (S.item + 0.5) * cw;
+    for (const f of S.flags) if (f >= t.start && f < t.end) sctx.fillRect(Math.floor((f - t.start) * cw), 0, Math.max(2, Math.ceil(cw)), h * 0.3);
+    const x = (S.item - t.start + 0.5) * cw;
     sctx.fillStyle = "#15202b"; sctx.fillRect(x - dpr, 0, 2 * dpr, h);
     sctx.beginPath(); sctx.moveTo(x - 5 * dpr, h); sctx.lineTo(x + 5 * dpr, h); sctx.lineTo(x, h - 7 * dpr); sctx.fill();
   }
@@ -984,6 +1035,8 @@ function render({ model, el }) {
     el.querySelectorAll(".pl-imgonly").forEach((n) => (n.hidden = !cl));
     el.querySelectorAll(".pl-partsonly").forEach((n) => (n.hidden = cl));
     $(".pl-bsize-v").textContent = `${S.brush} px`;
+    el.querySelectorAll(".pl-webonly").forEach((n) => (n.hidden = !web));
+    renderTasks();
     const hint = $(".pl-hint");
     hint.hidden = S.hintHidden || !S.project || grid || boxes.length > 0 || S.statuses.some((s) => s >= 2);
   }
@@ -1000,19 +1053,22 @@ function render({ model, el }) {
   function renderTop() {
     if (!S.project || !S.data) return;
     $(".pl-title").textContent = S.project.name;
-    $(".pl-where").textContent = `${S.project.kind === "video" ? "Frame" : "Image"} ${S.item + 1} of ${S.project.count}`;
+    const t = taskAt(S.item), many = tasks().length > 1;
+    $(".pl-where").textContent = `${t.kind === "video" ? "Frame" : "Image"} ${S.item - t.start + 1} of ${t.end - t.start}${many ? ` · ${t.name}` : ""}`;
     $(".pl-where").title = S.data.name;
     const chips = [];
     if (S.data.reviewed) chips.push(`<span class="pl-chip rev">Confirmed</span>`);
     if (S.flags.includes(S.item)) chips.push(`<span class="pl-chip flag" title="A tracked box changed size, jumped or was lost">To check</span>`);
     $(".pl-chips").innerHTML = chips.join(" ");
-    const rev = S.statuses.filter((s) => s === 4).length, lab = S.statuses.filter((s) => s >= 2).length;
-    $(".pl-counts").textContent = `${lab} labeled, ${rev} confirmed, ${S.flags.length} to check`;
+    const tk = taskAt(S.item), part = tasks().length > 1 ? S.statuses.slice(tk.start, tk.end) : S.statuses;
+    const rev = part.filter((s) => s === 4).length, lab = part.filter((s) => s >= 2).length;
+    const flags = S.flags.filter((f) => f >= tk.start && f < tk.end).length;
+    $(".pl-counts").textContent = `${lab} labeled, ${rev} confirmed, ${flags} to check${tasks().length > 1 ? " in this task" : ""}`;
     const busy = S.busy;
     el.querySelectorAll('[data-a="track"],[data-a="trackBack"],[data-b="suggest"],[data-b="findAll"],[data-b="export"]').forEach((b) => (b.disabled = busy));
     $('[data-a="stop"]').disabled = !busy;
     $('[data-a="undo"]').disabled = busy || !S.undo;
-    $(".pl-video").hidden = S.project.kind !== "video";
+    $(".pl-video").hidden = taskAt(S.item).kind !== "video";
     $('[data-a="review"]').textContent = S.data.reviewed ? "Unconfirm frame" : "Confirm frame";
     $(".pl-device").textContent = [S.project.device, S.gpu && `GPU memory in use: ${S.gpu}`].filter(Boolean).join(". ");
     el.querySelectorAll('[data-b="group"],[data-b="suggestTags"],[data-b="odd"],[data-b="outlineHere"],[data-b="outlineAll"],[data-b="sortParts"]')
@@ -1032,9 +1088,10 @@ function render({ model, el }) {
     fmt.innerHTML = (S.project.formats || ["yolo", "coco"]).map((f) => `<option value="${f}">${FORMAT_NAMES[f] || f}</option>`).join("");
     if (keep) fmt.value = keep;
     $(".pl-parent").value = S.project.parent || "";
-    $(".pl-task").value = seg() ? "segment" : "detect";
+    $(".pl-typeline").textContent = `Project type: ${TASK_NAMES[S.project.task] || "Object detection"} (chosen when the project was made; its exports follow it).`;
+    $(".pl-type").textContent = TASK_NAMES[S.project.task] || "Object detection";
     $(".pl-revonly").closest("label").hidden = classify();              // suggested classes are never exported
-    $(".pl-tasksel").hidden = classify();
+
     el.querySelectorAll(".pl-parentf").forEach((n) => (n.hidden = classify()));
     $('[data-a="exportJump"]').title = `Export the dataset: ${(S.project.formats || []).map((f) => FORMAT_NAMES[f] || f).join(", ")}`;
     $(".pl-version").innerHTML = (S.project.version ? `PartLabeler version ${esc(S.project.version)}.` : "")
@@ -1042,7 +1099,7 @@ function render({ model, el }) {
     const back = $(".pl-back"); back.hidden = !web; if (web) back.href = model.homeUrl;
     if (web) document.title = `${S.project.name} · PartLabeler`;
     if (classify() && !S.grid) openGrid("images");
-    if (!seg() && (S.tool === "brush" || S.tool === "erase")) S.tool = "click";
+    if (!seg() && /brush|erase/i.test(S.tool)) S.tool = "click";
   }
 
   function legend() {
@@ -1067,16 +1124,52 @@ function render({ model, el }) {
 
   // ---- actions ---------------------------------------------------------------------------
   // `target` runs ahead of `item` (the frame on screen) so quick repeated steps are not lost
-  const goto = (i) => {
+  // Tasks: the project's videos and image folders, numbered one after another; frames and the timeline are
+  // shown per task, and the arrows stay inside the task on screen.
+  const tasks = () => S.project?.tasks || [];
+  const taskAt = (i) => tasks().find((t) => i >= t.start && i < t.end) || tasks()[0] || { start: 0, end: S.project?.count || 0, kind: S.project?.kind, name: "" };
+  const curTask = () => taskAt(S.target);
+  const goto = (i, within = true) => {
     if (!S.project) return;
-    i = Math.max(0, Math.min(S.project.count - 1, i));
+    const t = curTask();
+    i = within ? Math.max(t.start, Math.min(t.end - 1, i)) : Math.max(0, Math.min(S.project.count - 1, i));
     if (i === S.target && i === S.item) return;
     S.target = i; S.sel = null; send({ type: "goto", item: i });
   };
+  const S_last = new Map();                                        // task id -> the frame last seen in it
+  function openTask(id) {
+    const t = tasks().find((x) => x.id === id); if (!t || t.end <= t.start) return;
+    if (S.grid) { S.grid.task = S.grid.task === id ? null : id; renderGrid(); renderTasks(); return; }
+    goto(S_last.get(id) ?? t.start, false);
+  }
   function nextTodo() {
-    const after = (arr) => arr.find((i) => i > S.target);
+    const t = curTask(), after = (arr) => arr.find((i) => i > S.target && i < t.end);
     const todo = after(S.flags) ?? after(S.statuses.map((s, i) => (s !== 4 ? i : -1)).filter((i) => i >= 0));
-    if (todo != null) goto(todo); else hint("Nothing left to check after this frame");
+    if (todo != null) goto(todo); else hint(tasks().length > 1 ? "Nothing left to check after this frame in this task" : "Nothing left to check after this frame");
+  }
+  const ICON_VIDEO = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="m16 10 5-3v10l-5-3"/></svg>`;
+  const ICON_IMAGES = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/></svg>`;
+  function details(t) {                                            // "1920×1080 · 30 fps · 2:14 · H264 · 45 MB · 402 frames kept (every 5) · JPEG 38 MB"
+    const i = t.info || {}, mb = (b) => (b >= 2 ** 20 ? `${(b / 2 ** 20).toFixed(b >= 10 * 2 ** 20 ? 0 : 1)} MB` : `${Math.round((b || 0) / 1024)} KB`);
+    const out = [i.width ? `${i.width}×${i.height}` : null];
+    if (t.kind === "video") {
+      const d = i.duration;
+      out.push(i.fps ? `${+i.fps.toFixed(2)} fps` : null, d ? `${Math.floor(d / 60)}:${String(Math.floor(d % 60)).padStart(2, "0")}` : null,
+               i.codec ? i.codec.toUpperCase() : null, i.size ? mb(i.size) : null,
+               i.kept != null ? `${i.kept} frames kept (every ${t.every})` : `${t.end - t.start} frames`,
+               i.stored ? `${t.format === "webp" ? "lossless" : "JPEG"} ${mb(i.stored)}` : null);
+    } else out.push(`${i.images ?? t.end - t.start} images`, i.mixed_sizes ? "mixed sizes" : null, i.size ? mb(i.size) : null);
+    return out.filter(Boolean).join(" · ");
+  }
+  function renderTasks() {
+    const ts = tasks(), cur = S.grid ? S.grid.task : curTask().id;
+    $(".pl-taskcount").textContent = ts.length > 1 ? String(ts.length) : "";
+    $(".pl-tasks").innerHTML = ts.map((t) => `<button type="button" class="pl-task" data-task="${t.id}" aria-pressed="${t.id === cur}" title="${esc(t.source)}">
+      ${t.kind === "video" ? ICON_VIDEO : ICON_IMAGES}<b translate="no">${esc(t.name)}</b><small>${esc(details(t))}</small></button>`).join("");
+    const exp = $(".pl-exptasks"); exp.hidden = ts.length < 2;
+    if (ts.length > 1 && exp.children.length - 1 !== ts.length) {
+      exp.innerHTML = `<span class="pl-src">Tasks to export</span>` + ts.map((t) => `<label><input type="checkbox" name="export-task" value="${t.id}" checked> <span translate="no">${esc(t.name)}</span></label>`).join("");
+    }
   }
   function setClass(i) {
     if (!S.project || i < 0 || i >= S.project.classes.length) return;
@@ -1086,7 +1179,7 @@ function render({ model, el }) {
     renderSide();
   }
   const trackN = () => Math.max(1, parseInt($(".pl-n").value, 10) || 20);
-  const video = () => S.project?.kind === "video";
+  const video = () => taskAt(S.item).kind === "video";
   const track = (count, direction) => { if (video()) send({ type: "track", item: S.item, count, direction }); };
   const actions = {
     prev: () => goto(S.target - 1), next: () => goto(S.target + 1), nextTodo,
@@ -1099,10 +1192,16 @@ function render({ model, el }) {
     accept: () => send({ type: "accept", item: S.item }),
     review: () => { send({ type: "review", item: S.item, value: !S.data?.reviewed }); if (!S.data?.reviewed) setTimeout(() => goto(S.item + 1), 50); },
     // (review targets the frame on screen; navigation after it starts from there)
-    export: () => send({ type: "export", format: $(".pl-fmt").value, reviewed_only: $(".pl-revonly").checked }),
+    export: () => {
+      const picked = [...el.querySelectorAll('.pl-exptasks input:checked')].map((c) => +c.value);
+      if (tasks().length > 1 && !picked.length) { hint("Tick at least one task to export"); return; }
+      send({ type: "export", format: $(".pl-fmt").value, reviewed_only: $(".pl-revonly").checked,
+             tasks: tasks().length > 1 && picked.length < tasks().length ? picked : undefined });
+    },
     exportJump: () => { flash($(".pl-export")); $(".pl-fmt").focus(); },   // the controls sit below a possibly long class list
-    saveSettings: () => send({ type: "settings", parent: $(".pl-parent").value, ...(classify() ? {} : { task: $(".pl-task").value }) }),
+    saveSettings: () => send({ type: "settings", parent: $(".pl-parent").value }),
     sortParts: () => openGrid("parts"),
+    pickTask: () => { $(".pl-pick").showModal(); const src = tasks()[0]?.source || ""; pickShow(src.replace(/[\\/][^\\/]*$/, "")).catch(() => pickShow("")); },
     closeGrid: () => closeGrid(),
     group: () => send({ type: "sort", of: S.grid?.of || "images" }),
     suggestTags: () => send({ type: "suggest_tags" }),
@@ -1111,6 +1210,7 @@ function render({ model, el }) {
     outlineHere: () => send({ type: "outline", item: S.item }),
     outlineAll: () => send({ type: "outline", item: S.item, all: true }),
     peekPrev: () => peekStep(-1), peekNext: () => peekStep(1),
+    zoomIn: () => zoomAt(1.5), zoomOut: () => zoomAt(1 / 1.5), zoomFit: () => zoomAt(0),
     closePeek: () => $(".pl-peek").close(),
     full: () => toggleFull(),
     help: () => $(".pl-help-dlg").showModal(),
@@ -1122,6 +1222,7 @@ function render({ model, el }) {
     if (S.grid && e.target.closest(".pl-gridwrap") && gridClick(e)) return;
     if (!e.target.closest(".pl-side")) return;
     const b = e.target.closest("[data-b]")?.dataset.b; if (b) { actions[b](); return; }
+    const tk = e.target.closest("[data-task]"); if (tk) { openTask(+tk.dataset.task); return; }
     const t = e.target.closest("[data-tool],[data-cls],[data-obj],[data-del]"); if (!t) return;
     if (t.dataset.del) { send({ type: "delete", item: S.item, obj: +t.dataset.del }); if (S.sel === +t.dataset.del) S.sel = null; }
     else if (t.dataset.tool) { S.tool = t.dataset.tool; renderSide(); }
@@ -1161,7 +1262,7 @@ function render({ model, el }) {
   function openGrid(of) {
     S.grid = { of, cards: new Map(), order: [], groups: null, unsure: new Set(), dups: [], dupOf: new Set(), odd: new Map(),
                filter: "all", sel: new Set(), cur: null, anchor: null, shown: 400, visible: [], thumbs: new Map(), want: new Set() };
-    S.sel = null; S.tool = S.tool === "brush" || S.tool === "erase" ? "click" : S.tool;
+    S.sel = null; S.tool = /brush|erase/i.test(S.tool) ? "click" : S.tool;
     $(".pl-gtitle").textContent = of === "images" ? "Images" : "Parts";
     $(".pl-gridwrap").hidden = false; $(".pl-stage").hidden = true; $(".pl-range").hidden = true;
     send({ type: "grid", of });
@@ -1176,7 +1277,9 @@ function render({ model, el }) {
     send({ type: "goto", item: S.target });                        // classes may have changed
   }
   function sections() {
-    const G = S.grid, pass = PASS[G.filter], keep = (keys) => keys.filter((k) => G.cards.has(k) && pass(G.cards.get(k)));
+    const G = S.grid, pass = PASS[G.filter], tk = G.task != null ? tasks().find((t) => t.id === G.task) : null;
+    const inTask = (c) => !tk || ((G.of === "images" ? c.key : c.item) >= tk.start && (G.of === "images" ? c.key : c.item) < tk.end);
+    const keep = (keys) => keys.filter((k) => G.cards.has(k) && pass(G.cards.get(k)) && inTask(G.cards.get(k)));
     if (G.filter === "sugg") return [{ title: "Suggested, least sure first", keys: keep(G.order).sort((a, b) => (G.cards.get(a).score ?? 0) - (G.cards.get(b).score ?? 0)) }];
     if (G.filter === "odd") return [{ title: "These look like another class (the one on the badge)", keys: [...G.odd.keys()].filter((k) => G.cards.has(k)) }];
     if (G.filter === "dups") return G.dups.map((d, i) => ({ title: `Near-duplicates ${i + 1}`, keys: d.filter((k) => G.cards.has(k)) }));
@@ -1319,7 +1422,41 @@ function render({ model, el }) {
     else return;
     e.preventDefault(); e.stopPropagation();
   });
-  strip.addEventListener("click", (e) => { const r = strip.getBoundingClientRect(); goto(Math.floor((e.clientX - r.left) / r.width * S.statuses.length)); });
+  strip.addEventListener("click", (e) => {
+    const r = strip.getBoundingClientRect(), t = taskAt(S.item);
+    goto(t.start + Math.floor((e.clientX - r.left) / r.width * (t.end - t.start)));
+  });
+  $(".pl-addtask").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const path = $(".pl-taskpath").value.trim(); if (!path) { $(".pl-taskpath").focus(); return; }
+    send({ type: "add_task", path, every: Math.max(1, parseInt($(".pl-taskevery").value, 10) || 5) });
+    $(".pl-taskpath").value = "";
+  });
+  // A small file picker for the web app (the server lists this computer's folders; notebooks type a path)
+  let pickCur = { path: "", parent: null };
+  async function pickShow(path) {
+    try {
+      const r = await fetch(`${model.homeUrl}api/browse?path=${encodeURIComponent(path)}&kind=video`);
+      const d = await r.json(); if (!r.ok) throw new Error(d.detail || r.statusText); pickCur = d;
+    } catch (err) { $(".pk-hint").textContent = String(err.message || err); return; }
+    $(".pk-path").value = pickCur.path;
+    const join = (a, b) => (/[\\/]$/.test(a) ? a + b : a + (a.includes("\\") ? "\\" : "/") + b);
+    $(".pk-body").innerHTML = pickCur.dirs.map((d) => `<button type="button" class="pk-item" data-dir="${esc(pickCur.path ? join(pickCur.path, d) : d)}">📁 ${esc(d)}</button>`)
+      .concat(pickCur.files.map((f) => `<button type="button" class="pk-item" data-file="${esc(join(pickCur.path, f.name))}">🎞️ ${esc(f.name)}<small>${(f.size / 2 ** 20).toFixed(1)} MB</small></button>`))
+      .join("") || `<p class="pl-empty">No videos or folders here.</p>`;
+    el.querySelector('[data-k="folder"]').hidden = !pickCur.path;
+  }
+  $(".pl-pick").addEventListener("click", (e) => {
+    const t = e.target.closest("[data-dir],[data-file],[data-k]"); if (!t) return;
+    const use = (path) => { $(".pl-pick").close(); $(".pl-taskpath").value = path; $(".pl-addtask").requestSubmit(); };
+    if (t.dataset.dir) pickShow(t.dataset.dir);
+    else if (t.dataset.file) use(t.dataset.file);
+    else if (t.dataset.k === "up") pickShow(pickCur.parent ?? "");
+    else if (t.dataset.k === "places") pickShow("");
+    else if (t.dataset.k === "cancel") $(".pl-pick").close();
+    else if (t.dataset.k === "folder") use(pickCur.path);
+  });
+  $(".pk-path").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); pickShow($(".pk-path").value.trim()); } });
 
   // ---- full screen --------------------------------------------------------------------------
   // The web app and Jupyter/VS Code can use the browser's full screen. Colab's output frames may not (their
@@ -1367,8 +1504,21 @@ function render({ model, el }) {
   cv.addEventListener("contextmenu", (e) => e.preventDefault());
   // Brush and eraser (outline projects): paint on a copy of the part's mask; on release the page sends the
   // part's whole new mask as a PNG crop (engine: on_paint)
-  const painting = () => seg() && (S.tool === "brush" || S.tool === "erase");
+  const painting = () => seg() && ["brush", "erase", "smartBrush", "smartErase"].includes(S.tool);
+  // The smart brush and smart eraser send the stroke instead: the engine asks the outline model which pixels
+  // under it are the part (on_smart_paint), so the edit stops at the part's edge.
+  function startSmart(x, y) {
+    const erase = S.tool === "smartErase";
+    if (erase && S.sel == null) { hint("Select an outline first (Ctrl+click it), then use the smart eraser"); return; }
+    const b = S.sel != null ? S.data.boxes.find((bb) => bb.obj === S.sel) : null;
+    const pc = document.createElement("canvas"); pc.width = cv.width; pc.height = cv.height;
+    const px = pc.getContext("2d");
+    px.lineCap = px.lineJoin = "round"; px.lineWidth = S.brush * 2; px.strokeStyle = erase ? "#ffffff" : colorOf(b ? b.cls : S.cls);
+    S.paint = { cv: pc, px, obj: b ? b.obj : null, cls: b ? b.cls : S.cls, last: [x, y], bounds: [x, y, x, y], smart: true, erase, pts: [[x, y]] };
+    strokeTo(x, y);
+  }
   function startPaint(x, y) {
+    if (S.tool.startsWith("smart")) { startSmart(x, y); return; }
     if (S.tool === "erase" && S.sel == null) { hint("Select an outline first (Ctrl+click it), then erase"); return; }
     const b = S.sel != null ? S.data.boxes.find((bb) => bb.obj === S.sel) : null;
     const t = b?.mask ? tinted(b) : null;
@@ -1390,11 +1540,17 @@ function render({ model, el }) {
   function strokeTo(x, y) {
     const P = S.paint, [lx, ly] = P.last, r = S.brush + 2;
     P.px.beginPath(); P.px.moveTo(lx, ly); P.px.lineTo(x + 0.01, y); P.px.stroke(); P.last = [x, y];
+    if (P.pts) { const [qx, qy] = P.pts[P.pts.length - 1]; if (Math.hypot(x - qx, y - qy) >= 1 && P.pts.length < 4000) P.pts.push([x, y]); }
     P.bounds = [Math.min(P.bounds[0], x - r), Math.min(P.bounds[1], y - r), Math.max(P.bounds[2], x + r), Math.max(P.bounds[3], y + r)];
     draw();
   }
   function finishPaint() {
     const P = S.paint; S.paint = null;
+    if (P.smart) {
+      send({ type: "smart_paint", item: S.item, obj: P.obj ?? undefined, cls: P.cls, erase: P.erase,
+             points: P.pts.map(([x, y]) => [Math.round(x * 10) / 10, Math.round(y * 10) / 10]), radius: S.brush });
+      draw(); return;
+    }
     const x0 = Math.max(0, Math.floor(P.bounds[0])), y0 = Math.max(0, Math.floor(P.bounds[1]));
     const x1 = Math.min(cv.width, Math.ceil(P.bounds[2])), y1 = Math.min(cv.height, Math.ceil(P.bounds[3]));
     let bx0 = Infinity, by0 = Infinity, bx1 = -1, by1 = -1;
@@ -1414,10 +1570,52 @@ function render({ model, el }) {
     }
     send({ type: "paint", item: S.item, obj: P.obj ?? undefined, cls: P.cls, x: ox, y: oy, png: out.toDataURL("image/png") });
   }
+  // ---- zoom and pan: a CSS transform on the frame (pointer maths uses getBoundingClientRect, so it stays exact) --
+  function applyZoom() {
+    cv.style.transform = S.zoom > 1 ? `translate(${S.pan[0]}px, ${S.pan[1]}px) scale(${S.zoom})` : "";
+    cv.style.imageRendering = S.zoom * cv.clientWidth / Math.max(1, cv.width) >= 3 ? "pixelated" : "";   // see the pixels you edit
+    $(".pl-zoom-v").textContent = `${Math.round(S.zoom * 100)}%`;
+    $('[data-a="zoomOut"]').disabled = $('[data-a="zoomFit"]').disabled = S.zoom <= 1;
+    $('[data-a="zoomIn"]').disabled = S.zoom >= 8;
+    $(".pl-stage").classList.toggle("can-pan", S.zoom > 1 && S.space);
+    draw();
+  }
+  function clampPan() {                                              // the frame always fills its usual place
+    const w = cv.clientWidth, h = cv.clientHeight;
+    S.pan = [Math.min(0, Math.max(w - w * S.zoom, S.pan[0])), Math.min(0, Math.max(h - h * S.zoom, S.pan[1]))];
+  }
+  function zoomAt(factor, cx = cv.clientWidth / 2, cy = cv.clientHeight / 2) {   // cx, cy: px in the frame's usual box
+    const z = Math.min(8, Math.max(1, S.zoom * factor));
+    const ix = (cx - S.pan[0]) / S.zoom, iy = (cy - S.pan[1]) / S.zoom;
+    S.zoom = z; S.pan = z === 1 ? [0, 0] : [cx - z * ix, cy - z * iy];
+    clampPan(); applyZoom();
+  }
+  const boxXY = (e) => { const r = $(".pl-stage").getBoundingClientRect(); return [e.clientX - r.left - cv.offsetLeft, e.clientY - r.top - cv.offsetTop]; };
+  $(".pl-stage").addEventListener("wheel", (e) => {
+    if (!S.img || e.target.closest(".pl-zoom,.pl-hint")) return;
+    if (e.ctrlKey || e.metaKey) { e.preventDefault(); zoomAt(Math.exp(-e.deltaY * 0.0025), ...boxXY(e)); }   // also trackpad pinch
+    else if (S.zoom > 1) {                                           // zoomed in: the wheel moves around
+      e.preventDefault();
+      S.pan = [S.pan[0] - (e.shiftKey ? e.deltaY : e.deltaX), S.pan[1] - (e.shiftKey ? 0 : e.deltaY)];
+      clampPan(); applyZoom();
+    }
+  }, { passive: false });
+  window.addEventListener("mousemove", (e) => {
+    const P = S.panning; if (!P) return;
+    S.pan = [P.pan[0] + e.clientX - P.x, P.pan[1] + e.clientY - P.y]; clampPan(); applyZoom();
+  });
+  new ResizeObserver(() => { if (S.zoom > 1) { clampPan(); applyZoom(); } }).observe($(".pl-stage"));
+  el.addEventListener("keyup", (e) => { if (e.key === " ") { S.space = false; $(".pl-stage").classList.remove("can-pan"); } });
   let hoverRaf = 0;
   cv.addEventListener("mouseleave", () => { if (S.hover) { S.hover = null; draw(); } });
   cv.addEventListener("mousedown", (e) => {
-    if (!S.img) return; const [x, y] = toImage(e); el.focus();
+    if (!S.img) return;
+    if (e.button === 1 || (S.space && e.button === 0)) {             // pan: middle button, or Space + drag
+      e.preventDefault();
+      if (S.zoom > 1) { S.panning = { x: e.clientX, y: e.clientY, pan: [...S.pan] }; $(".pl-stage").classList.add("panning"); }
+      return;
+    }
+    const [x, y] = toImage(e); el.focus();
     if (painting() && !(e.ctrlKey || e.metaKey) && e.button === 0) { startPaint(x, y); return; }
     S.drag = { x0: x, y0: y, x1: x, y1: y, moved: false, e };
   });
@@ -1429,6 +1627,7 @@ function render({ model, el }) {
     S.drag.moved ||= Math.hypot(x - S.drag.x0, y - S.drag.y0) > 5 * px; if (S.drag.moved) draw();
   });
   window.addEventListener("mouseup", (e) => {
+    if (S.panning) { S.panning = null; $(".pl-stage").classList.remove("panning"); return; }
     if (S.paint) { finishPaint(); return; }
     const d = S.drag; if (!d) return; S.drag = null;
     if (e.ctrlKey || e.metaKey) { S.sel = boxAt(d.x0, d.y0); renderSide(); draw(); return; }
@@ -1464,7 +1663,11 @@ function render({ model, el }) {
     else if (k === "s") actions.suggest(); else if (k === "f") actions.findAll();
     else if (k === "y") actions.accept(); else if (k === "x") actions.stop();
     else if (k === "c" || k === "b") { S.tool = k === "c" ? "click" : "box"; renderSide(); draw(); }
-    else if ((k === "p" || k === "e") && seg()) { S.tool = k === "p" ? "brush" : "erase"; renderSide(); draw(); }
+    else if ("peEP".includes(k) && k.length === 1 && seg()) { S.tool = { p: "brush", e: "erase", P: "smartBrush", E: "smartErase" }[k]; renderSide(); draw(); }
+    else if (k === "+" || k === "=") zoomAt(1.5);
+    else if (k === "-" || k === "_") zoomAt(1 / 1.5);
+    else if (k === "z") zoomAt(0);
+    else if (k === " ") { if (S.zoom > 1) { S.space = true; $(".pl-stage").classList.add("can-pan"); } }
     else if ((k === "," || k === ".") && seg()) { S.brush = Math.max(1, Math.min(120, Math.round(S.brush * (k === "." ? 1.25 : 0.8)))); $(".pl-bsize").value = S.brush; renderSide(); draw(); }
     else if (k === "g" && !classify()) actions.sortParts();
     else if (k === "m") { if (S.sel != null) send({ type: "cycle", item: S.item, obj: S.sel }); }
@@ -1510,8 +1713,8 @@ function render({ model, el }) {
       img.onload = () => {
         if (m.item !== S.target) return;
         if (m.item !== S.item) S.mask = null;
-        S.item = m.item; S.data = m; S.img = img;
-        if (cv.width !== m.w || cv.height !== m.h) { cv.width = m.w; cv.height = m.h; }
+        S.item = m.item; S.data = m; S.img = img; S_last.set(taskAt(m.item).id, m.item);
+        if (cv.width !== m.w || cv.height !== m.h) { cv.width = m.w; cv.height = m.h; S.zoom = 1; S.pan = [0, 0]; applyZoom(); }
         if (S.sel != null && !m.boxes.some((b) => b.obj === S.sel)) S.sel = null;
         if (S.pendingSel != null) { if (m.boxes.some((b) => b.obj === S.pendingSel)) S.sel = S.pendingSel; S.pendingSel = null; }
         if (S.grid?.peek === m.item && $(".pl-peek").open && !web) $(".pl-peek-img").src = m.src;

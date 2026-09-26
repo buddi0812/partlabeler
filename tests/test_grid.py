@@ -120,5 +120,36 @@ def test_brush_and_eraser_edit_an_outline(tmp_path):
     assert p.boxes(0) == []
     s.handle({"type": "undo"})
     assert (p.mask(0, b["obj"]) == half).all()
-    s.handle({"type": "settings", "parent": "", "task": "detect"})
-    assert p.task == "detect" and last(msgs, "project")["task"] == "detect"
+    s.handle({"type": "settings", "parent": "", "task": "detect"})     # the type is fixed when the project is made
+    assert p.task == "segment" and last(msgs, "project")["task"] == "segment"
+
+
+def test_smart_brush_and_eraser_stop_at_the_part_edge(tmp_path, monkeypatch):
+    """A stand-in outline model: the part is a rectangle, and anything asked about with a 'not the part' point is
+    the background strip next to it. The strokes are fat and cross the edge; only the right side changes."""
+    from engine.segmenter import Segmenter
+    part = np.zeros((60, 80), bool); part[10:50, 10:40] = True
+    strip = np.zeros((60, 80), bool); strip[10:50, 40:60] = True
+
+    class FakeSeg:
+        smart_edit = Segmenter.smart_edit
+        def set_image(self, img): pass
+        def segment(self, points=(), labels=(), box=None):
+            return (strip if 0 in labels else part), 0.9
+
+    monkeypatch.setitem(api._MODELS, "seg", FakeSeg())
+    root = tmp_path / "photos"; root.mkdir()
+    Image.new("RGB", (80, 60), "gray").save(root / "a.jpg")
+    p = Project.create(tmp_path / "proj", ["part"], images=root, task="segment")
+    msgs = []
+    s = Session(p, msgs.append)
+    notched = part.copy(); notched[25:35, 30:40] = False
+    p.put(0, 1, 0, (0, 0, 1, 1), mask=notched)
+    s.handle({"type": "smart_paint", "item": 0, "obj": 1, "cls": 0, "points": [[35, 22], [35, 38]], "radius": 9})
+    assert (p.mask(0, 1) == part).all()                          # the notch is filled, nothing spilled past x=40
+    leaky = part | (strip & (np.arange(60)[:, None] >= 20) & (np.arange(60)[:, None] < 30) & (np.arange(80) < 50))
+    p.put(0, 1, 0, (0, 0, 1, 1), mask=leaky)
+    s.handle({"type": "smart_paint", "item": 0, "obj": 1, "cls": 0, "erase": True, "points": [[45, 20], [45, 30]], "radius": 8})
+    assert (p.mask(0, 1) == part).all()                          # the leak is gone, the part's own edge kept
+    s.handle({"type": "undo"})
+    assert (p.mask(0, 1) == leaky).all()

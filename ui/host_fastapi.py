@@ -116,8 +116,9 @@ def broadcast(name: str, msg: dict) -> None:
 
 def summary(folder: Path) -> dict:
     meta = json.loads((folder / "project.json").read_text(encoding="utf-8"))
+    tasks = meta.get("sources") or [{"name": Path(meta["source"]).stem, "kind": meta["kind"]}]
     out = {"name": folder.name, "kind": meta["kind"], "task": meta.get("task", "detect"), "source": meta["source"],
-           "classes": meta["classes"],
+           "classes": meta["classes"], "tasks": [{"name": t["name"], "kind": t["kind"]} for t in tasks],
            "parent": meta.get("parent"), "modified": (folder / "labels.sqlite").stat().st_mtime
            if (folder / "labels.sqlite").exists() else (folder / "project.json").stat().st_mtime}
     try:
@@ -345,13 +346,15 @@ def create_project(body: dict = Body(...)) -> dict:
     if not src.exists():
         raise HTTPException(400, f"Not found: {src}")
     labels, parent, every = body.get("labels") or None, (body.get("parent") or "").strip() or None, int(body.get("every") or 5)
-    task = body.get("task") or "detect"
+    task, frame_format = body.get("task") or "detect", body.get("frame_format") or "jpg"
     if task not in ("detect", "segment", "classify"):
         raise HTTPException(400, f"Unknown label type {task!r}")
+    if frame_format not in ("jpg", "webp"):
+        raise HTTPException(400, f"Unknown frame format {frame_format!r}")
 
     def job(progress, should_stop):
         p = Project.create(folder, classes, video=video, images=images, every=every,
-                           progress=lambda i, n, t: progress(i, n, t), task=task)
+                           progress=lambda i, n, t: progress(i, n, t), task=task, frame_format=frame_format)
         if parent:
             p.set_meta(parent=parent)
         res = {"name": name, "items": len(p.items)}

@@ -55,6 +55,46 @@ def clean(mask: np.ndarray, area: int = 16) -> np.ndarray:
     return m.astype(bool)
 
 
+# ---- smart brush / smart eraser -----------------------------------------------------------------------
+def footprint(points, radius: float, shape) -> np.ndarray:
+    """What a round brush of `radius` px covers along a stroke (image-pixel points)."""
+    m = np.zeros(shape, np.uint8)
+    pts = np.round(np.asarray(points, float)).astype(np.int32).reshape(-1, 2)
+    r = max(1, int(round(radius)))
+    for p in pts:
+        cv2.circle(m, (int(p[0]), int(p[1])), r, 1, -1)
+    if len(pts) > 1:
+        cv2.polylines(m, [pts], False, 1, thickness=2 * r)
+    return m.astype(bool)
+
+
+def along(points, n: int = 8) -> list[list[float]]:
+    """Up to n points spread evenly along a stroke (by length), ends included: prompts for the outline model."""
+    pts = np.asarray(points, float).reshape(-1, 2)
+    if len(pts) < 2:
+        return pts.tolist()
+    seg = np.r_[0, np.cumsum(np.hypot(*np.diff(pts, axis=0).T))]
+    if seg[-1] == 0:
+        return pts[:1].tolist()
+    at = np.linspace(0, seg[-1], min(n, max(2, int(seg[-1] // 4) + 1)))
+    return np.c_[np.interp(at, seg, pts[:, 0]), np.interp(at, seg, pts[:, 1])].tolist()
+
+
+def inner_points(mask: np.ndarray, n: int = 3) -> list[list[float]]:
+    """Up to n points deep inside the mask, far apart (its most interior spots): 'this is the part' prompts."""
+    if not mask.any():
+        return []
+    dist = cv2.distanceTransform(mask.astype(np.uint8), cv2.DIST_L2, 5)
+    out = []
+    for _ in range(n):
+        y, x = np.unravel_index(int(dist.argmax()), dist.shape)
+        if dist[y, x] < 1:
+            break
+        out.append([float(x), float(y)])
+        cv2.circle(dist, (int(x), int(y)), max(4, int(dist[y, x] * 3)), 0, -1)
+    return out
+
+
 # ---- the page ---------------------------------------------------------------------------------------
 def crop_png(mask: np.ndarray):
     """(x, y, data URL of a 1-bit PNG of the mask's box): what the page tints and draws."""
