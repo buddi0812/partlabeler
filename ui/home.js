@@ -46,6 +46,16 @@ button:focus-visible, a:focus-visible, summary:focus-visible { outline:2px solid
   border-radius:99px; padding:3px 11px 3px 8px; max-width:40vw; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .h-device i { width:8px; height:8px; border-radius:50%; background:var(--ok); flex:none; box-shadow:0 0 0 3px rgba(47,158,91,.18); }
 .h-device.cpu i { background:var(--amber); box-shadow:0 0 0 3px rgba(242,169,0,.2); }
+.h-upd { display:inline-flex; align-items:center; gap:6px; font-size:12.5px; font-weight:600; color:var(--amber-ink); background:var(--amber-soft);
+  border:1px solid rgba(242,169,0,.45); border-radius:99px; padding:3px 11px; cursor:pointer; white-space:nowrap; }
+.h-upd:hover { border-color:var(--amber); }
+.h-upd.quiet { color:var(--steel); background:var(--paper); border-color:var(--line); font-weight:500; }
+.h-upd.quiet:hover { border-color:var(--teal); color:var(--ink); }
+.h-upd.restart { color:#1f7a44; background:#dcf1e4; border-color:rgba(47,158,91,.4); cursor:default; }
+.h-upd svg { width:14px; height:14px; flex:none; }
+.h-upd.busy svg { animation:h-spin 1s linear infinite; } @keyframes h-spin { to { transform:rotate(360deg); } }
+.h-update ul { margin:0; padding:4px 20px 6px 38px; max-height:40vh; overflow:auto; color:#3d4b53; font-size:13.5px; }
+.h-update .h-updjob { padding:0 20px; }
 
 .h-wrap { max-width:1240px; margin:0 auto; padding:8px 20px 120px; display:grid; gap:28px; }
 
@@ -342,6 +352,7 @@ export default function home(root) {
   root.innerHTML = `
   <header class="h-top"><div class="h-top-in">
     <a class="h-logo" href="/">${ICON.logo}<span>PartLabeler</span></a>
+    <button type="button" class="h-upd" hidden></button>
     <span class="h-device" hidden><i aria-hidden="true"></i><span></span></span>
     <span class="h-bellmount"></span></div></header>
   <main class="h-wrap">
@@ -450,6 +461,9 @@ export default function home(root) {
     <div class="b-foot"><span class="h-sub b-hint"></span><button type="button" data-b="cancel">Cancel</button><button type="button" class="primary" data-b="choose">Use this folder</button></div></dialog>
   <dialog class="h-confirm" aria-labelledby="h-confirm-h"><h2 id="h-confirm-h">Move project to trash?</h2><p class="h-confirm-text"></p>
     <div class="b-foot"><button type="button" data-c="cancel">Cancel</button><button type="button" class="danger" data-c="ok">Move to trash</button></div></dialog>
+  <dialog class="h-confirm h-update" aria-labelledby="h-update-h"><h2 id="h-update-h">Update PartLabeler</h2><p class="h-update-text"></p>
+    <ul class="h-update-list"></ul><div class="h-updjob"></div>
+    <div class="b-foot"><button type="button" data-u="cancel">Not now</button><button type="button" class="primary" data-u="ok">Update now</button></div></dialog>
   <div class="h-toasts" aria-live="polite"></div>`;
   const $ = (s) => root.querySelector(s);
   const newForm = $(".h-new"), teachForm = $(".h-teach"), transferForm = $(".h-transfer");
@@ -758,6 +772,58 @@ export default function home(root) {
     dlg.close(); pick.done(path);
   }
 
+  // ---- updates (engine/update.py): a chip in the header when GitHub has a newer version ---------
+  // Always in the header: "Check for updates", "Up to date", "Update available" or "Restart to finish".
+  let upd = null;
+  const REFRESH = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>`;
+  function renderUpd(state, text, title) {
+    const b = $(".h-upd"); b.hidden = false;
+    b.className = `h-upd ${state}`; b.innerHTML = `${state === "quiet" || state === "quiet busy" ? REFRESH : ""}<span></span>`;
+    b.querySelector("span").textContent = text; b.title = title || "";
+  }
+  async function checkUpdate(force = false) {
+    renderUpd("quiet busy", "Checking for updates…");
+    upd = await api(`/api/update${force ? "?force=1" : ""}`).catch((e) => ({ error: e.message }));
+    const v = info.version ? `This copy: version ${info.version}.` : "";
+    if (upd.available) {
+      const n = upd.changes?.length;
+      renderUpd("", n ? `Update available: ${n} change${n === 1 ? "" : "s"}` : "Update available", `${v} Newest: ${upd.latest}. Click to see what's new.`);
+    } else if (upd.off && !force) renderUpd("quiet", "Check for updates", v);
+    else if (upd.error) renderUpd("quiet", "Check for updates", `${upd.error}. Click to try again.`);
+    else if (upd.can_update === false) renderUpd("quiet", "Updates: see why", upd.reason);
+    else renderUpd("quiet", "Up to date", `${v} Click to check again.`);
+  }
+  function showRestart(res) {
+    renderUpd("restart", res.from === res.to ? "Up to date" : `Updated to ${res.to}: restart to finish`,
+              "Close the PartLabeler window and start it again (run_windows.bat)");
+  }
+  $(".h-upd").addEventListener("click", () => {
+    const b = $(".h-upd");
+    if (b.classList.contains("restart") || b.classList.contains("busy")) return;
+    if (!upd?.available && upd?.can_update !== false) { checkUpdate(true); return; }
+    const dlg = $(".h-update");
+    $(".h-update-text").textContent = upd.can_update
+      ? "Gets the newest version from GitHub. Your projects, labels, exports and models are kept, and the labels are backed up first. "
+        + "PartLabeler needs a restart afterwards." + (upd.changes?.length ? " What's new:" : "")
+      : upd.reason;
+    $(".h-update-list").innerHTML = (upd.changes || []).map((c) => `<li>${esc(c)}</li>`).join("");
+    $(".h-updjob").innerHTML = "";
+    const ok = dlg.querySelector('[data-u="ok"]'); ok.hidden = !upd.can_update; ok.disabled = false;
+    dlg.querySelector('[data-u="cancel"]').textContent = upd.can_update ? "Not now" : "Close";
+    dlg.showModal();
+  });
+  $(".h-update").addEventListener("click", async (e) => {
+    const u = e.target.closest("[data-u]")?.dataset.u; if (!u) return;
+    const dlg = $(".h-update");
+    if (u === "cancel") { dlg.close(); return; }
+    const ok = dlg.querySelector('[data-u="ok"]'); ok.disabled = true;
+    try {
+      const { job } = await api("/api/update", {});
+      follow(job, $(".h-updjob"), (res) => { showRestart(res); ok.hidden = true; dlg.querySelector('[data-u="cancel"]').textContent = "Close"; pollNotes(); },
+             () => { ok.disabled = false; });
+    } catch (err) { $(".h-updjob").innerHTML = `<div class="h-err">${esc(err.message)}</div>`; ok.disabled = false; }
+  });
+
   // ---- start ---------------------------------------------------------------------------------
   api("/api/info").then((i) => {
     info = i;
@@ -767,6 +833,8 @@ export default function home(root) {
     $(".h-teach-off").hidden = i.teach;
     teachForm.querySelector("button[type=submit]").disabled = !i.teach;
     if (!i.teach) { transferForm.run.value = QUICK; showQuick(); }                // quick transfer needs no Teach extras
+    if (i.restart) showRestart(i.restart);
+    else checkUpdate(location.hash === "#update").then(() => { if (location.hash === "#update" && (upd?.available || upd?.can_update === false)) $(".h-upd").click(); });
   }).catch(() => ($(".h-home").textContent = "Can't reach the PartLabeler server. Restart the app (run_windows.bat) and reload this page."));
   setKind("video"); renderSources(); loadProjects(); loadRuns();
 }

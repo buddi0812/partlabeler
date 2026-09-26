@@ -117,3 +117,16 @@ def test_image_class_project_without_classes_and_grid_thumbnails(client, images)
     assert client.get("/thumbs/sorting/images/9.jpg").status_code == 404
     bad = client.post("/api/projects", json={"name": "x", "images": str(images), "task": "nope", "classes": "a"})
     assert bad.status_code == 400
+
+
+def test_update_check_is_cached_and_update_waits_for_jobs(client, monkeypatch):
+    from engine import update
+    calls = []
+    monkeypatch.setattr(update, "check", lambda: calls.append(1) or {"available": True, "changes": ["new"], "can_update": True})
+    assert client.get("/api/update").json()["available"] and client.get("/api/update").json()["changes"] == ["new"]
+    assert len(calls) == 1                                               # GitHub is asked at most every 6 hours
+    monkeypatch.setenv("PARTLABELER_NO_UPDATE_CHECK", "1")
+    assert client.get("/api/update").json() == {"available": False, "off": True}
+    host.state["jobs"]["x"] = {"finished": False}
+    assert client.post("/api/update").status_code == 409                # never mid-job
+    assert "version" in client.get("/api/info").json()

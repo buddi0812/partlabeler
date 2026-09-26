@@ -16,4 +16,6 @@
 - Label types (project.json `task`): detect (boxes), segment (outlines: masks as COCO RLE, box = mask box,
   polygons only at export, `engine/masks.py`) and classify (image classes on a grid). Smart sorting
   (`engine/sort.py`: grouping, suggestions, wrong-label check; S10) also drives "Sort parts" in box/outline projects.
+- Updates (`engine/update.py`, start-screen button, `update_windows.bat`, `partlabeler update`): only the app's own
+  files change; projects/, data/, .venv and models never; labels are backed up first. Keep it that way.
 - Layout: `engine/` (no UI code; `api.py` is the one message protocol), `ui/` (`canvas.js` annotator, `home.js` start screen, two hosts), `engine/cli.py` (`partlabeler` CLI). User data lives in `data/` and `projects/`, both gitignored: never commit them.

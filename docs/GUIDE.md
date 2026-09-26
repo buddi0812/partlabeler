@@ -247,6 +247,22 @@ driver, and about 4 GB of models). Linux / macOS: `bash install.sh`. Options: `-
 `-NoTeach`, `-Dev`. `python -m engine.cli doctor` checks the setup. An NVIDIA GPU is recommended (developed
 on an RTX 3060 12 GB; all models together use about 4 GB). CPU works but is slow.
 
+## Update PartLabeler
+
+The start screen's top bar always has an update button: **Check for updates**, **Up to date**, or
+**Update available** when GitHub has a newer version (it checks at most every 6 hours). Click it to see what is
+new, then **Update now**. When it says **restart to finish**, close the black PartLabeler window and start
+`run_windows.bat` again. Other ways: double-click `update_windows.bat` (with PartLabeler closed), or run
+`python -m engine.cli update` (`--check` only looks). In the annotator, Settings shows the version and a
+**Check for updates** link. On Colab, Step 3 of the notebook gets the newest version every session.
+
+An update never touches your work: projects, frames, labels, exports, Teach runs, the models and Rivet's key stay
+as they are. Before it changes anything it copies every project's labels (project.json and labels.sqlite) to
+`projects/.partlabeler/backups/` (the last 5 updates are kept). It works for a git clone and for an unzipped
+copy. It refuses, changing nothing, when app files were edited on this computer or when a job (tracking,
+Teach, Transfer) is running. If the update needs new Python packages, they are installed at the next start; if
+that fails, run the installer again (it is safe to rerun and keeps your projects).
+
 ## Troubleshooting
 
 - *Out of GPU memory*: close other programs that use the GPU (games, other notebooks) and try again.
@@ -275,7 +291,8 @@ on an RTX 3060 12 GB; all models together use about 4 GB). CPU works but is slow
 
 ## Privacy and the helper
 
-Labeling, tracking, suggestions, Teach & Transfer and export all run locally. Rivet, the helper robot,
-is the only feature that uses the internet: it sends your typed question, the chat so far and which screen
+Labeling, tracking, suggestions, Teach & Transfer and export all run locally. The update check asks GitHub
+for the newest version number (nothing about you or your projects is sent; set PARTLABELER_NO_UPDATE_CHECK=1 to
+check only when you click the button). Rivet, the helper robot, is the only feature that sends anything you type: it sends your typed question, the chat so far and which screen
 you are on (for example "annotator, frame 12 of 400") to Google Gemini. It never sends images, labels,
 project names or class names. Without a Gemini API key, Rivet answers from this guide offline.

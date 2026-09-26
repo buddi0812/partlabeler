@@ -6,6 +6,7 @@
     partlabeler teach DATASET --run RUN               learn a labeled source (Teach & Transfer)
     partlabeler transfer RUN VIDEO... --out DIR       label similar videos / image folders like the source
     partlabeler review PROJECT --video V --labels DIR/labels --classes F    check transferred labels
+    partlabeler update [--check]                      get the latest version from GitHub (projects are kept)
     partlabeler models | doctor
 
 Heavy modules (torch, rfdetr, SAM 3) load inside the commands, so --help stays instant.
@@ -51,8 +52,44 @@ def app_cmd(home: Path = typer.Option(Path("projects"), help="Folder holding the
             port: int = typer.Option(8765, help="Local port."),
             browser: bool = typer.Option(True, "--browser/--no-browser", help="Open the page in a browser.")):
     """Start the annotator (start page, projects, Teach & Transfer) at http://127.0.0.1:PORT."""
+    from engine.update import finish_pending
+    finish_pending(log=typer.echo)                             # packages an update from the start screen left for now
     from ui.host_fastapi import serve
     serve(home, port, browser)
+
+
+@app.command()
+def update(home: Path = typer.Option(None, help="Projects folder whose labels are backed up first (default: projects/ next to the app)."),
+           check: bool = typer.Option(False, "--check", help="Only say whether a newer version exists.")):
+    """Update PartLabeler from GitHub. Projects, labels, exports and models are kept; labels are backed up first."""
+    from engine import update as up
+    home = home or up.APP / "projects"
+    try:
+        res = up.check()
+    except Exception as e:
+        typer.echo(f"Could not reach GitHub: {type(e).__name__}: {e}")
+        raise typer.Exit(1)
+    typer.echo(f"This copy: {res['current']}   newest on GitHub: {res['latest']} ({res['date'][:10]})")
+    if not res["available"]:
+        typer.echo(res["reason"] or "PartLabeler is up to date.")
+        raise typer.Exit(0 if res["can_update"] else 1)
+    for line in res["changes"]:
+        typer.echo(f"  - {line}")
+    if not res["can_update"]:
+        typer.echo(res["reason"])
+        raise typer.Exit(1)
+    if check:
+        typer.echo("Run `partlabeler update` (or update_windows.bat) to update.")
+        return
+    try:
+        out = up.update(home, log=typer.echo)
+    except Exception as e:
+        typer.echo(f"Not updated: {e}")
+        raise typer.Exit(1)
+    typer.echo(f"Updated {out['from']} -> {out['to']}. Python packages: {out['packages']}.")
+    if out["backup"]:
+        typer.echo(f"Labels backed up to {out['backup']}")
+    typer.echo("Start PartLabeler again to use the new version.")
 
 
 @app.command()

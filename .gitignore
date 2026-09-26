@@ -13,6 +13,8 @@ spikes/out/
 .env
 graphify-out/cache/
 projects/
+.partlabeler-version.json
+.partlabeler-update-pending
 *.ckpt
 .graphify_*
 graphify-out/.graphify_*

@@ -77,6 +77,8 @@ TIPS = [
      "ask": "How do I sort a folder of images into classes?", "guide": "Image classes and smart sorting"},
     {"text": "Label now, name later: box every part as 'part', then Sort parts groups them by look for naming.",
      "ask": "How does Sort parts work?", "guide": "Sort parts: name or fix classes in bulk"},
+    {"text": "Updating never touches your projects, and every project's labels are backed up before it starts.",
+     "ask": "How do I update PartLabeler?", "guide": "Update PartLabeler"},
 ]
 
 _lock = threading.Lock()

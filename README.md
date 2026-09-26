@@ -44,6 +44,10 @@ Installer options (Windows `-Name` / Linux `--name`): `-Cpu` CPU-only PyTorch ·
 download (later: `python -m engine.models`) · `-NoTeach` skip Teach & Transfer · `-Dev` add pytest,
 playwright and jupyterlab · `-Cuda cu130` choose the PyTorch build yourself. Running it again is safe.
 
+**Update:** click the update button in the start screen's top bar (it shows when a new version is out), or
+double-click `update_windows.bat`, or run `python -m engine.cli update`. Projects, labels, exports and models are
+kept, and every project's labels are backed up first. Works for clones and unzipped copies.
+
 Models download on first install (about 4 GB; SAM 3 from a checksum-verified mirror and DINOv3).
 `python -m engine.cli doctor` checks the setup.
 
@@ -114,6 +118,7 @@ python -m engine.cli export projects/line2 --format cvat --reviewed-only
 python -m engine.cli teach data/line2_labeled --run projects/_teach/line2_v1 --parent "engine block"
 python -m engine.cli transfer projects/_teach/line2_v1 line3.mp4 line4.mp4 --out projects/_teach/line2_v1/labels
 python -m engine.cli quick data/line2_labeled line3.mp4 --run projects/_teach/quick_line2   # no training, rough preview
+python -m engine.cli update --check                   # a newer version on GitHub? (update: without --check)
 python -m engine.cli --help
 ```
 

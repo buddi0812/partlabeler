@@ -765,7 +765,7 @@ function render({ model, el }) {
           <span class="pl-src pl-parentf">What the parts sit on. Suggestions then search inside it, which helps when the camera or distance changes.
             Leave empty to search the whole image.</span>
           <div class="pl-tools" style="margin-top:8px"><button type="button" data-b="saveSettings">Save settings</button></div>
-          <p class="pl-src pl-device"></p></details>
+          <p class="pl-src pl-device"></p><p class="pl-src pl-version"></p></details>
       </aside>
     </div>
     <div class="pl-bottom">
@@ -1037,6 +1037,8 @@ function render({ model, el }) {
     $(".pl-tasksel").hidden = classify();
     el.querySelectorAll(".pl-parentf").forEach((n) => (n.hidden = classify()));
     $('[data-a="exportJump"]').title = `Export the dataset: ${(S.project.formats || []).map((f) => FORMAT_NAMES[f] || f).join(", ")}`;
+    $(".pl-version").innerHTML = (S.project.version ? `PartLabeler version ${esc(S.project.version)}.` : "")
+      + (web ? ` <a href="${model.homeUrl}#update">Check for updates</a>` : " Update: rerun Step 3 of the notebook.");
     const back = $(".pl-back"); back.hidden = !web; if (web) back.href = model.homeUrl;
     if (web) document.title = `${S.project.name} · PartLabeler`;
     if (classify() && !S.grid) openGrid("images");

@@ -61,7 +61,8 @@ HOME = HEAD + """<title>PartLabeler</title>
 <body style="margin:0"><div id="home"></div>
 <script type="module">import home from "/ui/home.js"; home(document.getElementById("home"));</script>"""
 
-state: dict = {"home": Path("projects"), "sessions": {}, "clients": {}, "jobs": {}}
+state: dict = {"home": Path("projects"), "sessions": {}, "clients": {}, "jobs": {}, "update_check": None, "restart": None}
+UPDATE_CHECK_S = 6 * 3600                                    # ask GitHub at most this often
 
 
 # ---- projects and sessions --------------------------------------------------------------
@@ -263,9 +264,54 @@ async def ws(sock: WebSocket, name: str):
 
 @app.get("/api/info")
 def info() -> dict:
-    from engine import hw
+    from engine import hw, update
+    try:
+        version = (update.current()["sha"] or "")[:7]
+    except Exception:
+        version = ""
     return {"home": str(state["home"].resolve()), "device": hw.describe(), "gpu": hw.memory(),
-            "teach": _has_teach()}
+            "teach": _has_teach(), "version": version, "restart": state["restart"]}
+
+
+# ---- updates (engine/update.py) --------------------------------------------------------------
+@app.get("/api/update")
+def update_check(force: bool = False) -> dict:
+    """Is a newer version on GitHub? Asked at most every 6 hours (PARTLABELER_NO_UPDATE_CHECK=1: never unless forced)."""
+    from engine import update
+    if os.environ.get("PARTLABELER_NO_UPDATE_CHECK") and not force:
+        return {"available": False, "off": True}
+    cached = state["update_check"]
+    if cached and not force and time.time() - cached[0] < UPDATE_CHECK_S:
+        return cached[1]
+    try:
+        res = update.check()
+    except Exception as e:                                   # offline, GitHub down, rate limit: say so, try later
+        res = {"available": False, "error": f"Could not reach GitHub ({type(e).__name__})"}
+    state["update_check"] = (time.time(), res)
+    return res
+
+
+@app.post("/api/update")
+def update_now() -> dict:
+    """Update the app files now; Python packages, if they changed, at the next start. Needs a restart after."""
+    from engine import update
+    if any(not j["finished"] for j in state["jobs"].values()) or any(s.running for s in state["sessions"].values()):
+        raise HTTPException(409, "A job is running (tracking, Teach, Transfer…). Let it finish or stop it, then update.")
+
+    def job(progress, should_stop):
+        return update.update(state["home"], packages_now=False, log=lambda text: progress(0, 0, text))
+
+    def done(res):
+        state["restart"] = res
+        state["update_check"] = None
+        if res["from"] == res["to"]:
+            note("info", "PartLabeler is up to date", f"Version {res['to']}")
+            return
+        note("success", f"Updated PartLabeler to version {res['to']}",
+             "Restart to finish: close the PartLabeler window and start it again (run_windows.bat)."
+             + (f" Your labels were backed up to {res['backup']}." if res["backup"] else ""))
+
+    return {"job": start_job("update", job, done, "Could not update PartLabeler")}
 
 
 def _has_teach() -> bool:

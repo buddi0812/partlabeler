@@ -141,11 +141,15 @@ class Session:
 
     # ---- messages out --------------------------------------------------------------------
     def project_msg(self):
-        from engine import hw
+        from engine import hw, update
+        try:
+            version = (update.current()["sha"] or "")[:7]
+        except Exception:
+            version = ""
         return {"type": "project", "name": self.p.meta["name"], "kind": self.p.meta["kind"], "task": self.p.task,
                 "classes": self.p.classes, "count": len(self.p.items),
                 "names": [it["name"] for it in self.p.items], "parent": self.p.meta.get("parent") or "",
-                "device": hw.describe(), "formats": list(self.p.formats), "task": self.p.task}
+                "device": hw.describe(), "formats": list(self.p.formats), "task": self.p.task, "version": version}
 
     def status_msg(self):
         from engine import hw
