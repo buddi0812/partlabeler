@@ -66,7 +66,7 @@ def test_yolo_export_import_round_trip(tmp_path, video):
     p.put(1, 2, 2, (30.5, 10, 60, 40))
     p.put(2, 3, 1, (0, 0, 10, 10), source="suggested")           # not exported
     p.set_reviewed(3)                                            # exported as an empty (background) file
-    res = p.export_yolo(tmp_path / "out")
+    res = p.export("yolo", tmp_path / "out")
     assert res == {"images": 3, "boxes": 2, "folder": str(tmp_path / "out")}
     assert (tmp_path / "out/labels/car_front_f000015.txt").read_text() == ""
     assert read_classes(tmp_path / "out/data.yaml") == CLASSES
@@ -93,9 +93,9 @@ def test_coco_export_loads_in_pycocotools(tmp_path, images):
     p = Project.create(tmp_path / "proj", CLASSES, images=images)
     p.put(0, 1, 1, (10, 10, 30, 20))
     p.put(2, 2, 2, (0, 0, 80, 60))
-    res = p.export_coco(tmp_path / "coco.json")
-    assert res["images"] == 2 and res["boxes"] == 2
-    coco = COCO(str(tmp_path / "coco.json"))
+    res = p.export("coco", tmp_path / "coco")
+    assert res["images"] == 2 and res["boxes"] == 2 and (tmp_path / "coco/images/a.jpg").exists()
+    coco = COCO(str(tmp_path / "coco/annotations.json"))
     assert coco.loadCats(2)[0]["name"] == "right_drl"
     assert coco.loadAnns(coco.getAnnIds(imgIds=[1]))[0]["bbox"] == [10, 10, 20, 10]
 

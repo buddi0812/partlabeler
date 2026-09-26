@@ -1,5 +1,7 @@
-// PartLabeler start screen: projects (open, show folder, move to trash), new project (with a file browser),
-// Teach & Transfer, the notification center shared with the annotator, and Rivet, the helper robot.
+// PartLabeler start screen (CVAT's Projects page): projects (open, export, back up, move to trash, create from a
+// backup), create a project (name, type, labels with colours), Teach & Transfer, the notification center shared
+// with the annotator, and Rivet, the helper robot. Also exports the shared look and helpers for ui/pages.js
+// (project, task, tasks and jobs pages): CSS, header(), fileBrowser(), followJob(), api(), esc(), ago().
 // Talks to ui/host_fastapi.py over plain JSON (/api/...). Long work runs as server jobs we poll.
 // Visual identity: the annotation box. Amber corner brackets "lock on" to whatever is in focus.
 import { notificationCenter, assistant, webAssistant } from "/ui/canvas.js";
@@ -42,6 +44,11 @@ button:focus-visible, a:focus-visible, summary:focus-visible { outline:2px solid
 .h-top-in { max-width:1240px; margin:0 auto; padding:10px 20px; display:flex; align-items:center; gap:12px; }
 .h-logo { display:inline-flex; align-items:center; gap:9px; font:600 19px/1 var(--display); letter-spacing:.01em; color:var(--ink); text-decoration:none; margin-right:auto; }
 .h-logo svg { width:26px; height:26px; }
+.h-logo { margin-right:4px; }
+.h-nav { display:flex; gap:2px; margin-right:auto; }
+.h-nav a { padding:6px 12px; border-radius:8px; color:var(--steel); text-decoration:none; font-weight:600; font-size:13.5px; }
+.h-nav a:hover { background:var(--alu-2); color:var(--ink); }
+.h-nav a[aria-current=page] { background:var(--paper); color:var(--ink); box-shadow:0 1px 3px rgba(31,42,48,.12); }
 .h-device { display:inline-flex; align-items:center; gap:6px; font-size:12.5px; color:var(--steel); background:var(--paper); border:1px solid var(--line);
   border-radius:99px; padding:3px 11px 3px 8px; max-width:40vw; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .h-device i { width:8px; height:8px; border-radius:50%; background:var(--ok); flex:none; box-shadow:0 0 0 3px rgba(47,158,91,.18); }
@@ -90,6 +97,8 @@ button:focus-visible, a:focus-visible, summary:focus-visible { outline:2px solid
   transition:transform .25s var(--spring), box-shadow .25s, border-color .2s; }
 .h-proj:hover, .h-proj:focus-within { transform:translateY(-3px); border-color:#c2ccd2; box-shadow:0 14px 30px rgba(31,42,48,.10); }
 .h-proj-link { display:grid; gap:6px; padding:16px 16px 14px; color:inherit; text-decoration:none; border-radius:12px; min-width:0; }
+.h-preview { display:block; height:120px; margin:-16px -16px 6px; border-radius:12px 12px 0 0; background:var(--stage) center/cover no-repeat; }
+.h-preview.none { background:repeating-linear-gradient(135deg, #1b2a32 0 10px, #16232a 10px 20px); }
 .h-proj-link:focus-visible { outline:none; }
 .h-proj-top { display:flex; align-items:center; gap:9px; padding-right:34px; min-width:0; }
 .h-kind { width:30px; height:30px; border-radius:8px; display:grid; place-items:center; background:var(--teal-soft); color:var(--teal-deep); flex:none; }
@@ -134,6 +143,18 @@ button:focus-visible, a:focus-visible, summary:focus-visible { outline:2px solid
 .h-menu-list a:hover, .h-menu-list button:hover { background:var(--teal-soft); }
 .h-menu-list .danger { color:var(--bad); background:none; font-weight:400; }
 .h-menu-list .danger:hover { background:#fde8e5; }
+
+/* labels constructor (CVAT's): colour, name, remove */
+.h-labels { display:grid; gap:6px; }
+.h-label { display:grid; grid-template-columns:34px minmax(0,1fr) auto; gap:6px; align-items:center; }
+.h-label input[type=color] { width:34px; height:32px; padding:2px; border:1px solid var(--line); border-radius:8px; background:var(--paper); cursor:pointer; }
+.h-label button { padding:5px 10px; }
+.h-tabs { display:inline-flex; gap:2px; background:var(--alu); border-radius:8px; padding:2px; }
+.h-tabs button { border:0; background:none; padding:4px 12px; font-size:12.5px; font-weight:600; color:var(--steel); }
+.h-tabs button[aria-pressed=true] { background:var(--paper); color:var(--ink); box-shadow:0 1px 2px rgba(31,42,48,.14); }
+.h-sort { padding:6px 9px; font-size:13px; }
+.h-plus { position:relative; }
+.h-plus .h-menu-list { right:0; top:40px; }
 
 /* forms */
 .h-form { display:grid; gap:14px; }
@@ -244,27 +265,144 @@ dialog[open]::backdrop { animation:h-fade .25s ease-out; }
   *, *::before, *::after { animation-duration:.001ms !important; animation-delay:0s !important; transition-duration:.001ms !important; transition-delay:0s !important; } }
 `;
 
-const TASKS = { detect: "Object detection", segment: "Segmentation", classify: "Classification" };
-const ICON = {
+export const TASKS = { detect: "Object detection", segment: "Segmentation", classify: "Classification" };
+export const ICON = {
   video: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="m16 10 5-3v10l-5-3"/></svg>`,
   images: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 16-5-5-9 9"/></svg>`,
   check: `<svg class="h-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5 10 17l9-10"/></svg>`,
   logo: `<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M3 11V3h8M21 3h8v8M29 21v8h-8M11 29H3v-8" fill="none" stroke="#f2a900" stroke-width="3" stroke-linecap="round"/><rect x="9" y="9" width="14" height="14" rx="3" fill="#0a7c78"/></svg>`,
 };
-const BRK = `<span class="h-brk" aria-hidden="true"><i></i><i></i><i></i><i></i></span>`;
+export const BRK = `<span class="h-brk" aria-hidden="true"><i></i><i></i><i></i><i></i></span>`;
+export { CSS };
 
-const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-const api = async (path, body) => {
-  const r = await fetch(path, body === undefined ? {} : { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+export const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+export const api = async (path, body, method) => {
+  const r = await fetch(path, body === undefined && !method ? {} : { method: method || "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body ?? {}) });
   const data = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(data.detail || `${r.status} ${r.statusText}`);
   return data;
 };
-const size = (n) => (n > 1e9 ? `${(n / 1e9).toFixed(1)} GB` : n > 1e6 ? `${(n / 1e6).toFixed(0)} MB` : `${Math.ceil(n / 1e3)} KB`);
+export const size = (n) => (n > 1e9 ? `${(n / 1e9).toFixed(1)} GB` : n > 1e6 ? `${(n / 1e6).toFixed(0)} MB` : `${Math.ceil(n / 1e3)} KB`);
 const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
-const ago = (t) => { const s = Math.round(t - Date.now() / 1000);
+export const ago = (t) => { if (typeof t === "string") t = Date.parse(t) / 1000; const s = Math.round(t - Date.now() / 1000);
   return Math.abs(s) < 60 ? "just now" : Math.abs(s) < 3600 ? rtf.format(Math.round(s / 60), "minute") : Math.abs(s) < 86400 ? rtf.format(Math.round(s / 3600), "hour") : rtf.format(Math.round(s / 86400), "day"); };
-const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+export const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+// The top bar of every page: logo, Projects / Tasks / Jobs (as CVAT's), update button, device, bell.
+export function header(active) {
+  const nav = [["/", "Projects", "projects"], ["/tasks", "Tasks", "tasks"], ["/jobs", "Jobs", "jobs"]]
+    .map(([href, text, id]) => `<a href="${href}"${id === active ? ' aria-current="page"' : ""}>${text}</a>`).join("");
+  return `<header class="h-top"><div class="h-top-in">
+    <a class="h-logo" href="/">${ICON.logo}<span>PartLabeler</span></a><nav class="h-nav" aria-label="Main">${nav}</nav>
+    <button type="button" class="h-upd" hidden></button>
+    <span class="h-device" hidden><i aria-hidden="true"></i><span></span></span>
+    <span class="h-bellmount"></span></div></header>`;
+}
+
+// Choose a file or folder on this computer (the server lists folders). pick({kind, folder, start}) resolves to
+// the chosen path, or null when cancelled. kind: video | images | classes | dir | backup | any.
+export function fileBrowser() {
+  const dlg = document.createElement("dialog");
+  dlg.className = "h-browser"; dlg.setAttribute("aria-label", "Choose a file or folder");
+  dlg.innerHTML = `<div class="b-head"><button type="button" data-b="up" aria-label="Up one folder" title="Up one folder">↑</button><input type="text" class="b-path" aria-label="Folder path" autocomplete="off" placeholder="Type a path and press Enter…"><button type="button" data-b="places">Places</button></div>
+    <div class="b-body"></div>
+    <div class="b-foot"><span class="h-sub b-hint"></span><button type="button" data-b="cancel">Cancel</button><button type="button" class="primary" data-b="choose">Use this folder</button></div>`;
+  document.body.appendChild(dlg);
+  const q = (x) => dlg.querySelector(x);
+  let pick = null, cur = { path: "", parent: null }, resolve = null;
+  const joinPath = (a, b) => (a.endsWith("/") || a.endsWith("\\") ? a + b : a + (a.includes("\\") ? "\\" : "/") + b);
+  async function show(path) {
+    try { cur = await api(`/api/browse?path=${encodeURIComponent(path)}&kind=${pick.kind}`); }
+    catch (err) { q(".b-hint").innerHTML = `<span class="h-err">${esc(err.message)}</span>`; return; }
+    q(".b-path").value = cur.path;
+    const dirs = cur.dirs.map((d) => `<button type="button" class="b-item" data-dir="${esc(cur.path ? joinPath(cur.path, d) : d)}">📁 ${esc(d)}</button>`);
+    const files = pick.folder ? [] : cur.files.map((f) => `<button type="button" class="b-item" data-file="${esc(joinPath(cur.path, f.name))}">📄 ${esc(f.name)}<small>${size(f.size)}</small></button>`);
+    q(".b-body").innerHTML = dirs.concat(files).join("") || `<div class="h-empty">Nothing here${pick.folder ? "" : " that fits"}.</div>`;
+    q('[data-b="choose"]').hidden = !(pick.folder || pick.either) || !cur.path;
+    q(".b-hint").textContent = pick.folder || pick.either ? (cur.images_here != null ? `${cur.images_here} images directly in this folder` : pick.either ? "Pick a file, or open a folder and use it" : "Open the folder, then choose it") : "Pick a file";
+  }
+  function finish(path) {
+    try { localStorage.setItem("pl-last-dir", pick.folder && path === cur.path ? path : path.replace(/[\\/][^\\/]*$/, "")); } catch {}
+    dlg.close(); const r = resolve; resolve = null; r?.(path);
+  }
+  dlg.addEventListener("close", () => { const r = resolve; resolve = null; r?.(null); });
+  dlg.addEventListener("click", (e) => {
+    const t = e.target.closest("[data-dir],[data-file],[data-b]"); if (!t) return;
+    if (t.dataset.dir) show(t.dataset.dir);
+    else if (t.dataset.file) finish(t.dataset.file);
+    else if (t.dataset.b === "up") show(cur.parent ?? "");
+    else if (t.dataset.b === "places") show("");
+    else if (t.dataset.b === "cancel") dlg.close();
+    else if (t.dataset.b === "choose") finish(cur.path);
+  });
+  q(".b-path").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); show(q(".b-path").value.trim()); } });
+  return (spec) => new Promise((res) => {
+    pick = spec; resolve = res;
+    let last = ""; try { last = localStorage.getItem("pl-last-dir") || ""; } catch {}
+    const start = spec.start || last;
+    dlg.showModal();
+    show(start && !/\.[a-z0-9]{2,4}$/i.test(start) ? start : start.replace(/[\\/][^\\/]*$/, "")).catch(() => show(""));
+  });
+}
+
+// Show a server job's progress in `el` until it ends; onDone(result) on success.
+export function followJob(jid, el, { onDone, onEnd } = {}) {
+  el.innerHTML = `<div class="h-job" role="status"><div class="h-row"><b class="j-text">Starting…</b><span style="flex:1"></span><button type="button" class="j-stop">Stop</button></div>
+    <span class="h-bar"><i></i></span><pre class="j-log"></pre></div>`;
+  el.querySelector(".j-stop").onclick = () => api(`/api/jobs/${jid}/stop`, {});
+  const tick = async () => {
+    const j = await api(`/api/jobs/${jid}`).catch(() => null);
+    if (!j) return setTimeout(tick, 1500);
+    el.querySelector(".j-text").textContent = j.text;
+    el.querySelector(".h-bar i").style.width = j.total ? `${Math.min(100, j.done / j.total * 100)}%` : "4%";
+    el.querySelector(".j-log").textContent = j.log.slice(-12).join("\n");
+    if (!j.finished) return setTimeout(tick, 800);
+    el.querySelector(".j-stop").remove();
+    const box = el.querySelector(".h-job"); box.classList.add("done");
+    if (j.error) box.insertAdjacentHTML("beforeend", `<div class="h-err">${esc(j.error)}</div>`);
+    else { el.querySelector(".h-bar i").style.width = "100%"; box.querySelector(".h-row").insertAdjacentHTML("afterbegin", ICON.check); onDone?.(j.result); }
+    onEnd?.(j);
+  };
+  tick();
+}
+
+// CVAT's label constructor: rows of colour + name (with a Raw JSON tab). Returns {get(), set(labels)};
+// get() gives [{name, color, from}] where `from` is the label's index when it was set (null: new).
+export function labelsEditor(el, labels = []) {
+  const palette = ["#e6194b", "#3cb44b", "#4363d8", "#f58231", "#911eb4", "#46f0f0", "#f032e6", "#bcf60c", "#008080", "#9a6324"];
+  let raw = false;
+  el.innerHTML = `<div class="h-row"><span class="h-tabs" role="group" aria-label="Editor"><button type="button" data-lt="constructor" aria-pressed="true">Constructor</button><button type="button" data-lt="raw" aria-pressed="false">Raw</button></span></div>
+    <div class="h-labels"></div><textarea class="h-rawlabels" hidden aria-label="Labels as JSON" spellcheck="false"></textarea>
+    <div class="h-row h-lbtns"><button type="button" data-l="add">Add label</button><button type="button" data-browse-classes>Load from classes.txt / data.yaml…</button></div>`;
+  const list = el.querySelector(".h-labels"), ta = el.querySelector(".h-rawlabels");
+  const row = (l, i) => `<div class="h-label" data-from="${l.from ?? ""}"><input type="color" value="${l.color || palette[i % palette.length]}" aria-label="Colour of ${esc(l.name || "the new label")}">
+    <input type="text" value="${esc(l.name || "")}" placeholder="Label name, e.g. bolt" aria-label="Label name"><button type="button" data-l="rm" aria-label="Remove ${esc(l.name || "this label")}" title="Remove">×</button></div>`;
+  const read = () => [...list.querySelectorAll(".h-label")].map((r) => ({ name: r.children[1].value.trim(), color: r.children[0].value,
+    from: r.dataset.from === "" ? null : +r.dataset.from })).filter((l) => l.name);
+  const set = (ls) => { list.innerHTML = ls.map((l, i) => row(l, i)).join(""); };
+  set(labels.map((l, i) => ({ ...l, from: l.from ?? i })));
+  el.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-l],[data-lt]"); if (!b) return;
+    if (b.dataset.l === "add") { list.insertAdjacentHTML("beforeend", row({ name: "", from: null }, list.children.length)); list.lastElementChild.children[1].focus(); }
+    else if (b.dataset.l === "rm") b.closest(".h-label").remove();
+    else if (b.dataset.lt) {
+      const toRaw = b.dataset.lt === "raw";
+      if (toRaw === raw) return;
+      if (toRaw) ta.value = JSON.stringify(read().map(({ name, color }) => ({ name, color })), null, 1);
+      else { try { const js = JSON.parse(ta.value); const old = read(); set(js.map((l) => ({ ...l, from: old.find((o) => o.name === l.name)?.from ?? null }))); } catch { ta.focus(); return; } }
+      raw = toRaw; list.hidden = raw; ta.hidden = !raw; el.querySelector(".h-lbtns").hidden = raw;
+      el.querySelectorAll("[data-lt]").forEach((x) => x.setAttribute("aria-pressed", String(x.dataset.lt === b.dataset.lt)));
+    }
+  });
+  return {
+    get() {
+      if (raw) { const js = JSON.parse(ta.value); const old = read(); return js.map((l) => ({ name: String(l.name || "").trim(), color: l.color || null, from: old.find((o) => o.name === l.name)?.from ?? null })); }
+      return read();
+    },
+    set(ls) { set(ls.map((l, i) => ({ ...l, from: l.from ?? null }))); },
+    addNames(names) { const have = new Set(read().map((l) => l.name)); names.filter((n) => !have.has(n)).forEach((n) => list.insertAdjacentHTML("beforeend", row({ name: n, from: null }, list.children.length))); },
+  };
+}
 
 // ---- hero demo: click a part, box it, track it, flag one frame, confirm, export (10 s loop) ----------
 const CELLS = 24, FLAG = 15;
@@ -350,11 +488,7 @@ function heroDemo(svg) {
 export default function home(root) {
   document.head.appendChild(Object.assign(document.createElement("style"), { textContent: CSS }));
   root.innerHTML = `
-  <header class="h-top"><div class="h-top-in">
-    <a class="h-logo" href="/">${ICON.logo}<span>PartLabeler</span></a>
-    <button type="button" class="h-upd" hidden></button>
-    <span class="h-device" hidden><i aria-hidden="true"></i><span></span></span>
-    <span class="h-bellmount"></span></div></header>
+  ${header("projects")}
   <main class="h-wrap">
     <section class="h-hero" aria-labelledby="h-title">
       <div>
@@ -374,7 +508,10 @@ export default function home(root) {
     <div class="h-grid">
       <section aria-labelledby="h-projects-h">
         <div class="h-sec-head"><h2 id="h-projects-h">Projects</h2><span class="h-count h-pcount"></span><span class="h-sp"></span>
-          <input type="text" class="h-filter" name="project-filter" autocomplete="off" aria-label="Filter projects" placeholder="Filter projects…" hidden></div>
+          <input type="text" class="h-filter" name="project-filter" autocomplete="off" aria-label="Search projects" placeholder="Search…">
+          <select class="h-sort" name="project-sort" aria-label="Sort projects"><option value="updated">Updated date</option><option value="name">Name</option><option value="created">Created date</option></select>
+          <details class="h-menu h-plus" style="position:relative;top:auto;right:auto"><summary aria-label="Create" title="Create" style="width:34px;height:34px;background:var(--teal);color:#fff;border-radius:9px">+</summary><div class="h-menu-list">
+            <button type="button" data-go="new">Create a new project</button><button type="button" data-go="restore">Create from backup…</button></div></details></div>
         <div class="h-projects"><div class="h-empty">Loading…</div></div>
         <details class="h-panel h-trash" style="margin-top:22px" hidden><summary>Trash <span class="h-count h-trash-count"></span></summary>
           <p class="h-sub" style="margin-bottom:10px">Projects you moved to the trash. Restore brings them back exactly as they were.</p>
@@ -382,37 +519,24 @@ export default function home(root) {
       </section>
 
       <section class="h-panel h-sticky h-newpanel" id="new" aria-labelledby="h-new-h">${BRK}
-        <h2 id="h-new-h">New project</h2>
-        <p class="h-sub" style="margin-bottom:14px">A video or a folder of images, and the part names to label.</p>
+        <h2 id="h-new-h">Create a new project</h2>
+        <p class="h-sub" style="margin-bottom:14px">A name, the project type and its labels. Videos and image folders are added next, as tasks.</p>
         <form class="h-form h-new" autocomplete="off">
           <label class="h-field"><span>Name</span><input type="text" name="name" required placeholder="e.g. gearbox_line2…"></label>
           <div class="h-field"><span>Project type</span>
             <div class="h-seg three h-taskseg" role="group" aria-label="Project type"><span class="h-seg-thumb" aria-hidden="true"></span>
               <button type="button" data-task="detect" aria-pressed="true">Object detection</button><button type="button" data-task="segment" aria-pressed="false">Segmentation</button><button type="button" data-task="classify" aria-pressed="false">Classification</button></div>
             <small class="h-taskhint">A box around every part.</small></div>
-          <div class="h-field"><span>Source</span>
-            <div class="h-seg h-srcseg" role="group" aria-label="Source type"><span class="h-seg-thumb" aria-hidden="true"></span>
-              <button type="button" data-kind="video" aria-pressed="true">Video</button><button type="button" data-kind="images" aria-pressed="false">Image folder</button></div>
-            <div class="h-row" style="margin-top:4px"><input type="text" name="source" required aria-label="Source path" placeholder="Path to the video file…">
-              <button type="button" data-browse="source">Browse…</button></div>
-            <small class="h-srchint">Every Nth frame is kept for labeling.</small></div>
-          <label class="h-field h-every"><span>Keep every Nth frame</span><input type="number" name="every" min="1" value="5"></label>
-          <div class="h-field"><span>Classes</span>
-            <textarea name="classes" placeholder="One part name per line, e.g.&#10;bolt&#10;left_bracket&#10;right_bracket…"></textarea>
-            <div class="h-row"><button type="button" data-browse="classes">Load from classes.txt / data.yaml…</button></div>
-            <small>Names starting left_ / right_ are treated as mirror twins.</small></div>
-          <details class="h-more"><summary>More options</summary>
+          <div class="h-field"><span>Labels</span><div class="h-labelsed"></div>
+            <small class="h-labelhint">Names starting left_ / right_ are treated as mirror twins.</small></div>
+          <details class="h-more"><summary>Advanced configuration</summary>
             <div class="h-form" style="margin-top:12px">
-              <div class="h-field"><span>Existing YOLO labels to import (optional)</span>
-                <div class="h-row"><input type="text" name="labels" aria-label="YOLO labels folder" placeholder="A labels/ folder to review or finish…"><button type="button" data-browse="labels">Browse…</button></div></div>
               <label class="h-field"><span>Frames</span><select name="frames">
                 <option value="jpg">Compact: JPEG, visually lossless (default)</option>
                 <option value="webp">Lossless: exact pixels, about twice the disk space</option></select>
-                <small>How a video's frames are stored. Exports link to them, so they take no extra space.</small></label>
-              <label class="h-field"><span>Parent object (optional)</span><input type="text" name="parent" placeholder="What the parts sit on, e.g. engine block…">
-                <small>Suggestions then search inside it. Can be changed later in the annotator.</small></label>
+                <small>The default for this project's videos (each task can choose). Exports link to the frames, so they take no extra space.</small></label>
             </div></details>
-          <div class="h-row"><button class="primary" type="submit">Create project</button><span class="h-sub h-newmsg"></span></div>
+          <div class="h-row"><button class="primary" type="submit" value="open">Submit &amp; Open</button><button type="submit" value="continue">Submit &amp; Continue</button><span class="h-sub h-newmsg"></span></div>
         </form>
         <div class="h-newjob" style="margin-top:12px"></div>
       </section>
@@ -460,9 +584,6 @@ export default function home(root) {
       <div class="h-runs"></div>
     </section>
   </main>
-  <dialog class="h-browser" aria-label="Choose a file or folder"><div class="b-head"><button type="button" data-b="up" aria-label="Up one folder" title="Up one folder">↑</button><input type="text" class="b-path" aria-label="Folder path" autocomplete="off" placeholder="Type a path and press Enter…"><button type="button" data-b="places">Places</button></div>
-    <div class="b-body"></div>
-    <div class="b-foot"><span class="h-sub b-hint"></span><button type="button" data-b="cancel">Cancel</button><button type="button" class="primary" data-b="choose">Use this folder</button></div></dialog>
   <dialog class="h-confirm" aria-labelledby="h-confirm-h"><h2 id="h-confirm-h">Move project to trash?</h2><p class="h-confirm-text"></p>
     <div class="b-foot"><button type="button" data-c="cancel">Cancel</button><button type="button" class="danger" data-c="ok">Move to trash</button></div></dialog>
   <dialog class="h-confirm h-update" aria-labelledby="h-update-h"><h2 id="h-update-h">Update PartLabeler</h2><p class="h-update-text"></p>
@@ -471,7 +592,7 @@ export default function home(root) {
   <div class="h-toasts" aria-live="polite"></div>`;
   const $ = (s) => root.querySelector(s);
   const newForm = $(".h-new"), teachForm = $(".h-teach"), transferForm = $(".h-transfer");
-  let kind = "video", task = "detect", sources = [], projects = [], info = {}, seen = null;
+  let task = "detect", sources = [], projects = [], info = {}, seen = null;
 
   heroDemo($(".h-demo"));
   const top = $(".h-top");
@@ -491,27 +612,31 @@ export default function home(root) {
   // ---- projects ----------------------------------------------------------------------------
   function projectTile(p, i) {
     const lab = p.items ? Math.max(0, p.labeled - p.confirmed) / p.items * 100 : 0, rev = p.items ? p.confirmed / p.items * 100 : 0;
-    const href = `/p/${encodeURIComponent(p.name)}`, unit = p.kind === "video" ? "frames" : "images";
-    return `<article class="h-proj" style="--i:${i}">${BRK}<a class="h-proj-link" href="${href}" title="${esc(p.source)}">
+    const href = `/projects/${encodeURIComponent(p.name)}`, unit = p.kind === "video" ? "frames" : "images";
+    return `<article class="h-proj" style="--i:${i}">${BRK}<a class="h-proj-link" href="${href}" title="${esc(p.name)}">
+      <span class="h-preview${p.preview ? "" : " none"}" style="${p.preview ? `background-image:url('${p.preview}')` : ""}" aria-hidden="true"></span>
       <span class="h-proj-top"><span class="h-kind">${p.kind === "video" ? ICON.video : ICON.images}</span><b class="h-proj-name" translate="no">${esc(p.name)}</b></span>
-      <span class="h-proj-meta">${(p.tasks?.length || 1) > 1 ? `${p.tasks.length} tasks` : p.kind === "video" ? "Video" : "Image folder"}, ${TASKS[p.task] || "Boxes"}, ${p.classes.length} class${p.classes.length === 1 ? "" : "es"}, ${p.items} ${unit}</span>
+      <span class="h-proj-meta">${TASKS[p.task] || "Object detection"} · ${p.tasks?.length ?? 1} task${(p.tasks?.length ?? 1) === 1 ? "" : "s"} · ${p.classes.length} label${p.classes.length === 1 ? "" : "s"} · ${p.items} ${unit}</span>
       ${p.problem ? `<span class="h-err">${esc(p.problem)}</span>` : ""}
       <span class="h-meter" role="img" aria-label="${p.confirmed} confirmed and ${Math.max(0, p.labeled - p.confirmed)} more labeled out of ${p.items}"><i class="rev" style="--w:${rev}%;--i:${i}"></i><i class="lab" style="--w:${lab}%;--i:${i}"></i></span>
       <span class="h-proj-foot"><b>${p.confirmed}</b> of ${p.items} ${p.task === "classify" ? "classed" : "confirmed"}<span class="h-ago">${ago(p.modified)}</span></span></a>
-      <details class="h-menu"><summary aria-label="More actions for ${esc(p.name)}" title="More actions">⋯</summary><div class="h-menu-list">
+      <details class="h-menu"><summary aria-label="Actions for ${esc(p.name)}" title="Actions">⋯</summary><div class="h-menu-list">
         <a href="${href}">Open</a>
+        <a href="${href}#export">Export dataset</a>
+        <button type="button" data-backup="${esc(p.name)}">Backup project</button>
         <button type="button" data-folder="${esc(p.name)}">Show in folder</button>
         <button type="button" class="danger" data-trash="${esc(p.name)}">Move to trash…</button></div></details></article>`;
   }
   function renderProjects() {
-    const q = $(".h-filter").value.trim().toLowerCase();
-    const shown = projects.filter((p) => !q || p.name.toLowerCase().includes(q));
+    const q = $(".h-filter").value.trim().toLowerCase(), by = $(".h-sort").value;
+    const shown = projects.filter((p) => !q || p.name.toLowerCase().includes(q))
+      .sort((a, b) => by === "name" ? a.name.localeCompare(b.name) : by === "created" ? String(b.created || "").localeCompare(String(a.created || "")) : b.modified - a.modified);
     $(".h-pcount").textContent = projects.length ? String(projects.length) : "";
-    $(".h-filter").hidden = projects.length <= 6;
     $(".h-projects").innerHTML = shown.length ? shown.map(projectTile).join("") : projects.length
       ? `<div class="h-empty">No project name contains “${esc(q)}”.</div>`
       : `<div class="h-empty"><b>No projects yet</b><span>A project is one video or image folder plus the part names you want boxed.</span>
           <button type="button" class="primary" data-go="new">Create your first project</button></div>`;
+    root.querySelectorAll(".h-plus[open]").forEach((d) => (d.open = false));
   }
   async function loadProjects() {
     const list = await api("/api/projects").catch((e) => ({ error: e.message }));
@@ -519,6 +644,7 @@ export default function home(root) {
     projects = list; renderProjects(); loadTrash();
   }
   $(".h-filter").addEventListener("input", renderProjects);
+  $(".h-sort").addEventListener("change", renderProjects);
 
   async function loadTrash() {
     const list = await api("/api/trash").catch(() => []);
@@ -540,14 +666,21 @@ export default function home(root) {
   const projectPath = (name) => (info.home ? `${info.home}${info.home.includes("\\") ? "\\" : "/"}${name}` : name);
   async function runAction(a) {
     try {
-      if (a.type === "open") location.href = `/p/${encodeURIComponent(a.project)}`;
+      if (a.type === "open") location.href = `/projects/${encodeURIComponent(a.project)}`;
       else if (a.type === "goto") location.href = `/p/${encodeURIComponent(a.project)}?item=${a.item}`;
       else if (a.type === "folder") await api("/api/open-folder", { path: a.path });
       else if (a.type === "restore") { await api(`/api/trash/${encodeURIComponent(a.entry)}/restore`, {}); loadProjects(); pollNotes(); }
     } catch (err) { toast({ level: "error", title: "That did not work", detail: err.message }); }
   }
   $(".h-projects").addEventListener("click", async (e) => {
-    const f = e.target.closest("[data-folder]"), t = e.target.closest("[data-trash]");
+    const f = e.target.closest("[data-folder]"), t = e.target.closest("[data-trash]"), bk = e.target.closest("[data-backup]");
+    if (bk) {
+      e.target.closest("details").open = false;
+      try { const { job } = await api(`/api/projects/${encodeURIComponent(bk.dataset.backup)}/backup`, {});
+        toast({ title: `Backing up ${bk.dataset.backup}…`, detail: "The zip goes to the _backups folder; a notification says when it is ready." });
+        const wait = async () => { const j = await api(`/api/jobs/${job}`).catch(() => null); if (j && !j.finished) setTimeout(wait, 1000); else pollNotes(); }; wait();
+      } catch (err) { toast({ level: "error", title: "Backup failed", detail: err.message }); }
+    }
     if (f) { e.target.closest("details").open = false; runAction({ type: "folder", path: projectPath(f.dataset.folder) }); }
     if (t) { e.target.closest("details").open = false; confirmTrash(t.dataset.trash); }
   });
@@ -591,7 +724,7 @@ export default function home(root) {
     mount: document.body, variant: "fab", transport: webAssistant("/"),
     context: () => ({ page: "home", projects: projects.length, teach: info.teach }),
     actions: {
-      "new-project": { label: "Go to New project", run: () => lockOn($(".h-newpanel"), newForm.name) },
+      "new-project": { label: "Go to Create a new project", run: () => lockOn($(".h-newpanel"), newForm.name) },
       teach: { label: "Show Teach & Transfer", run: () => lockOn($(".h-teachsec"), teachForm.dataset) },
       projects: { label: "Show projects", run: () => $("#h-projects-h").scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth" }) },
       notifications: { label: "Open notifications", run: () => center.open() },
@@ -602,7 +735,9 @@ export default function home(root) {
   });
   root.addEventListener("click", (e) => {
     const go = e.target.closest("[data-go]")?.dataset.go; if (!go) return;
+    root.querySelectorAll(".h-plus[open]").forEach((d) => (d.open = false));
     if (go === "new") lockOn($(".h-newpanel"), newForm.name);
+    else if (go === "restore") restoreBackup();
     else if (go === "teach") lockOn($(".h-teachsec"), teachForm.dataset);
     else if (go === "rivet") helper.open();
   });
@@ -612,66 +747,51 @@ export default function home(root) {
     else if (e.key === "h" && !helper.isOpen) { e.preventDefault(); helper.open(); }
   });
 
-  // ---- new project -----------------------------------------------------------------------------
-  function setKind(k) {
-    kind = k;
-    newForm.querySelectorAll("[data-kind]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.kind === k));
-    $(".h-srcseg").style.setProperty("--x", k === "video" ? 0 : 1);
-    newForm.source.placeholder = k === "video" ? "Path to the video file…" : "Path to the image folder…";
-    $(".h-srchint").textContent = (k === "video" ? "Every Nth frame is kept for labeling." : "All images in the folder and its sub-folders.")
-      + " More videos or folders can be added to the project later, as tasks.";
-    $(".h-every").hidden = k !== "video";
-  }
+  // ---- create a project (CVAT: name + labels) --------------------------------------------------
+  const pickFile = fileBrowser();
+  const labelsEd = labelsEditor($(".h-labelsed"));
+  $(".h-labelsed").addEventListener("click", async (e) => {
+    if (!e.target.closest("[data-browse-classes]")) return;
+    const path = await pickFile({ kind: "classes", folder: false }); if (!path) return;
+    try { labelsEd.addNames((await api(`/api/classes?path=${encodeURIComponent(path)}`)).classes); }
+    catch (err) { $(".h-newmsg").innerHTML = `<span class="h-err">${esc(err.message)}</span>`; }
+  });
   const TASK_HINT = { detect: "A box around every part. Set once for the project: its exports follow it.",
                       segment: "The exact outline (mask) of every part; exports polygons or masks. Set once for the project.",
-                      classify: "One class per image, on a grid with smart grouping: good for sorting a messy folder. Set once for the project." };
+                      classify: "One class per image, on a grid with smart grouping: good for sorting a messy folder. Labels may also be named later, while sorting." };
   function setTask(t) {
     task = t;
     newForm.querySelectorAll("[data-task]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.task === t));
     $(".h-taskseg").style.setProperty("--x", ["detect", "segment", "classify"].indexOf(t));
     $(".h-taskhint").textContent = TASK_HINT[t];
-    newForm.classes.placeholder = t === "classify" ? "One class per line, e.g.\nok\nscratch\ndent…" : "One part name per line, e.g.\nbolt\nleft_bracket\nright_bracket…";
-    $(".h-more").hidden = t === "classify";
-    if (t === "classify" && kind === "video") setKind("images");
   }
-  newForm.addEventListener("click", (e) => {
-    const k = e.target.closest("[data-kind]")?.dataset.kind; if (k) setKind(k);
-    const t = e.target.closest("[data-task]")?.dataset.task; if (t) setTask(t);
-  });
+  newForm.addEventListener("click", (e) => { const t = e.target.closest("[data-task]")?.dataset.task; if (t) setTask(t); });
   newForm.addEventListener("submit", async (e) => {
     e.preventDefault();
-    const f = newForm, msg = $(".h-newmsg"), btn = f.querySelector("button[type=submit]");
+    const f = newForm, msg = $(".h-newmsg"), open = e.submitter?.value !== "continue";
     msg.textContent = "";
-    const body = { name: f.name.value.trim(), [kind]: f.source.value.trim(), every: f.every.value, classes: f.classes.value, task,
-                   frame_format: f.frames.value,
-                   ...(task === "classify" ? {} : { labels: f.labels.value.trim(), parent: f.parent.value.trim() }) };
-    btn.disabled = true;
+    let labels;
+    try { labels = labelsEd.get(); } catch { msg.innerHTML = `<span class="h-err">The raw labels are not valid JSON</span>`; return; }
+    f.querySelectorAll("button[type=submit]").forEach((b) => (b.disabled = true));
     try {
-      const { job } = await api("/api/projects", body);
-      follow(job, $(".h-newjob"), (res) => { setTimeout(() => { location.href = `/p/${encodeURIComponent(res.name)}`; }, reduceMotion ? 0 : 700); }, () => { btn.disabled = false; });
-    } catch (err) { msg.innerHTML = `<span class="h-err">${esc(err.message)}</span>`; btn.disabled = false; }
+      const r = await api("/api/projects", { name: f.name.value.trim(), task, labels, frame_format: f.frames.value });
+      if (open) location.href = `/projects/${encodeURIComponent(r.name)}`;
+      else { f.name.value = ""; labelsEd.set([]); msg.textContent = `Created ${r.name}.`; loadProjects(); pollNotes(); }
+    } catch (err) { msg.innerHTML = `<span class="h-err">${esc(err.message)}</span>`; }
+    f.querySelectorAll("button[type=submit]").forEach((b) => (b.disabled = false));
   });
+  async function restoreBackup() {
+    const path = await pickFile({ kind: "backup", folder: false }); if (!path) return;
+    try {
+      const { job } = await api("/api/backups/restore", { path });
+      lockOn($(".h-newpanel"));
+      followJob(job, $(".h-newjob"), { onDone: (res) => { location.href = `/projects/${encodeURIComponent(res.name)}`; } });
+    } catch (err) { toast({ level: "error", title: "Could not restore", detail: err.message }); }
+  }
 
   // ---- jobs --------------------------------------------------------------------------------
   function follow(jid, el, onDone, onEnd) {
-    el.innerHTML = `<div class="h-job" role="status"><div class="h-row"><b class="j-text">Starting…</b><span style="flex:1"></span><button type="button" class="j-stop">Stop</button></div>
-      <span class="h-bar"><i></i></span><pre class="j-log"></pre></div>`;
-    el.querySelector(".j-stop").onclick = () => api(`/api/jobs/${jid}/stop`, {});
-    const tick = async () => {
-      const j = await api(`/api/jobs/${jid}`).catch(() => null);
-      if (!j) return setTimeout(tick, 1500);
-      el.querySelector(".j-text").textContent = j.text;
-      el.querySelector(".h-bar i").style.width = j.total ? `${Math.min(100, j.done / j.total * 100)}%` : "4%";
-      el.querySelector(".j-log").textContent = j.log.slice(-12).join("\n");
-      if (!j.finished) return setTimeout(tick, 800);
-      el.querySelector(".j-stop").remove();
-      const box = el.querySelector(".h-job"); box.classList.add("done");
-      if (j.error) box.insertAdjacentHTML("beforeend", `<div class="h-err">${esc(j.error)}</div>`);
-      else { el.querySelector(".h-bar i").style.width = "100%"; box.querySelector(".h-row").insertAdjacentHTML("afterbegin", ICON.check); onDone?.(j.result); }
-      onEnd?.();
-      loadProjects(); loadRuns();
-    };
-    tick();
+    followJob(jid, el, { onDone, onEnd: () => { onEnd?.(); loadProjects(); loadRuns(); } });
   }
 
   // ---- teach & transfer ------------------------------------------------------------------------
@@ -725,58 +845,24 @@ export default function home(root) {
     btn.disabled = true;
     try {
       const r = await api("/api/review", { output: btn.dataset.review });
-      if (r.job) follow(r.job, btn.parentElement.appendChild(document.createElement("div")), (res) => { location.href = `/p/${encodeURIComponent(res.name)}`; });
-      else location.href = `/p/${encodeURIComponent(r.name)}`;
+      if (r.job) follow(r.job, btn.parentElement.appendChild(document.createElement("div")), (res) => { location.href = `/projects/${encodeURIComponent(res.name)}`; });
+      else location.href = `/projects/${encodeURIComponent(r.name)}`;
     } catch (err) { btn.insertAdjacentHTML("afterend", `<span class="h-err">${esc(err.message)}</span>`); btn.disabled = false; }
   });
 
-  // ---- file browser ----------------------------------------------------------------------------
-  const dlg = $(".h-browser");
-  let pick = null;                          // {kind, folder: bool, done(path)}
-  let cur = { path: "", parent: null };
-  async function show(path) {
-    try { cur = await api(`/api/browse?path=${encodeURIComponent(path)}&kind=${pick.kind}`); }
-    catch (err) { $(".b-hint").innerHTML = `<span class="h-err">${esc(err.message)}</span>`; return; }
-    $(".b-path").value = cur.path;
-    const dirs = cur.dirs.map((d) => `<button type="button" class="b-item" data-dir="${esc(cur.path ? joinPath(cur.path, d) : d)}">📁 ${esc(d)}</button>`);
-    const files = pick.folder ? [] : cur.files.map((f) => `<button type="button" class="b-item" data-file="${esc(joinPath(cur.path, f.name))}">📄 ${esc(f.name)}<small>${size(f.size)}</small></button>`);
-    $(".b-body").innerHTML = dirs.concat(files).join("") || `<div class="h-empty">Nothing here${pick.folder ? "" : " that fits"}.</div>`;
-    const choose = dlg.querySelector('[data-b="choose"]');
-    choose.hidden = !pick.folder || !cur.path;
-    $(".b-hint").textContent = pick.folder ? (cur.images_here != null ? `${cur.images_here} images directly in this folder` : "Open the folder, then choose it") : "Pick a file";
-  }
-  const joinPath = (a, b) => (a.endsWith("/") || a.endsWith("\\") ? a + b : a + (a.includes("\\") ? "\\" : "/") + b);
-  function browseFor(which) {
+  // ---- file browser (shared picker) -------------------------------------------------------------
+  async function browseFor(which) {
     const spec = {
-      source: kind === "video" ? { kind: "video", folder: false, done: (p) => (newForm.source.value = p) } : { kind: "images", folder: true, done: (p) => (newForm.source.value = p) },
-      classes: { kind: "classes", folder: false, done: async (p) => { try { newForm.classes.value = (await api(`/api/classes?path=${encodeURIComponent(p)}`)).classes.join("\n"); } catch (err) { $(".h-newmsg").innerHTML = `<span class="h-err">${esc(err.message)}</span>`; } } },
-      labels: { kind: "dir", folder: true, done: (p) => (newForm.labels.value = p) },
-      dataset: { kind: "dir", folder: true, done: (p) => (teachForm.dataset.value = p) },
-      qdataset: { kind: "dir", folder: true, done: (p) => (transferForm.qdataset.value = p) },
-      "target-video": { kind: "video", folder: false, done: (p) => { sources.push(p); renderSources(); } },
-      "target-folder": { kind: "images", folder: true, done: (p) => { sources.push(p); renderSources(); } },
+      dataset: { kind: "dir", folder: true, set: (p) => (teachForm.dataset.value = p), start: teachForm.dataset.value },
+      qdataset: { kind: "dir", folder: true, set: (p) => (transferForm.qdataset.value = p), start: transferForm.qdataset.value },
+      "target-video": { kind: "video", folder: false, set: (p) => { sources.push(p); renderSources(); } },
+      "target-folder": { kind: "images", folder: true, set: (p) => { sources.push(p); renderSources(); } },
     }[which];
-    pick = spec;
-    let last = ""; try { last = localStorage.getItem("pl-last-dir") || ""; } catch {}
-    const start = { source: newForm.source.value, labels: newForm.labels.value, dataset: teachForm.dataset.value, qdataset: transferForm.qdataset.value }[which] || last;
-    dlg.showModal();
-    show(start && !/\.[a-z0-9]{2,4}$/i.test(start) ? start : start.replace(/[\\/][^\\/]*$/, "")).catch(() => show(""));
+    if (!spec) return;
+    const path = await pickFile(spec);
+    if (path) spec.set(path);
   }
   root.addEventListener("click", (e) => { const w = e.target.closest("[data-browse]")?.dataset.browse; if (w) browseFor(w); });
-  dlg.addEventListener("click", (e) => {
-    const t = e.target.closest("[data-dir],[data-file],[data-b]"); if (!t) return;
-    if (t.dataset.dir) show(t.dataset.dir);
-    else if (t.dataset.file) { finish(t.dataset.file); }
-    else if (t.dataset.b === "up") show(cur.parent ?? "");
-    else if (t.dataset.b === "places") show("");
-    else if (t.dataset.b === "cancel") dlg.close();
-    else if (t.dataset.b === "choose") finish(cur.path);
-  });
-  $(".b-path").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); show($(".b-path").value.trim()); } });
-  function finish(path) {
-    try { localStorage.setItem("pl-last-dir", pick.folder ? path.replace(/[\\/][^\\/]*$/, "") || path : path.replace(/[\\/][^\\/]*$/, "")); } catch {}
-    dlg.close(); pick.done(path);
-  }
 
   // ---- updates (engine/update.py): a chip in the header when GitHub has a newer version ---------
   // Always in the header: "Check for updates", "Up to date", "Update available" or "Restart to finish".
@@ -842,5 +928,5 @@ export default function home(root) {
     if (i.restart) showRestart(i.restart);
     else checkUpdate(location.hash === "#update").then(() => { if (location.hash === "#update" && (upd?.available || upd?.can_update === false)) $(".h-upd").click(); });
   }).catch(() => ($(".h-home").textContent = "Can't reach the PartLabeler server. Restart the app (run_windows.bat) and reload this page."));
-  setKind("video"); renderSources(); loadProjects(); loadRuns();
+  renderSources(); loadProjects(); loadRuns();
 }

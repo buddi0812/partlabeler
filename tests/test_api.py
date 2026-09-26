@@ -37,7 +37,7 @@ def test_box_relabel_delete_review_export(tmp_path, video):
     note = last(msgs, "notify")["item"]
     assert note["title"] == "Exported YOLO dataset" and note["detail"].startswith("1 images, 1 boxes")
     assert note["action"]["type"] == "folder"
-    out = next((p.folder / "exports").glob("yolo_*"))
+    out = next((p.folder / "exports").glob("*_yolo"))
     assert read_classes(out / "classes.txt") == CLASSES
     assert (out / "labels/car_front_f000005.txt").read_text().startswith("1 ")
     assert not any(m["type"] == "error" for m in msgs)

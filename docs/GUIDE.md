@@ -14,49 +14,96 @@ The start screen opens in your browser at http://127.0.0.1:8765. Keep the black 
 you work: closing it stops the app. Your work is saved as you go, so you can close the browser at any time.
 Projects are saved in the `projects` folder next to the app (start with `--home <folder>` to use another).
 
-## The start screen
+## Projects, tasks and jobs (as in CVAT)
 
-The start screen lists your projects (newest first) with how many frames are confirmed. From here you can:
-open a project, create a new one, run Teach & Transfer, see notifications (the bell, or the N key) and
-restore projects from the Trash. Each project card has a ⋯ menu with Open, Show in folder and Move to trash.
+PartLabeler is organised like CVAT:
+
+- A **project** has a type (object detection, segmentation or classification) and its **labels** (names and
+  colours). It holds tasks.
+- A **task** is one video or one image folder, with its own settings (frame step, start and stop frame, image
+  quality, a **subset** such as Train, Validation or Test). Its frames are split into jobs.
+- A **job** is a range of a task's frames (all of them unless a segment size was set), with a **stage**
+  (annotation, validation, acceptance) and a **state** (new, in progress, rejected, completed). The annotator
+  always opens one job.
+
+The top bar of every page has **Projects**, **Tasks** (every task of every project) and **Jobs** (every job).
+
+## The start screen (Projects)
+
+The start screen lists your projects as cards with a preview, the project type, how many tasks, labels and
+frames, and how many are confirmed. **Search…** filters them, the sort menu orders them by updated date, name or
+created date, and **+** offers **Create a new project** and **Create from backup…**. Each card's ⋯ menu has
+Open, Export dataset, Backup project, Show in folder and Move to trash. The start screen also has Teach &
+Transfer, the notifications (the bell, or the N key) and the Trash, where moved projects can be restored.
 
 ## Create a project
 
-1. On the start screen, find **New project** and type a name (for example `gearbox_line2`).
+1. On the start screen, find **Create a new project** (or **+ → Create a new project**) and type a name.
 2. Pick the **Project type**: **Object detection**, **Segmentation** or **Classification** (see Project types
    below). It is fixed for the project, and so are its export formats.
-3. Choose **Video** or **Image folder**, then click **Browse…** to pick the file or folder.
-4. For a video, set **Keep every Nth frame** (5 keeps one frame in five; use 1 for every frame).
-5. Type the class names, one per line (for example `bolt`, `bracket`, `connector`), or click
-   **Load from classes.txt / data.yaml…**. Names starting with `left_` / `right_` are treated as mirror twins.
-   Classification projects may start with no classes: you name them while sorting. More classes can be added
-   later in any project (**New class…** under Class in the side panel).
-6. Optional, under **More options**: import existing YOLO labels to review or finish (boxes, or polygons for
-   segmentation projects), and set a **parent object** (see Settings).
-7. Click **Create project**. A progress bar shows the frames being prepared, then the annotator opens.
+3. Add the **Labels**: **Add label**, then type a name and pick its colour. **Raw** shows them as JSON to edit or
+   paste; **Load from classes.txt / data.yaml…** adds the names from a file. Names starting with `left_` /
+   `right_` are treated as mirror twins. Classification projects may start with no labels: you name them while
+   sorting.
+4. Optional, under **Advanced configuration**: the default way this project's video frames are stored.
+5. **Submit & Open** creates it and opens its page; **Submit & Continue** creates it and stays, for the next one.
 
-## Tasks: several videos in one project
+## The project page
 
-A project can hold several videos and image folders, each a **task** (for example one video per production
-line or per camera). They share the project's type and classes, and labels from one help Suggest on the others.
+The project page shows the project's type, when it was made and how many jobs are done, its **Labels** and its
+**Tasks**.
 
-- The **Tasks** list at the top of the side panel shows each task with its details: resolution, frame rate,
-  length, codec and file size, how many frames were kept (every Nth) and the space they take. Click a task to
-  work on it: the timeline, the frame counter and the arrows then cover that task, and tracking never runs from
-  one video into the next.
-- **Add a video or image folder**: type its path under the list (or click **Browse…**), set **every** (keep every
-  Nth frame of a video) and click **Add**. Items already labeled keep their labels. From the command line:
-  `python -m engine.cli add projects/<name> --video line3.mp4`. On Colab, list several paths in Step 6's SOURCE.
-- **Export** one task, several or all: tick them under **Tasks to export** (shown when there is more than one).
-  The export folder is named after the task when there is one. Command line: `--task NAME` (repeat for several).
-- In a classification project, clicking a task shows only its pictures in the grid (click again for all).
+- **Edit labels** opens the label constructor: rename a label, change its colour, add labels or remove them.
+  Removing a label deletes its annotations too (you are asked first); renaming and recolouring keep them.
+- **Tasks** are listed with a preview, `#number: name`, when they were made and last changed, the subset, the
+  video's details (resolution, frame rate, length, codec, file size, frames kept) and CVAT's progress line:
+  *done · on review · annotating · total* jobs, with how many frames are confirmed. Tasks with subsets are
+  grouped under each subset. **Search…** and the sort menu (ID, name, updated date, subset) find them.
+- **+ Create a new task** adds one video or image folder; **Create multi tasks** adds several, one task each.
+- Each task's **Open** goes to the task page; its ⋯ menu has **Upload annotations**, **Export task dataset**
+  and **Delete**.
+- **Actions** (top right): **Export dataset**, **Backup project**, **Show in folder**, **Move to trash**.
 
-**Frames and disk space.** A video's frames are stored when the task is added: **Compact** (JPEG at quality 95,
-visually lossless; the default) or **Lossless** (WebP with the exact decoded pixels, about twice the space),
-chosen per project under More options when it is made. Truly lossless images are always larger than JPEG, so
-that is the trade. Exports never copy the stored frames: they link to them (a hard link on the same drive), so
-an export takes almost no extra space and its images are identical to what you labeled. If you edit exported
-images in place, edit a copy, since they share the file with the project.
+## Create a task
+
+On the project page, click **+ Create a new task** (or **Create multi tasks**).
+
+- **Name** (empty: the file or folder name; for several tasks `{{file_name}}` and `{{index}}` fill in each).
+- **Subset**: Train, Test, Validation or any word (optional). Exporting the whole project puts each subset in
+  its own folders; tasks without one go to `default`.
+- The project's labels are used.
+- **Select files**: **Add a video…** or **Add an image folder…** (or type a path and press Enter).
+- **Advanced configuration**: **Image quality** (JPEG quality of a video's stored frames, 95 by default) or
+  **Lossless frames** (exact pixels, about twice the space); **Frame step** (keep every Nth frame); **Start
+  frame** and **Stop frame**; **Segment size** (frames per job; empty: one job for the task); **Sorting method**
+  for an image folder (lexicographical or natural, so `img2` comes before `img10`).
+- **Submit & Open** makes the task and opens its page; **Submit & Continue** stays for the next task.
+
+From the command line: `python -m engine.cli add projects/<name> --video line3.mp4 --subset Train
+--segment-size 200` (see `--help` for the rest). On Colab, list several paths in Step 6's SOURCE.
+
+**Frames and disk space.** A video's frames are stored when the task is made: JPEG (visually lossless at quality
+95) or lossless WebP (exact decoded pixels, about twice the space). Truly lossless images are always larger than
+JPEG, so that is the trade. Exports never copy the stored frames: they link to them (a hard link on the same
+drive), so an export takes almost no extra space and its images are identical to what you labeled. If you edit
+exported images in place, edit a copy, since they share the file with the project.
+
+## The task page and its jobs
+
+The task page shows the task's preview, its name (click it to rename), when it was made, its **Subset** (change it
+right there), the progress line, and a table of its media: source, resolution, frame rate, duration, codec,
+file size, frames in the video, frame step, start and stop frame, frames kept and how they are stored (image
+folders: resolution, number of images, size, sorting).
+
+**Jobs** lists the task's jobs: `Job #number`, its **Stage** and **State** (change them in the menus), the frame
+range, frame count, how many frames are confirmed and when it last changed. **Open** (or the job's number) opens
+the annotator on that job. A new job counts as *in progress* as soon as something in it changes. The task's
+progress counts a job as *done* when it is in the acceptance stage and completed, and *on review* while in
+validation. **Actions** has Upload annotations, Export task dataset and Delete.
+
+**Upload annotations** (task or job) reads a YOLO labels folder (boxes, or polygons in a segmentation project),
+matched to frames by file name or frame number. **Replace** removes the existing labels there first; **Append**
+adds to them.
 
 ## Project types: object detection, segmentation, classification
 
@@ -74,7 +121,10 @@ Boxes imported into a segmentation project (existing YOLO labels, Teach & Transf
 
 ## The annotator screen
 
-Top bar: ← Projects (back to the start screen), the project name, the frame number, chips that say whether
+The annotator shows one job. Top bar: ← Projects, the project name and type, the **job menu** (`Job #n` and its
+state: **Finish the job** (marks it accepted and completed), its **Stage** and **State**, ◀ ▶ for the previous
+and next job, a list of every job, **Open the task** and **Back to the project**), the frame number within the
+job, chips that say whether
 this frame is *Confirmed* or *To check*, the save status (*All changes saved*), the bell and **?**
 (keyboard shortcuts) and ⤢ (full screen; on Colab it fills the window height, press F11 too for a
 true full screen). Below it: frame buttons, the **Track** controls (videos), **Undo**, **Export** and
@@ -204,9 +254,14 @@ look-alikes. **Back to frames** (Esc) returns to the annotator.
 
 ## Export the dataset
 
-Click **Export** in the top bar: it jumps to the Export dataset controls in the side panel. Pick the format
-(YOLO, COCO, CVAT, Pascal VOC or Label Studio; classification projects: class folders, YOLO or CSV), choose the
-tasks to include if there are several, tick
+The project page (**Actions → Export dataset**), a task's ⋯ menu (**Export task dataset**) and the annotator
+(**Export** in the top bar, then **This job**, **This task** or **Whole project**) all export. The dialog asks the
+**Export format** (YOLO, COCO, CVAT, Pascal VOC or Label Studio; classification projects: class folders, YOLO or
+CSV), **Save images** (off: the label files only), **Confirmed frames only** and a **Custom name**. With several
+subsets in the export, each gets its own folders: YOLO `images/<subset>/` and `labels/<subset>/` (with
+data.yaml's train, val and test set from subsets named so), COCO `annotations/instances_<subset>.json`, Pascal VOC
+`ImageSets/Main/<subset>.txt`, CVAT a subset on each image. The export goes into the project's `exports/`
+folder, named like `project_<name>_dataset_<time>_yolo`. In the annotator, pick the format, tick
 **Confirmed frames only** if you want just the frames you checked, and click **Export**. Segmentation projects export
 outlines (see Outlines). The files go into the project's `exports/` folder, in a new sub-folder
 named after the format and time. A notification offers **Open folder**. Export as often as you like;
@@ -257,6 +312,14 @@ The bell (or **N**) opens the notification history, shared by the start screen a
 projects created, frames confirmed, boxes deleted, tracking finished, exports and errors. Items have
 shortcuts such as **Go to frame**, **Open folder**, **Open project** or **Restore**. **Problems** shows only
 warnings and errors. **Mark all as read** clears the badge, **Clear all** empties the list.
+
+## Backup and restore
+
+**Backup project** (the project's ⋯ menu or Actions) writes one zip into the `_backups` folder: the project's
+settings, labels with their colours, tasks, jobs and all annotations, the stored video frames and the pictures of
+its image folders, so it opens complete on another computer. **+ → Create from backup…** on the start screen
+turns such a zip back into a project (with a new name if the old one is taken). Command line:
+`python -m engine.cli backup projects/<name>` and `python -m engine.cli restore <zip>`.
 
 ## Trash and restore
 

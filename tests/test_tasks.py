@@ -35,9 +35,9 @@ def test_tasks_append_and_keep_item_numbers(tmp_path, video, images):
     t = p.add_source(video=second, every=4)
     folder = p.add_source(images=images)
     assert [x["name"] for x in p.sources] == ["car_front", "car_front.mp4.copy", "photos"]
-    assert p.ranges == {0: (0, 4), 1: (4, 7), 2: (7, 10)} and p.boxes(3)[0]["box"] == [1, 1, 5, 5]   # labels stay put
+    assert p.ranges == {1: (0, 4), 2: (4, 7), 3: (7, 10)} and p.boxes(3)[0]["box"] == [1, 1, 5, 5]   # labels stay put
     assert p.items[4]["name"] == "car_front.mp4.copy_f000000" and p.items[7]["name"] == "photos/a"
-    assert (tmp_path / "proj/frames/t1/f000008.jpg").exists() and t["frames"] == "frames/t1"
+    assert (tmp_path / "proj/frames/t2/f000008.jpg").exists() and t["frames"] == "frames/t2"         # numbered from 1
     assert folder["info"]["images"] == 3 and folder["info"]["width"] == 80
     assert Project(tmp_path / "proj").ranges == p.ranges                  # reopens identically
     again = p.add_source(video=second)                                     # same file twice: unique names
@@ -46,6 +46,8 @@ def test_tasks_append_and_keep_item_numbers(tmp_path, video, images):
 
 def test_a_project_made_before_tasks_opens_as_one_task(tmp_path, video):
     p = Project.create(tmp_path / "proj", CLASSES, video=video, every=5)
+    for f in (tmp_path / "proj/frames/t1").iterdir():                     # where such projects kept their frames
+        f.rename(tmp_path / "proj/frames" / f.name)
     meta = json.loads((tmp_path / "proj/project.json").read_text())
     legacy = {k: meta[k] for k in ("name", "task", "classes", "parent", "kind", "source", "every")}
     (tmp_path / "proj/project.json").write_text(json.dumps(legacy))
@@ -63,7 +65,7 @@ def test_export_one_task_some_or_all_with_linked_frames(tmp_path, video):
     one = p.export("yolo", tmp_path / "one", tasks=["line3"])
     assert one["images"] == 1 and [f.name for f in (tmp_path / "one/images").iterdir()] == ["line3_f000006.jpg"]
     assert os.path.samefile(tmp_path / "one/images/line3_f000006.jpg", p.items[5]["path"])   # a link, not a copy
-    assert p.export("coco", tmp_path / "c", tasks=[0])["images"] == 1
+    assert p.export("coco", tmp_path / "c", tasks=[1])["images"] == 1
     try:
         p.export("yolo", tmp_path / "x", tasks=["nope"])
         raise AssertionError("an unknown task must be refused")
@@ -95,3 +97,26 @@ def test_tracking_stays_inside_the_task(tmp_path, video):
     assert s._frame(5) == "frame 2 of line3"
     s.handle({"type": "add_task", "path": str(tmp_path / "missing.mp4")})
     assert "Not found" in msgs[-1]["text"]
+
+
+def test_rename_subset_and_delete_a_task_keep_the_others_labels(tmp_path, video, images):
+    p = Project.create(tmp_path / "proj", CLASSES, video=video, every=5)            # items 0-3
+    p.add_source(video=make_video(tmp_path / "line3.mp4"), every=6)                  # items 4-5
+    p.add_source(images=images)                                                       # items 6-8
+    p.put(1, 1, 0, (1, 1, 5, 5)); p.put(5, 2, 1, (2, 2, 9, 9)); p.put(7, 3, 2, (3, 3, 8, 8))
+    p.set_reviewed(7)
+    t = p.update_source(2, name="line 3!", subset="validation")
+    assert (t["name"], t["subset"]) == ("line_3_", "validation") and p.items[4]["name"] == "line_3__f000000"
+    res = p.remove_source(2)
+    assert (res["items"], res["labels"]) == (2, 1) and not (tmp_path / "proj/frames/t2").exists()
+    assert [x["name"] for x in p.sources] == ["car_front", "photos"] and len(p.items) == 7
+    assert p.boxes(1)[0]["box"] == [1, 1, 5, 5]                                      # before: untouched
+    assert p.boxes(5)[0]["box"] == [3, 3, 8, 8] and p.is_reviewed(5)                 # after: moved down by 2
+    assert Project(tmp_path / "proj").ranges == {1: (0, 4), 3: (4, 7)}
+    p.remove_source(1)                                                                # the first video's frames go,
+    assert (tmp_path / "proj/frames").exists() and len(p.items) == 3                # not the folder of the others
+    try:
+        p.remove_source(3)
+        raise AssertionError("the last task must stay")
+    except ValueError:
+        pass

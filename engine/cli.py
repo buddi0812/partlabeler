@@ -3,6 +3,7 @@
     partlabeler app                                   the annotator start page in the browser
     partlabeler new PROJECT --video V --classes F     a project from a video (or --images DIR)
     partlabeler add PROJECT --video V                 another video (or --images DIR) as a new task
+    partlabeler backup PROJECT | restore ZIP          a project as one zip, and back
     partlabeler export PROJECT --format coco          write the dataset
     partlabeler teach DATASET --run RUN               learn a labeled source (Teach & Transfer)
     partlabeler transfer RUN VIDEO... --out DIR       label similar videos / image folders like the source
@@ -123,18 +124,44 @@ def new(project: Path = typer.Argument(..., help="New project folder."),
 def add(project: Path = typer.Argument(..., exists=True, file_okay=False, help="Project folder."),
         video: Path | None = typer.Option(None, exists=True, dir_okay=False, help="A video to add as a task."),
         images: Path | None = typer.Option(None, exists=True, file_okay=False, help="An image folder to add as a task."),
-        every: int = typer.Option(5, min=1, help="Video: keep 1 frame in N.")):
-    """Add a video or an image folder to a project as a new task."""
+        every: int = typer.Option(5, min=1, help="Video: keep 1 frame in N."),
+        subset: str = typer.Option("", help="Subset (Train, Validation, Test or any word): its own folders in project exports."),
+        segment_size: int = typer.Option(0, min=0, help="Frames per job (0: one job for the task)."),
+        start: int | None = typer.Option(None, help="Video: first frame."), stop: int | None = typer.Option(None, help="Video: last frame."),
+        quality: int = typer.Option(95, min=5, max=100, help="Video: JPEG quality of the stored frames."),
+        lossless: bool = typer.Option(False, "--lossless", help="Video: store frames losslessly (exact pixels, about 2x space)."),
+        name: str | None = typer.Option(None, help="Task name (default: the file or folder name).")):
+    """Add a video or an image folder to a project as a new task (as CVAT's Create a new task)."""
     from engine.api import describe
     from engine.project import Project
     if (video is None) == (images is None):
         raise typer.BadParameter("give exactly one of --video or --images")
     p = Project(project)
     with _bar() as progress:
-        t = p.add_source(video=video, images=images, every=every, progress=progress)
+        t = p.add_source(video=video, images=images, every=every, progress=progress, subset=subset, name=name,
+                         segment_size=segment_size, start=start, stop=stop, quality=quality, lossless=lossless or None)
     a, b = p.ranges[t["id"]]
     typer.echo(f"added task {t['name']}: {b - a} {'frames' if video else 'images'} ({describe(t)}); "
                f"the project has {len(p.sources)} tasks, {len(p.items)} frames/images")
+
+
+@app.command()
+def backup(project: Path = typer.Argument(..., exists=True, file_okay=False, help="Project folder."),
+           out: Path | None = typer.Option(None, help="Zip file (default: <projects>/_backups/project_<name>_backup_<time>.zip).")):
+    """Back up a project into one zip (settings, labels, frames and folder pictures), as CVAT's Backup project."""
+    from engine.project import backup_project
+    out = out or project.parent / "_backups" / f"project_{project.name}_backup_{time.strftime('%Y_%m_%d_%H_%M_%S')}.zip"
+    res = backup_project(project, out)
+    typer.echo(f"backed up {res['items']} frames or images, {res['size'] / 2**20:.0f} MB -> {res['file']}")
+
+
+@app.command()
+def restore(backup_zip: Path = typer.Argument(..., exists=True, dir_okay=False, help="A project backup zip."),
+            home: Path = typer.Option(Path("projects"), help="Projects folder to restore into."),
+            name: str | None = typer.Option(None, help="New project name (default: the backup's, made unique).")):
+    """Create a project from a backup zip (CVAT's Create from backup)."""
+    from engine.project import restore_project
+    typer.echo(f"restored -> {restore_project(backup_zip, home, name)}")
 
 
 @app.command()
@@ -142,12 +169,14 @@ def export(project: Path = typer.Argument(..., exists=True, file_okay=False, hel
            fmt: str = typer.Option("yolo", "--format", click_type=click.Choice(FORMATS), help="Dataset format."),
            reviewed_only: bool = typer.Option(False, "--reviewed-only", help="Only frames/images marked reviewed."),
            task: list[str] = typer.Option(None, "--task", help="Only this task (name); repeat for several. Default: all."),
+           job: list[int] = typer.Option(None, "--job", help="Only this job (number); repeat for several."),
+           no_images: bool = typer.Option(False, "--no-images", help="Label files only (CVAT's Save images off)."),
            out: Path | None = typer.Option(None, help="Output folder (default PROJECT/exports/<format>_<time>).")):
     """Write the project's labels as a dataset: every task, or the ones named with --task."""
     from engine.project import Project
     out = out or project / "exports" / f"{fmt}_{time.strftime('%Y%m%d_%H%M%S')}"
     try:
-        res = Project(project).export(fmt, out, reviewed_only, tasks=task or None)
+        res = Project(project).export(fmt, out, reviewed_only, tasks=task or None, jobs=job or None, save_images=not no_images)
     except ValueError as e:
         raise typer.BadParameter(str(e), param_hint="--task" if task else "--format")
     what = f", {res['boxes']} boxes" if "boxes" in res else ""

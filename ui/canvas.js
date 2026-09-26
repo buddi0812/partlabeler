@@ -96,26 +96,18 @@ const CSS = `
 .pl-help-grid h3 { grid-column:1 / -1; margin:10px 0 2px; font-size:13px; color:var(--muted); font-weight:600; }
 .pl-help-grid div { display:flex; justify-content:space-between; gap:12px; padding:3px 0; border-bottom:1px solid #eef1f4; font-size:13.5px; }
 .pl kbd, .pl-help-dlg kbd { font:12px/1.2 ui-monospace,"Cascadia Mono",Consolas,monospace; border:1px solid var(--line); border-bottom-width:2px; border-radius:5px; padding:1px 5px; background:#f7f9fa; white-space:nowrap; }
-.pl-tasks { display:flex; flex-direction:column; gap:3px; max-height:26vh; overflow:auto; overscroll-behavior:contain; }
-.pl .pl-task { display:grid; grid-template-columns:16px minmax(0,1fr); gap:2px 7px; align-items:start; text-align:left; width:100%; padding:5px 7px; white-space:normal;
-  border:1px solid transparent; border-radius:7px; background:none; font-size:13px; }
-.pl .pl-task:hover:not(:disabled) { background:var(--bg); border-color:transparent; }
-.pl .pl-task[aria-pressed=true] { background:var(--accent-soft); border-color:var(--accent); }
-.pl-task svg { width:15px; height:15px; margin-top:2px; color:var(--muted); }
-.pl-task b { font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.pl-task small { grid-column:2; color:var(--muted); font-size:11.5px; line-height:1.35; overflow-wrap:anywhere; }
-.pl-addtask { display:flex; gap:4px; flex-wrap:wrap; margin-top:6px; } .pl-addtask input[type=text] { flex:1 1 150px; min-width:0; }
-.pl-exptasks { display:flex; flex-direction:column; gap:2px; margin-top:6px; font-size:12.5px; max-height:16vh; overflow:auto; }
-.pl-exptasks label { display:flex; gap:6px; align-items:center; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
-.pl-pick { border:1px solid var(--line); border-radius:12px; padding:0; width:min(620px, calc(100vw - 32px)); color:var(--ink); }
-.pl-pick::backdrop { background:rgba(21,32,43,.45); }
-.pl-pick .pk-head, .pl-pick .pk-foot { display:flex; gap:6px; align-items:center; padding:10px 12px; }
-.pl-pick .pk-head { border-bottom:1px solid var(--line); } .pl-pick .pk-foot { border-top:1px solid var(--line); justify-content:flex-end; }
-.pl-pick .pk-head input { flex:1; min-width:0; } .pl-pick .pk-foot span { flex:1; color:var(--muted); font-size:12.5px; }
-.pl-pick .pk-body { max-height:50vh; overflow:auto; padding:6px; }
-.pl .pk-item { display:flex; gap:8px; width:100%; text-align:left; border:0; background:none; padding:6px 8px; border-radius:7px; }
-.pl .pk-item:hover:not(:disabled) { background:var(--accent-soft); } .pk-item small { margin-left:auto; color:var(--muted); }
-.pl-brush { display:flex; gap:8px; align-items:center; font-size:13px; margin-top:6px; } .pl-brush input { flex:1; accent-color:var(--accent); }
+.pl-jobmenu { position:relative; }
+.pl-jobmenu > summary { list-style:none; cursor:pointer; font-size:12.5px; font-weight:600; padding:3px 10px; border-radius:99px; border:1px solid var(--line);
+  background:var(--panel); white-space:nowrap; display:inline-flex; gap:6px; align-items:center; }
+.pl-jobmenu > summary::-webkit-details-marker { display:none; }
+.pl-jobmenu > summary:hover, .pl-jobmenu[open] > summary { border-color:var(--accent); }
+.pl-jobmenu .pl-jm { position:absolute; left:0; top:32px; z-index:25; background:var(--panel); border:1px solid var(--line); border-radius:10px;
+  box-shadow:0 14px 34px rgba(21,32,43,.18); padding:10px; display:grid; gap:8px; width:min(330px, 90vw); }
+.pl-jm label { display:grid; grid-template-columns:52px minmax(0,1fr); gap:8px; align-items:center; font-size:13px; }
+.pl-jm .pl-tools { justify-content:space-between; }
+.pl-jobstate { font-size:11.5px; font-weight:600; padding:1px 8px; border-radius:99px; background:var(--bg); color:var(--muted); }
+.pl-jobstate.completed { background:#dcf1e4; color:#1f7a44; }
+.pl-brush { display:flex;.pl-brush { display:flex; gap:8px; align-items:center; font-size:13px; margin-top:6px; } .pl-brush input { flex:1; accent-color:var(--accent); }
 .pl-gridwrap { display:flex; flex-direction:column; gap:8px; min-height:0; background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:10px 12px; }
 .pl-gridbar { display:flex; flex-wrap:wrap; gap:6px 12px; align-items:center; }
 .pl-gridbar h2 { margin:0; font-size:15px; font-weight:600; }
@@ -189,12 +181,15 @@ const STATUS = ["No boxes", "Suggestions", "Tracked or imported", "Has your boxe
 const FORMAT_NAMES = { yolo: "YOLO", coco: "COCO", cvat: "CVAT", voc: "Pascal VOC", labelstudio: "Label Studio",
                        folders: "Class folders", csv: "CSV list" };
 const TASK_NAMES = { detect: "Object detection", segment: "Segmentation", classify: "Classification" };
-function rgbOf(i) {                                                   // colorOf(i) as [r, g, b] (hsl 78% 52%)
+let LABEL_COLORS = [];                                                // the project's label colours (#rrggbb), when set
+function rgbOf(i) {                                                   // colorOf(i) as [r, g, b]
+  const hex = LABEL_COLORS[i];
+  if (hex && /^#[0-9a-f]{6}$/i.test(hex)) return [1, 3, 5].map((k) => parseInt(hex.slice(k, k + 2), 16));
   const h = (i * 137.508) % 360, s = 0.78, l = 0.52, a = s * Math.min(l, 1 - l);
   const f = (n) => { const k = (n + h / 30) % 12; return Math.round(255 * (l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1)))); };
   return [f(0), f(8), f(4)];
 }
-const colorOf = (i) => `hsl(${(i * 137.508) % 360} 78% 52%)`;
+const colorOf = (i) => LABEL_COLORS[i] || `hsl(${(i * 137.508) % 360} 78% 52%)`;
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const BELL = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>`;
 const CHECK = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>`;
@@ -714,7 +709,15 @@ function render({ model, el }) {
   el.innerHTML = `
     <header class="pl-head">
       <a class="pl-back" href="/" hidden>← Projects</a>
-      <span class="pl-title">PartLabeler</span><span class="pl-chip pl-type" title="Project type"></span><span class="pl-where"></span><span class="pl-chips"></span>
+      <span class="pl-title">PartLabeler</span><span class="pl-chip pl-type" title="Project type"></span>
+      <details class="pl-jobmenu" hidden><summary title="This job: its state, and the other jobs"></summary><div class="pl-jm">
+        <div class="pl-tools"><button type="button" class="primary" data-a="finishJob" title="Mark this job completed (and accepted)">Finish the job</button>
+          <span><button type="button" class="icon" data-a="prevJob" aria-label="Previous job" title="Previous job">◀</button><button type="button" class="icon" data-a="nextJob" aria-label="Next job" title="Next job">▶</button></span></div>
+        <label>Stage <select class="pl-jstage" aria-label="Job stage"><option>annotation</option><option>validation</option><option>acceptance</option></select></label>
+        <label>State <select class="pl-jstate" aria-label="Job state"><option>new</option><option>in progress</option><option>rejected</option><option>completed</option></select></label>
+        <label>Job <select class="pl-jpick" aria-label="Go to job"></select></label>
+        <div class="pl-tools pl-webonly"><a class="pl-totask" href="#">Open the task</a><a class="pl-toproject" href="#">Back to the project</a></div></div></details>
+      <span class="pl-where"></span><span class="pl-chips"></span>
       <span class="pl-sp"></span>
       <span class="pl-saved" role="status" aria-live="polite"></span>
       <span class="pl-bellmount"></span><span class="pl-rivetmount"></span>
@@ -753,12 +756,6 @@ function render({ model, el }) {
           Pick the class first with <kbd>1</kbd>–<kbd>9</kbd>. Press <kbd>?</kbd> for all shortcuts.</span>
           <button type="button" data-a="hideHint">Got it</button></div></div>
       <aside class="pl-side" aria-label="Labeling tools">
-        <section class="pl-tasksec"><h2 id="pl-task-h">Tasks <span class="pl-src pl-taskcount"></span></h2>
-          <div class="pl-tasks" role="group" aria-labelledby="pl-task-h"></div>
-          <form class="pl-addtask"><input type="text" class="pl-taskpath" name="task-path" autocomplete="off" placeholder="Add a video or image folder: path…" aria-label="Path of a video or an image folder to add">
-            <button type="button" class="pl-webonly" data-b="pickTask" title="Choose a video or a folder on this computer">Browse…</button>
-            <label class="pl-src" title="For a video: keep every Nth frame">every <input type="number" class="pl-taskevery" name="task-every" min="1" value="5" aria-label="Keep every Nth frame"></label>
-            <button type="submit" title="Add it to this project as a new task">Add</button></form></section>
         <section class="pl-toolsec"><h2>Tool</h2><div class="pl-tools" role="group" aria-label="Tool">
           <button type="button" data-tool="click" title="Click a part to outline and box it (C)">Click to outline</button>
           <button type="button" data-tool="box" title="Drag to draw a box (B)">Draw box</button>
@@ -792,8 +789,8 @@ function render({ model, el }) {
         <section class="pl-export"><h2>Export dataset</h2><div class="pl-tools">
           <select class="pl-fmt" name="export-format" aria-label="Export format"></select>
           <label><input type="checkbox" class="pl-revonly" name="confirmed-only"> Confirmed frames only</label>
-          <button type="button" class="primary" data-b="export">Export</button></div>
-          <div class="pl-exptasks" hidden></div></section>
+          <select class="pl-scope" name="export-scope" aria-label="What to export"><option value="job">This job</option><option value="task">This task</option><option value="project">Whole project</option></select>
+          <button type="button" class="primary" data-b="export">Export</button></div></section>
         <details class="pl-settings"><summary>Settings</summary>
           <p class="pl-field pl-src pl-typeline"></p>
           <label class="pl-field pl-parentf">Parent object
@@ -851,10 +848,6 @@ function render({ model, el }) {
         <div><span>Grid: select all shown / clear class</span><span><kbd>Ctrl</kbd>+<kbd>A</kbd> / <kbd>Del</kbd></span></div>
         <div><span>Grid: look closer</span><span>Double-click, <kbd>Space</kbd></span></div>
       </div></dialog>
-    <dialog class="pl-pick" aria-label="Choose a video or a folder"><div class="pk-head"><button type="button" data-k="up" aria-label="Up one folder">↑</button>
-      <input type="text" class="pk-path" aria-label="Folder path" autocomplete="off" placeholder="Type a path and press Enter…"><button type="button" data-k="places">Places</button></div>
-      <div class="pk-body"></div><div class="pk-foot"><span class="pk-hint">Pick a video, or open a folder of images and use it</span>
-      <button type="button" data-k="cancel">Cancel</button><button type="button" class="primary" data-k="folder">Use this folder</button></div></dialog>
     <dialog class="pl-peek" aria-label="Picture"><header><b class="pl-peek-t"></b><span class="pl-peek-c"></span>
       <button type="button" data-a="peekPrev" aria-label="Previous">◀</button><button type="button" data-a="peekNext" aria-label="Next">▶</button>
       <button type="button" data-a="closePeek">Close</button></header><img class="pl-peek-img" alt=""></dialog>`;
@@ -891,8 +884,8 @@ function render({ model, el }) {
   const helper = assistant({
     mount: $(".pl-rivetmount"), variant: "top", firstTip: 90000,
     transport: web ? webAssistant(model.homeUrl) : widgetAssistant(model),
-    context: () => ({ page: web ? "annotator" : "notebook", kind: taskAt(S.item).kind, frame: S.item - taskAt(S.item).start + 1,
-                      frames: taskAt(S.item).end - taskAt(S.item).start, tasks: tasks().length,
+    context: () => ({ page: web ? "annotator" : "notebook", kind: view().kind, frame: S.item - view().start + 1,
+                      frames: view().end - view().start, tasks: tasks().length, job: curJob()?.id,
                       confirmed: S.statuses.filter((s) => s === 4).length, to_check: S.flags.length, boxes: S.data?.boxes?.length ?? 0,
                       classes: S.project?.classes?.length, tool: S.tool, busy: S.busy }),
     actions: {
@@ -1000,7 +993,7 @@ function render({ model, el }) {
     const dpr = window.devicePixelRatio || 1, w = strip.clientWidth * dpr, h = strip.clientHeight * dpr;
     strip.width = w; strip.height = h;
     if (!S.statuses.length || !S.project) return;
-    const t = taskAt(S.item), n = Math.max(1, t.end - t.start);
+    const t = view(), n = Math.max(1, t.end - t.start);
     const css = getComputedStyle(el), cw = w / n;
     for (let i = 0; i < n; i++) {
       sctx.fillStyle = css.getPropertyValue(`--st${S.statuses[t.start + i] ?? 0}`);
@@ -1036,7 +1029,7 @@ function render({ model, el }) {
     el.querySelectorAll(".pl-partsonly").forEach((n) => (n.hidden = cl));
     $(".pl-bsize-v").textContent = `${S.brush} px`;
     el.querySelectorAll(".pl-webonly").forEach((n) => (n.hidden = !web));
-    renderTasks();
+    renderJob();
     const hint = $(".pl-hint");
     hint.hidden = S.hintHidden || !S.project || grid || boxes.length > 0 || S.statuses.some((s) => s >= 2);
   }
@@ -1053,22 +1046,22 @@ function render({ model, el }) {
   function renderTop() {
     if (!S.project || !S.data) return;
     $(".pl-title").textContent = S.project.name;
-    const t = taskAt(S.item), many = tasks().length > 1;
-    $(".pl-where").textContent = `${t.kind === "video" ? "Frame" : "Image"} ${S.item - t.start + 1} of ${t.end - t.start}${many ? ` · ${t.name}` : ""}`;
+    const t = view();
+    $(".pl-where").textContent = `${t.kind === "video" ? "Frame" : "Image"} ${S.item - t.start + 1} of ${t.end - t.start}`;
     $(".pl-where").title = S.data.name;
     const chips = [];
     if (S.data.reviewed) chips.push(`<span class="pl-chip rev">Confirmed</span>`);
     if (S.flags.includes(S.item)) chips.push(`<span class="pl-chip flag" title="A tracked box changed size, jumped or was lost">To check</span>`);
     $(".pl-chips").innerHTML = chips.join(" ");
-    const tk = taskAt(S.item), part = tasks().length > 1 ? S.statuses.slice(tk.start, tk.end) : S.statuses;
+    const tk = view(), part = S.statuses.slice(tk.start, tk.end);
     const rev = part.filter((s) => s === 4).length, lab = part.filter((s) => s >= 2).length;
     const flags = S.flags.filter((f) => f >= tk.start && f < tk.end).length;
-    $(".pl-counts").textContent = `${lab} labeled, ${rev} confirmed, ${flags} to check${tasks().length > 1 ? " in this task" : ""}`;
+    $(".pl-counts").textContent = `${lab} labeled, ${rev} confirmed, ${flags} to check${curJob() ? " in this job" : ""}`;
     const busy = S.busy;
     el.querySelectorAll('[data-a="track"],[data-a="trackBack"],[data-b="suggest"],[data-b="findAll"],[data-b="export"]').forEach((b) => (b.disabled = busy));
     $('[data-a="stop"]').disabled = !busy;
     $('[data-a="undo"]').disabled = busy || !S.undo;
-    $(".pl-video").hidden = taskAt(S.item).kind !== "video";
+    $(".pl-video").hidden = view().kind !== "video";
     $('[data-a="review"]').textContent = S.data.reviewed ? "Unconfirm frame" : "Confirm frame";
     $(".pl-device").textContent = [S.project.device, S.gpu && `GPU memory in use: ${S.gpu}`].filter(Boolean).join(". ");
     el.querySelectorAll('[data-b="group"],[data-b="suggestTags"],[data-b="odd"],[data-b="outlineHere"],[data-b="outlineAll"],[data-b="sortParts"]')
@@ -1124,52 +1117,57 @@ function render({ model, el }) {
 
   // ---- actions ---------------------------------------------------------------------------
   // `target` runs ahead of `item` (the frame on screen) so quick repeated steps are not lost
-  // Tasks: the project's videos and image folders, numbered one after another; frames and the timeline are
-  // shown per task, and the arrows stay inside the task on screen.
+  // Jobs (as in CVAT): the annotator shows one job, a range of one task's frames. The arrows, the timeline,
+  // the counter and "Next to check" stay inside it; the job menu (top bar) finishes it, changes its stage and
+  // state, and moves to the previous or next job.
   const tasks = () => S.project?.tasks || [];
+  const jobs = () => S.project?.jobs || [];
   const taskAt = (i) => tasks().find((t) => i >= t.start && i < t.end) || tasks()[0] || { start: 0, end: S.project?.count || 0, kind: S.project?.kind, name: "" };
-  const curTask = () => taskAt(S.target);
+  const curJob = () => jobs().find((j) => j.id === S.jobId) || null;
+  const view = () => {                                            // {start, end, kind, name, job?}
+    const j = curJob(), t = j ? tasks().find((x) => x.id === j.task) || taskAt(j.start) : taskAt(S.target);
+    return j ? { start: j.start, end: j.end, kind: t.kind, name: t.name, job: j, task: t } : { ...t, task: t };
+  };
+  const curTask = view;
   const goto = (i, within = true) => {
     if (!S.project) return;
-    const t = curTask();
+    const t = view();
     i = within ? Math.max(t.start, Math.min(t.end - 1, i)) : Math.max(0, Math.min(S.project.count - 1, i));
     if (i === S.target && i === S.item) return;
     S.target = i; S.sel = null; send({ type: "goto", item: i });
   };
-  const S_last = new Map();                                        // task id -> the frame last seen in it
-  function openTask(id) {
-    const t = tasks().find((x) => x.id === id); if (!t || t.end <= t.start) return;
-    if (S.grid) { S.grid.task = S.grid.task === id ? null : id; renderGrid(); renderTasks(); return; }
-    goto(S_last.get(id) ?? t.start, false);
+  const jobUrl = (j) => `${model.homeUrl}projects/${encodeURIComponent(S.project.name)}/tasks/${j.task}/jobs/${j.id}`;
+  function openJob(id, item) {
+    const j = jobs().find((x) => x.id === id); if (!j) return;
+    if (web && model.job !== id) { location.href = jobUrl(j); return; }       // the web app: a page per job
+    S.jobId = id; renderJob();
+    if (S.grid) { renderGrid(); return; }
+    goto(item != null && item >= j.start && item < j.end ? item : j.start, false);
+  }
+  function pickStartJob() {                                       // web: the job in the address; notebooks: the first unfinished
+    const at = (i) => jobs().find((j) => i >= j.start && i < j.end);
+    return jobs().find((j) => j.id === model.job) || (model.startItem ? at(model.startItem) : null)
+      || jobs().find((j) => j.state !== "completed") || jobs()[0] || null;
+  }
+  function renderJob() {
+    const menu = $(".pl-jobmenu"), j = curJob();
+    menu.hidden = !j;
+    if (!j) return;
+    const t = view().task;
+    menu.querySelector("summary").innerHTML = `Job #${j.id}${tasks().length > 1 ? ` · <span translate="no">${esc(t?.name || "")}</span>` : ""} <span class="pl-jobstate ${j.state === "completed" ? "completed" : ""}">${esc(j.state)}</span> ▾`;
+    $(".pl-jstage").value = j.stage; $(".pl-jstate").value = j.state;
+    $(".pl-jpick").innerHTML = jobs().map((x) => `<option value="${x.id}"${x.id === j.id ? " selected" : ""}>#${x.id} · ${esc(x.task_name)} · ${x.end - x.start} frames · ${esc(x.state)}</option>`).join("");
+    const k = jobs().indexOf(j);
+    $('[data-a="prevJob"]').disabled = k <= 0; $('[data-a="nextJob"]').disabled = k >= jobs().length - 1;
+    if (web) {
+      $(".pl-totask").href = `${model.homeUrl}projects/${encodeURIComponent(S.project.name)}/tasks/${j.task}`;
+      $(".pl-toproject").href = `${model.homeUrl}projects/${encodeURIComponent(S.project.name)}`;
+    }
   }
   function nextTodo() {
-    const t = curTask(), after = (arr) => arr.find((i) => i > S.target && i < t.end);
+    const t = view(), after = (arr) => arr.find((i) => i > S.target && i < t.end);
     const todo = after(S.flags) ?? after(S.statuses.map((s, i) => (s !== 4 ? i : -1)).filter((i) => i >= 0));
-    if (todo != null) goto(todo); else hint(tasks().length > 1 ? "Nothing left to check after this frame in this task" : "Nothing left to check after this frame");
-  }
-  const ICON_VIDEO = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="m16 10 5-3v10l-5-3"/></svg>`;
-  const ICON_IMAGES = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/></svg>`;
-  function details(t) {                                            // "1920×1080 · 30 fps · 2:14 · H264 · 45 MB · 402 frames kept (every 5) · JPEG 38 MB"
-    const i = t.info || {}, mb = (b) => (b >= 2 ** 20 ? `${(b / 2 ** 20).toFixed(b >= 10 * 2 ** 20 ? 0 : 1)} MB` : `${Math.round((b || 0) / 1024)} KB`);
-    const out = [i.width ? `${i.width}×${i.height}` : null];
-    if (t.kind === "video") {
-      const d = i.duration;
-      out.push(i.fps ? `${+i.fps.toFixed(2)} fps` : null, d ? `${Math.floor(d / 60)}:${String(Math.floor(d % 60)).padStart(2, "0")}` : null,
-               i.codec ? i.codec.toUpperCase() : null, i.size ? mb(i.size) : null,
-               i.kept != null ? `${i.kept} frames kept (every ${t.every})` : `${t.end - t.start} frames`,
-               i.stored ? `${t.format === "webp" ? "lossless" : "JPEG"} ${mb(i.stored)}` : null);
-    } else out.push(`${i.images ?? t.end - t.start} images`, i.mixed_sizes ? "mixed sizes" : null, i.size ? mb(i.size) : null);
-    return out.filter(Boolean).join(" · ");
-  }
-  function renderTasks() {
-    const ts = tasks(), cur = S.grid ? S.grid.task : curTask().id;
-    $(".pl-taskcount").textContent = ts.length > 1 ? String(ts.length) : "";
-    $(".pl-tasks").innerHTML = ts.map((t) => `<button type="button" class="pl-task" data-task="${t.id}" aria-pressed="${t.id === cur}" title="${esc(t.source)}">
-      ${t.kind === "video" ? ICON_VIDEO : ICON_IMAGES}<b translate="no">${esc(t.name)}</b><small>${esc(details(t))}</small></button>`).join("");
-    const exp = $(".pl-exptasks"); exp.hidden = ts.length < 2;
-    if (ts.length > 1 && exp.children.length - 1 !== ts.length) {
-      exp.innerHTML = `<span class="pl-src">Tasks to export</span>` + ts.map((t) => `<label><input type="checkbox" name="export-task" value="${t.id}" checked> <span translate="no">${esc(t.name)}</span></label>`).join("");
-    }
+    if (todo != null) goto(todo); else hint(curJob() ? "Nothing left to check after this frame in this job" : "Nothing left to check after this frame");
   }
   function setClass(i) {
     if (!S.project || i < 0 || i >= S.project.classes.length) return;
@@ -1179,7 +1177,7 @@ function render({ model, el }) {
     renderSide();
   }
   const trackN = () => Math.max(1, parseInt($(".pl-n").value, 10) || 20);
-  const video = () => taskAt(S.item).kind === "video";
+  const video = () => view().kind === "video";
   const track = (count, direction) => { if (video()) send({ type: "track", item: S.item, count, direction }); };
   const actions = {
     prev: () => goto(S.target - 1), next: () => goto(S.target + 1), nextTodo,
@@ -1193,15 +1191,16 @@ function render({ model, el }) {
     review: () => { send({ type: "review", item: S.item, value: !S.data?.reviewed }); if (!S.data?.reviewed) setTimeout(() => goto(S.item + 1), 50); },
     // (review targets the frame on screen; navigation after it starts from there)
     export: () => {
-      const picked = [...el.querySelectorAll('.pl-exptasks input:checked')].map((c) => +c.value);
-      if (tasks().length > 1 && !picked.length) { hint("Tick at least one task to export"); return; }
+      const scope = $(".pl-scope").value, j = curJob();
       send({ type: "export", format: $(".pl-fmt").value, reviewed_only: $(".pl-revonly").checked,
-             tasks: tasks().length > 1 && picked.length < tasks().length ? picked : undefined });
+             ...(scope === "job" && j ? { jobs: [j.id] } : scope === "task" && j ? { tasks: [j.task] } : {}) });
     },
     exportJump: () => { flash($(".pl-export")); $(".pl-fmt").focus(); },   // the controls sit below a possibly long class list
     saveSettings: () => send({ type: "settings", parent: $(".pl-parent").value }),
     sortParts: () => openGrid("parts"),
-    pickTask: () => { $(".pl-pick").showModal(); const src = tasks()[0]?.source || ""; pickShow(src.replace(/[\\/][^\\/]*$/, "")).catch(() => pickShow("")); },
+    finishJob: () => { const j = curJob(); if (j) { send({ type: "job_state", job: j.id, stage: "acceptance", state: "completed" }); $(".pl-jobmenu").open = false; } },
+    prevJob: () => { const k = jobs().indexOf(curJob()); if (k > 0) openJob(jobs()[k - 1].id); },
+    nextJob: () => { const k = jobs().indexOf(curJob()); if (k >= 0 && k < jobs().length - 1) openJob(jobs()[k + 1].id); },
     closeGrid: () => closeGrid(),
     group: () => send({ type: "sort", of: S.grid?.of || "images" }),
     suggestTags: () => send({ type: "suggest_tags" }),
@@ -1222,7 +1221,6 @@ function render({ model, el }) {
     if (S.grid && e.target.closest(".pl-gridwrap") && gridClick(e)) return;
     if (!e.target.closest(".pl-side")) return;
     const b = e.target.closest("[data-b]")?.dataset.b; if (b) { actions[b](); return; }
-    const tk = e.target.closest("[data-task]"); if (tk) { openTask(+tk.dataset.task); return; }
     const t = e.target.closest("[data-tool],[data-cls],[data-obj],[data-del]"); if (!t) return;
     if (t.dataset.del) { send({ type: "delete", item: S.item, obj: +t.dataset.del }); if (S.sel === +t.dataset.del) S.sel = null; }
     else if (t.dataset.tool) { S.tool = t.dataset.tool; renderSide(); }
@@ -1277,7 +1275,7 @@ function render({ model, el }) {
     send({ type: "goto", item: S.target });                        // classes may have changed
   }
   function sections() {
-    const G = S.grid, pass = PASS[G.filter], tk = G.task != null ? tasks().find((t) => t.id === G.task) : null;
+    const G = S.grid, pass = PASS[G.filter], tk = curJob() ? view() : null;
     const inTask = (c) => !tk || ((G.of === "images" ? c.key : c.item) >= tk.start && (G.of === "images" ? c.key : c.item) < tk.end);
     const keep = (keys) => keys.filter((k) => G.cards.has(k) && pass(G.cards.get(k)) && inTask(G.cards.get(k)));
     if (G.filter === "sugg") return [{ title: "Suggested, least sure first", keys: keep(G.order).sort((a, b) => (G.cards.get(a).score ?? 0) - (G.cards.get(b).score ?? 0)) }];
@@ -1423,40 +1421,15 @@ function render({ model, el }) {
     e.preventDefault(); e.stopPropagation();
   });
   strip.addEventListener("click", (e) => {
-    const r = strip.getBoundingClientRect(), t = taskAt(S.item);
+    const r = strip.getBoundingClientRect(), t = view();
     goto(t.start + Math.floor((e.clientX - r.left) / r.width * (t.end - t.start)));
   });
-  $(".pl-addtask").addEventListener("submit", (e) => {
-    e.preventDefault();
-    const path = $(".pl-taskpath").value.trim(); if (!path) { $(".pl-taskpath").focus(); return; }
-    send({ type: "add_task", path, every: Math.max(1, parseInt($(".pl-taskevery").value, 10) || 5) });
-    $(".pl-taskpath").value = "";
+  $(".pl-jobmenu").addEventListener("change", (e) => {
+    const j = curJob(); if (!j) return;
+    if (e.target.matches(".pl-jpick")) { openJob(+e.target.value); return; }
+    if (e.target.matches(".pl-jstage")) send({ type: "job_state", job: j.id, stage: e.target.value });
+    if (e.target.matches(".pl-jstate")) send({ type: "job_state", job: j.id, state: e.target.value });
   });
-  // A small file picker for the web app (the server lists this computer's folders; notebooks type a path)
-  let pickCur = { path: "", parent: null };
-  async function pickShow(path) {
-    try {
-      const r = await fetch(`${model.homeUrl}api/browse?path=${encodeURIComponent(path)}&kind=video`);
-      const d = await r.json(); if (!r.ok) throw new Error(d.detail || r.statusText); pickCur = d;
-    } catch (err) { $(".pk-hint").textContent = String(err.message || err); return; }
-    $(".pk-path").value = pickCur.path;
-    const join = (a, b) => (/[\\/]$/.test(a) ? a + b : a + (a.includes("\\") ? "\\" : "/") + b);
-    $(".pk-body").innerHTML = pickCur.dirs.map((d) => `<button type="button" class="pk-item" data-dir="${esc(pickCur.path ? join(pickCur.path, d) : d)}">📁 ${esc(d)}</button>`)
-      .concat(pickCur.files.map((f) => `<button type="button" class="pk-item" data-file="${esc(join(pickCur.path, f.name))}">🎞️ ${esc(f.name)}<small>${(f.size / 2 ** 20).toFixed(1)} MB</small></button>`))
-      .join("") || `<p class="pl-empty">No videos or folders here.</p>`;
-    el.querySelector('[data-k="folder"]').hidden = !pickCur.path;
-  }
-  $(".pl-pick").addEventListener("click", (e) => {
-    const t = e.target.closest("[data-dir],[data-file],[data-k]"); if (!t) return;
-    const use = (path) => { $(".pl-pick").close(); $(".pl-taskpath").value = path; $(".pl-addtask").requestSubmit(); };
-    if (t.dataset.dir) pickShow(t.dataset.dir);
-    else if (t.dataset.file) use(t.dataset.file);
-    else if (t.dataset.k === "up") pickShow(pickCur.parent ?? "");
-    else if (t.dataset.k === "places") pickShow("");
-    else if (t.dataset.k === "cancel") $(".pl-pick").close();
-    else if (t.dataset.k === "folder") use(pickCur.path);
-  });
-  $(".pk-path").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); pickShow($(".pk-path").value.trim()); } });
 
   // ---- full screen --------------------------------------------------------------------------
   // The web app and Jupyter/VS Code can use the browser's full screen. Colab's output frames may not (their
@@ -1681,7 +1654,12 @@ function render({ model, el }) {
 
   // ---- messages in -------------------------------------------------------------------------
   model.on("msg:custom", (m) => {
-    if (m.type === "project") { S.project = m; legend(); renderProject(); renderSide(); renderTop(); if (S.grid) renderGrid(); }
+    if (m.type === "project") {
+      S.project = m; LABEL_COLORS = m.colors || []; tints.clear();
+      if (!curJob()) { const j = pickStartJob(); S.jobId = j?.id ?? null; if (j && !S.grid && (S.target < j.start || S.target >= j.end)) goto(model.startItem >= j.start && model.startItem < j.end ? model.startItem : j.start, false); }
+      legend(); renderProject(); renderSide(); renderTop(); renderJob(); if (S.grid) renderGrid(); else draw();
+    }
+    else if (m.type === "reload") { if (web) location.reload(); else model.send({ type: "ready", item: S.target }); }
     else if (m.type === "grid" && S.grid?.of === m.of) {
       S.grid.cards = new Map(m.cards.map((c) => [c.key, c])); S.grid.order = m.cards.map((c) => c.key); S.grid.loaded = true; renderGrid();
     }
@@ -1713,7 +1691,7 @@ function render({ model, el }) {
       img.onload = () => {
         if (m.item !== S.target) return;
         if (m.item !== S.item) S.mask = null;
-        S.item = m.item; S.data = m; S.img = img; S_last.set(taskAt(m.item).id, m.item);
+        S.item = m.item; S.data = m; S.img = img;
         if (cv.width !== m.w || cv.height !== m.h) { cv.width = m.w; cv.height = m.h; S.zoom = 1; S.pan = [0, 0]; applyZoom(); }
         if (S.sel != null && !m.boxes.some((b) => b.obj === S.sel)) S.sel = null;
         if (S.pendingSel != null) { if (m.boxes.some((b) => b.obj === S.pendingSel)) S.sel = S.pendingSel; S.pendingSel = null; }

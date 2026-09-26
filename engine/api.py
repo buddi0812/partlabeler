@@ -179,7 +179,10 @@ class Session:
                 "classes": self.p.classes, "count": len(self.p.items),
                 "names": [it["name"] for it in self.p.items], "parent": self.p.meta.get("parent") or "",
                 "device": hw.describe(), "formats": list(self.p.formats), "task": self.p.task, "version": version,
-                "tasks": self.tasks_msg(), "frame_format": self.p.meta.get("frame_format", "jpg")}
+                "tasks": self.tasks_msg(), "frame_format": self.p.meta.get("frame_format", "jpg"),
+                "colors": [c or None for c in (self.p.meta.get("colors") or [])],
+                "jobs": [{k: j[k] for k in ("id", "task", "task_name", "start", "end", "stage", "state", "frames")}
+                         for j in self.p.jobs()]}
 
     def status_msg(self):
         from engine import hw
@@ -495,6 +498,13 @@ class Session:
                     self._goto(min(items)) if items else None)
         self.send({"type": "item_changed", "items": items})
         self.send(self.status_msg())
+
+    def on_job_state(self, msg):
+        """The annotator's job menu: stage and/or state ("Finish the job" = acceptance + completed)."""
+        j = self.p.set_job(int(msg["job"]), stage=msg.get("stage"), state=msg.get("state"))
+        self.send(self.project_msg())
+        self.notify("success" if j["state"] == "completed" else "info", f"Job #{j['id']}: {j['stage']}, {j['state']}",
+                    f"{j['task_name']}, {j['frames']} frames")
 
     def on_add_task(self, msg):
         """Add a video or an image folder to the project as a new task (frames are extracted in the background)."""
@@ -911,12 +921,14 @@ class Session:
 
     def on_export(self, msg):
         fmt, reviewed_only, tasks = msg.get("format", "yolo"), msg.get("reviewed_only", False), msg.get("tasks") or None
+        jobs = msg.get("jobs") or None
         names = [t["name"] for t in self.p.sources if t["id"] in (tasks or [])]
 
         def job():
-            part = f"_{names[0]}" if len(names) == 1 else f"_{len(names)}tasks" if names and len(names) < len(self.p.sources) else ""
-            out = self.p.folder / "exports" / f"{fmt}{part}_{time.strftime('%Y%m%d_%H%M%S')}"
-            res = self.p.export(fmt, out, reviewed_only, tasks=tasks if names and len(names) < len(self.p.sources) else None)
+            what = f"job_{jobs[0]}" if jobs else f"task_{names[0]}" if len(names) == 1 else "project"
+            out = self.p.folder / "exports" / f"{what}_{self.p.meta['name']}_dataset_{time.strftime('%Y_%m_%d_%H_%M_%S')}_{fmt}"
+            res = self.p.export(fmt, out, reviewed_only, tasks=tasks if names and len(names) < len(self.p.sources) else None,
+                                jobs=jobs)
             what = {"detect": "boxes", "segment": "outlines"}.get(self.p.task)
             detail = f"{res['images']} images" + (f", {res['boxes']} {what}" if what else "")
             if res.get("no_outline"):

@@ -130,3 +130,30 @@ def test_update_check_is_cached_and_update_waits_for_jobs(client, monkeypatch):
     host.state["jobs"]["x"] = {"finished": False}
     assert client.post("/api/update").status_code == 409                # never mid-job
     assert "version" in client.get("/api/info").json()
+
+
+def test_cvat_style_project_task_job_flow(client, tmp_path, video):
+    r = client.post("/api/projects", json={"name": "line", "task": "detect",
+                                           "labels": [{"name": "bolt", "color": "#ff0000"}, {"name": "nut", "color": None}]})
+    assert r.json() == {"name": "line"}
+    d = client.get("/api/projects/line").json()
+    assert d["tasks"] == [] and [l["name"] for l in d["labels"]] == ["bolt", "nut"]
+    j = client.post("/api/projects/line/tasks", json={"sources": [str(video)], "subset": "Train", "every": 5, "segment_size": 2}).json()
+    res = wait(client, j["job"])
+    assert res["error"] is None and res["result"]["tasks"] == [1]
+    t = client.get("/api/projects/line/tasks/1").json()
+    assert (t["subset"], t["frames"], len(t["jobs"]), t["status"]) == ("Train", 4, 2, "annotation") and t["info"]["width"] == 64
+    assert client.get(t["preview"]).status_code == 200
+    assert client.patch("/api/projects/line/tasks/1", json={"subset": "Validation"}).json()["subset"] == "Validation"
+    jid = t["jobs"][0]["id"]
+    assert client.patch(f"/api/projects/line/jobs/{jid}", json={"stage": "acceptance", "state": "completed"}).json()["state"] == "completed"
+    assert client.get("/api/projects/line/tasks/1").json()["done"] == 1
+    assert client.patch("/api/projects/line", json={"labels": [{"name": "bolt", "color": "#00ff00", "from": 0}]}).json()["labels"] == [{"name": "bolt", "color": "#00ff00"}]
+    ex = wait(client, client.post("/api/projects/line/export", json={"format": "yolo", "jobs": [jid], "save_images": False}).json()["job"])
+    assert ex["error"] is None and "job_" in ex["result"]["folder"]
+    assert [x["id"] for x in client.get("/api/annotation-jobs").json()] == [jid, jid + 1]
+    assert client.get("/projects/line").status_code == 200 and client.get(f"/projects/line/tasks/1/jobs/{jid}").status_code == 200
+    bk = wait(client, client.post("/api/projects/line/backup").json()["job"])
+    rs = wait(client, client.post("/api/backups/restore", json={"path": bk["result"]["file"]}).json()["job"])
+    assert rs["result"]["name"] == "line_2" and client.get("/api/projects/line_2").json()["tasks"][0]["subset"] == "Validation"
+    assert client.delete("/api/projects/line/tasks/1").status_code == 400          # the last task stays

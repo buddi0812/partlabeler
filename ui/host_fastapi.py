@@ -48,6 +48,7 @@ const handlers = [], queue = [];
 const ws = new WebSocket(`ws://${{location.host}}/ws/{name_js}`);
 const model = {{
   homeUrl: "/",
+  job: {job},
   startItem: Math.max(0, parseInt(new URLSearchParams(location.search).get("item") || "0", 10) || 0),
   send: (m) => (ws.readyState === 1 ? ws.send(JSON.stringify(m)) : queue.push(m)),
   on: (evt, fn) => {{ if (evt === "msg:custom") handlers.push(fn); }},
@@ -60,6 +61,9 @@ canvas.render({{ model, el: document.getElementById("app") }});
 HOME = HEAD + """<title>PartLabeler</title>
 <body style="margin:0"><div id="home"></div>
 <script type="module">import home from "/ui/home.js"; home(document.getElementById("home"));</script>"""
+PAGE = HEAD + """<title>{title} · PartLabeler</title>
+<body style="margin:0"><div id="page"></div>
+<script type="module">import {{ page }} from "/ui/pages.js"; page(document.getElementById("page"), {args});</script>"""
 
 state: dict = {"home": Path("projects"), "sessions": {}, "clients": {}, "jobs": {}, "update_check": None, "restart": None}
 UPDATE_CHECK_S = 6 * 3600                                    # ask GitHub at most this often
@@ -100,6 +104,11 @@ def open_action(name: str) -> dict:
     return {"type": "open", "project": name, "label": "Open project"}
 
 
+def project(name: str) -> Project:
+    """The project, as the open annotator holds it (so both see every change), or freshly loaded."""
+    return session(name).p
+
+
 def broadcast_all(msg: dict) -> None:
     for name in list(state["clients"]):
         broadcast(name, msg)
@@ -116,9 +125,12 @@ def broadcast(name: str, msg: dict) -> None:
 
 def summary(folder: Path) -> dict:
     meta = json.loads((folder / "project.json").read_text(encoding="utf-8"))
-    tasks = meta.get("sources") or [{"name": Path(meta["source"]).stem, "kind": meta["kind"]}]
-    out = {"name": folder.name, "kind": meta["kind"], "task": meta.get("task", "detect"), "source": meta["source"],
-           "classes": meta["classes"], "tasks": [{"name": t["name"], "kind": t["kind"]} for t in tasks],
+    tasks = meta.get("sources") if "sources" in meta else [{"name": Path(meta["source"]).stem, "kind": meta["kind"]}]
+    out = {"name": folder.name, "kind": meta.get("kind") or (tasks[0]["kind"] if tasks else "video"),
+           "task": meta.get("task", "detect"), "source": meta.get("source", ""), "created": meta.get("created"),
+           "classes": meta["classes"], "colors": meta.get("colors") or [],
+           "tasks": [{"name": t["name"], "kind": t["kind"]} for t in tasks],
+           "preview": f"/previews/{quote(folder.name)}/first.jpg" if tasks else None,
            "parent": meta.get("parent"), "modified": (folder / "labels.sqlite").stat().st_mtime
            if (folder / "labels.sqlite").exists() else (folder / "project.json").stat().st_mtime}
     try:
@@ -209,10 +221,309 @@ def home_page() -> str:
     return HOME
 
 
+def _page(title: str, **args) -> str:
+    return PAGE.format(title=title.replace("<", "&lt;"), args=json.dumps(args).replace("</", "<\\/"))
+
+
 @app.get("/p/{name}", response_class=HTMLResponse)
-def annotator_page(name: str) -> str:
+def old_link(name: str, item: int | None = None):
+    """Links from before tasks and jobs: the job that holds `item`, else the project page."""
+    from fastapi.responses import RedirectResponse
     project_dir(name)
-    return ANNOTATOR.format(name=name.replace("<", "&lt;"), name_js=json.dumps(name)[1:-1])
+    if item is not None:
+        p = project(name)
+        j = next((j for j in p.jobs() if j["start"] <= item < j["end"]), None)
+        if j:
+            return RedirectResponse(f"/projects/{quote(name)}/tasks/{j['task']}/jobs/{j['id']}?item={item}")
+    return RedirectResponse(f"/projects/{quote(name)}")
+
+
+@app.get("/projects/{name}", response_class=HTMLResponse)
+def project_page(name: str) -> str:
+    project_dir(name)
+    return _page(name, view="project", project=name)
+
+
+@app.get("/projects/{name}/tasks/create", response_class=HTMLResponse)
+def create_task_page(name: str) -> str:
+    project_dir(name)
+    return _page(f"New task · {name}", view="create-task", project=name)
+
+
+@app.get("/projects/{name}/tasks/{tid}", response_class=HTMLResponse)
+def task_page(name: str, tid: int) -> str:
+    project_dir(name)
+    return _page(f"Task {tid} · {name}", view="task", project=name, task=tid)
+
+
+@app.get("/projects/{name}/tasks/{tid}/jobs/{jid}", response_class=HTMLResponse)
+def job_page(name: str, tid: int, jid: int) -> str:
+    project_dir(name)
+    return ANNOTATOR.format(name=name.replace("<", "&lt;"), name_js=json.dumps(name)[1:-1], job=int(jid))
+
+
+
+@app.get("/tasks", response_class=HTMLResponse)
+def tasks_page() -> str:
+    return _page("Tasks", view="tasks")
+
+
+@app.get("/jobs", response_class=HTMLResponse)
+def jobs_page() -> str:
+    return _page("Jobs", view="jobs")
+
+
+def task_summary(p: Project, t: dict, jobs: list[dict], statuses: list[int]) -> dict:
+    a, b = p.ranges.get(t["id"], (0, 0))
+    part = statuses[a:b]
+    updated = max([j["updated"] for j in jobs if j.get("updated")] or [t.get("created") or ""]) or None
+    return {"id": t["id"], "name": t["name"], "subset": t.get("subset", ""), "kind": t["kind"], "source": t["source"],
+            "created": t.get("created"), "updated": updated, "info": t.get("info") or {}, "frames": b - a,
+            "start_item": a, "every": t.get("every", 1), "start": t.get("start"), "stop": t.get("stop"),
+            "quality": t.get("quality", 95), "format": t.get("format", "jpg"), "sorting": t.get("sorting"),
+            "segment_size": t.get("segment_size", 0), "labeled": sum(x >= 2 for x in part),
+            "confirmed": sum(x == 4 for x in part), "jobs": jobs, **Project.task_status(jobs),
+            "preview": f"/previews/{quote(p.meta['name'])}/{t['id']}.jpg"}
+
+
+def project_detail(name: str) -> dict:
+    p = project(name)
+    p.fill_info()
+    jobs, st = p.jobs(), p.statuses()
+    tasks = [task_summary(p, t, [j for j in jobs if j["task"] == t["id"]], st) for t in p.sources]
+    return {"name": name, "task": p.task, "created": p.meta.get("created"), "labels": p.labels(),
+            "formats": list(p.formats), "frame_format": p.meta.get("frame_format", "jpg"), "tasks": tasks,
+            "subsets": sorted({t["subset"] for t in tasks if t["subset"]}), "items": len(p.items)}
+
+
+def refresh(name: str, reload: bool = False) -> None:
+    """Tell open annotator tabs: tasks, jobs or labels changed (reload: item numbers moved)."""
+    if name in state["sessions"]:
+        s_ = state["sessions"][name]
+        if reload:
+            state["sessions"].pop(name)
+            broadcast(name, {"type": "reload"})
+        else:
+            broadcast(name, s_.project_msg())
+            broadcast(name, s_.status_msg())
+
+
+@app.get("/api/projects/{name}")
+def get_project(name: str) -> dict:
+    project_dir(name)
+    return project_detail(name)
+
+
+@app.patch("/api/projects/{name}")
+def patch_project(name: str, body: dict = Body(...)) -> dict:
+    """The label constructor: {"labels": [{"name", "color", "from": old index or null}]}."""
+    project_dir(name)
+    p = project(name)
+    if "labels" in body:
+        try:
+            res = p.set_labels(body["labels"])
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        if res["removed"]:
+            note("info", f"Deleted labels in {name}", f"{res['removed']} annotations of the deleted labels went with them", name)
+        refresh(name, reload=bool(res["removed"]))
+    return project_detail(name)
+
+
+@app.post("/api/projects/{name}/tasks")
+def create_tasks(name: str, body: dict = Body(...)) -> dict:
+    """CVAT's "Create a new task" (one path) or "Create multi tasks" (several: one task each, named after the
+    file unless a name template with {{file_name}} / {{index}} is given)."""
+    project_dir(name)
+    paths = [str(x).strip().strip('"') for x in (body.get("sources") or []) if str(x).strip()]
+    if not paths:
+        raise HTTPException(400, "Select a video or an image folder")
+    missing = [x for x in paths if not Path(x).exists()]
+    if missing:
+        raise HTTPException(400, f"Not found: {', '.join(missing)}")
+    template = (body.get("name") or "").strip()
+    opts = {"subset": body.get("subset") or "", "every": int(body.get("every") or 5),
+            "start": int(body["start"]) if str(body.get("start", "")).strip() else None,
+            "stop": int(body["stop"]) if str(body.get("stop", "")).strip() else None,
+            "quality": int(body.get("quality") or 95), "lossless": bool(body.get("lossless")),
+            "sorting": body.get("sorting") or "lexicographical", "segment_size": int(body.get("segment_size") or 0)}
+
+    def job(progress, should_stop):
+        p, made = project(name), []
+        for i, src in enumerate(paths):
+            if should_stop():
+                break
+            nm = (template.replace("{{file_name}}", Path(src).stem).replace("{{index}}", str(i + 1))
+                  if template and (len(paths) == 1 or "{{" in template) else None)
+            progress(i, len(paths), f"Task {i + 1} of {len(paths)}: {Path(src).name}")
+            t = p.add_source(video=src if Path(src).is_file() else None, images=None if Path(src).is_file() else src,
+                             progress=lambda d, n, text: progress(d, n, f"{Path(src).name}: {text}"), name=nm, **opts)
+            made.append(t["id"])
+        refresh(name)
+        return {"project": name, "tasks": made, "first_job": p.jobs(made[0])[0]["id"] if made and p.jobs(made[0]) else None}
+
+    def done(res):
+        note("success", f"Created {len(res['tasks'])} task{'s' if len(res['tasks']) != 1 else ''} in {name}", "", name, open_action(name))
+
+    return {"job": start_job("create task", job, done, f"Could not create the task in {name}")}
+
+
+@app.get("/api/projects/{name}/tasks/{tid}")
+def get_task(name: str, tid: int) -> dict:
+    project_dir(name)
+    d = project_detail(name)
+    t = next((t for t in d["tasks"] if t["id"] == tid), None)
+    if t is None:
+        raise HTTPException(404, f"no task {tid} in {name}")
+    return {**t, "project": name, "project_task": d["task"], "labels": d["labels"], "formats": d["formats"],
+            "subsets": d["subsets"]}
+
+
+@app.patch("/api/projects/{name}/tasks/{tid}")
+def patch_task(name: str, tid: int, body: dict = Body(...)) -> dict:
+    project_dir(name)
+    try:
+        project(name).update_source(tid, name=body.get("name"), subset=body.get("subset"))
+    except (KeyError, ValueError) as e:
+        raise HTTPException(400, str(e).strip("'"))
+    refresh(name)
+    return get_task(name, tid)
+
+
+@app.delete("/api/projects/{name}/tasks/{tid}")
+def delete_task(name: str, tid: int) -> dict:
+    project_dir(name)
+    try:
+        res = project(name).remove_source(tid)
+    except (KeyError, ValueError) as e:
+        raise HTTPException(400, str(e).strip("'"))
+    refresh(name, reload=True)
+    note("info", f"Deleted task {res['task']['name']} from {name}", f"{res['items']} frames or images, {res['labels']} labels", name)
+    return {"ok": True, **{k: v for k, v in res.items() if k != "task"}}
+
+
+@app.patch("/api/projects/{name}/jobs/{jid}")
+def patch_job(name: str, jid: int, body: dict = Body(...)) -> dict:
+    project_dir(name)
+    try:
+        j = project(name).set_job(jid, stage=body.get("stage"), state=body.get("state"))
+    except (KeyError, ValueError) as e:
+        raise HTTPException(400, str(e).strip("'"))
+    refresh(name)
+    return j
+
+
+@app.post("/api/projects/{name}/annotations")
+def upload_annotations(name: str, body: dict = Body(...)) -> dict:
+    """CVAT's "Upload annotations" into a task or a job: a YOLO labels folder, Replace or Append."""
+    project_dir(name)
+    folder = Path(str(body.get("labels", "")).strip().strip('"'))
+    if not folder.is_dir():
+        raise HTTPException(400, f"Not a folder: {folder}")
+    p = project(name)
+    if body.get("job"):
+        j = p.job(int(body["job"]))
+        items = range(j["start"], j["end"])
+    else:
+        items = range(*p.ranges.get(int(body.get("task", -1)), (0, 0)))
+    res = p.import_yolo(folder, items=items, replace=body.get("mode") == "replace")
+    refresh(name)
+    note("success", f"Uploaded annotations to {name}", f"{res['boxes']} labels from {res['files_matched']} files"
+         + (f"; {res['files_unmatched']} files matched no frame" if res["files_unmatched"] else ""), name)
+    return res
+
+
+@app.post("/api/projects/{name}/export")
+def export_dataset(name: str, body: dict = Body(...)) -> dict:
+    """CVAT's "Export dataset" for the project, a task or a job: format, save images, custom name."""
+    project_dir(name)
+    fmt = body.get("format") or "yolo"
+    tasks, jobs = body.get("tasks") or None, body.get("jobs") or None
+    what = f"job_{jobs[0]}" if jobs else (f"task_{tasks[0]}" if tasks and len(tasks) == 1 else "project")
+    custom = safe_name(body["name"]) if (body.get("name") or "").strip() else None
+
+    def job(progress, should_stop):
+        p = project(name)
+        folder = custom or f"{what}_{name}_dataset_{time.strftime('%Y_%m_%d_%H_%M_%S')}_{fmt}"
+        out = p.folder / "exports" / folder
+        progress(0, 1, "Exporting")
+        res = p.export(fmt, out, reviewed_only=bool(body.get("reviewed_only")), tasks=tasks, jobs=jobs,
+                       save_images=body.get("save_images", True) is not False)
+        return {**res, "folder": str(out)}
+
+    def done(res):
+        note("success", f"Exported {name} as {fmt.upper()}", f"{res['images']} images. {res['folder']}", name,
+             {"type": "folder", "path": res["folder"], "label": "Open folder"})
+
+    return {"job": start_job("export", job, done, f"Could not export {name}")}
+
+
+@app.post("/api/projects/{name}/backup")
+def backup(name: str) -> dict:
+    from engine.project import backup_project
+    project_dir(name)
+
+    def job(progress, should_stop):
+        progress(0, 1, "Packing the project")
+        out = state["home"] / "_backups" / f"project_{name}_backup_{time.strftime('%Y_%m_%d_%H_%M_%S')}.zip"
+        return backup_project(state["home"] / name, out)
+
+    def done(res):
+        note("success", f"Backed up {name}", f"{res['items']} frames or images, {res['size'] / 2**20:.0f} MB. {res['file']}", name,
+             {"type": "folder", "path": str(Path(res["file"]).parent), "label": "Open folder"})
+
+    return {"job": start_job("backup", job, done, f"Could not back up {name}")}
+
+
+@app.post("/api/backups/restore")
+def restore(body: dict = Body(...)) -> dict:
+    """CVAT's "Create from backup": a project backup zip becomes a new project."""
+    from engine.project import restore_project
+    path = Path(str(body.get("path", "")).strip().strip('"'))
+    if not path.is_file():
+        raise HTTPException(400, f"Not a file: {path}")
+
+    def job(progress, should_stop):
+        progress(0, 1, "Unpacking the backup")
+        dest = restore_project(path, state["home"], (body.get("name") or "").strip() or None)
+        return {"name": dest.name}
+
+    def done(res):
+        note("success", f"Created {res['name']} from a backup", str(path), res["name"], open_action(res["name"]))
+
+    return {"job": start_job("restore", job, done, "Could not restore the backup")}
+
+
+@app.get("/api/tasks")
+def all_tasks() -> list:
+    """Every task of every project (the Tasks page)."""
+    out = []
+    for s_ in list_projects():
+        if s_.get("problem"):
+            continue
+        d = project_detail(s_["name"])
+        out += [{**t, "project": s_["name"], "project_task": d["task"]} for t in d["tasks"]]
+    return sorted(out, key=lambda t: t.get("updated") or "", reverse=True)
+
+
+@app.get("/api/annotation-jobs")
+def all_jobs() -> list:
+    """Every job of every project (the Jobs page)."""
+    return [{**j, "project": t["project"], "task_kind": t["kind"], "preview": t["preview"]}
+            for t in all_tasks() for j in t["jobs"]]
+
+
+@app.get("/previews/{name}/{which}.jpg")
+def preview(name: str, which: str):
+    """A task's first frame (which = task id) or the project's (which = first), as a thumbnail."""
+    project_dir(name)
+    p = project(name)
+    if not p.items:
+        raise HTTPException(404)
+    k = 0 if which == "first" else p.ranges.get(int(which) if which.isdigit() else -1, (None, None))[0]
+    if k is None or k >= len(p.items):
+        raise HTTPException(404)
+    return Response(session(name).thumb_bytes("images", k), media_type="image/jpeg", headers={"Cache-Control": "no-cache"})
 
 
 @app.get("/items/{name}/{item}.jpg")
@@ -334,14 +645,33 @@ def list_projects() -> list:
 
 @app.post("/api/projects")
 def create_project(body: dict = Body(...)) -> dict:
+    """Create a project (CVAT: name + labels). With no video or folder it is made at once, empty, and tasks are
+    added on its page; with one, it is made in the background with that first task."""
     name = safe_name(body.get("name", ""))
     folder = state["home"] / name
     if (folder / "project.json").exists():
         raise HTTPException(400, f"A project called {name!r} already exists")
-    classes = [] if body.get("task") == "classify" and not (body.get("classes") or "").strip() and not body.get("classes_file")         else classes_from(body)                              # image classes may be named later, while sorting
+    colors = None
+    if isinstance(body.get("labels"), list):                # the label constructor: [{"name", "color"}]
+        classes = [" ".join(str(l.get("name", "")).split()) for l in body["labels"] if str(l.get("name", "")).strip()]
+        colors = [l.get("color") for l in body["labels"] if str(l.get("name", "")).strip()]
+        if not classes and body.get("task") != "classify":
+            raise HTTPException(400, "Add at least one label")
+    else:
+        classes = [] if body.get("task") == "classify" and not (body.get("classes") or "").strip() and not body.get("classes_file") \
+            else classes_from(body)                          # image classes may be named later, while sorting
     video, images = body.get("video") or None, body.get("images") or None
     if not (video or images):
-        raise HTTPException(400, "Pick a video file or an image folder")
+        task = body.get("task") or "detect"
+        if task not in ("detect", "segment", "classify"):
+            raise HTTPException(400, f"Unknown project type {task!r}")
+        try:
+            Project.create(folder, classes, task=task, colors=colors,
+                           frame_format="webp" if body.get("frame_format") == "webp" else "jpg").db.close()
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        note("success", f"Created project {name}", "Add its first task on the project page", name, open_action(name))
+        return {"name": name}
     src = Path(video or images)
     if not src.exists():
         raise HTTPException(400, f"Not found: {src}")
@@ -415,7 +745,8 @@ def browse(path: str = "", kind: str = "any") -> dict:
     folder = Path(path).expanduser()
     if not folder.is_dir():
         raise HTTPException(400, f"Not a folder: {folder}")
-    exts = {"video": VIDEO_EXTS, "classes": CLASS_EXTS, "images": IMAGE_EXTS, "any": None, "dir": set()}.get(kind)
+    exts = {"video": VIDEO_EXTS, "classes": CLASS_EXTS, "images": IMAGE_EXTS, "any": None, "dir": set(),
+            "backup": {".zip"}}.get(kind)
     dirs, files = [], []
     try:
         for e in sorted(folder.iterdir(), key=lambda e: e.name.lower()):
