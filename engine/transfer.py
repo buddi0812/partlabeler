@@ -200,7 +200,8 @@ def label_project(project, run_dir, task_ids, outline=None, parent_every: int = 
     """Label the frames of these tasks of a project with a Teach run's model, as parts to check (source
     "imported", score = the model's confidence). A part keeps its id from frame to frame while its box overlaps
     the one before (IoU >= 0.3, same class), so jumps and gaps get the usual 'to check' marks. Frames a person
-    labeled (drawn or tracked parts) or confirmed are left alone; the model's earlier labels are replaced.
+    labeled (drawn or tracked parts) or confirmed are left alone; the model's earlier labels are replaced. Two
+    labels on one box (IoU >= 0.7) keep the surer one; parts under 0.6 are marked to check (Project.flags).
     outline(item, boxes) -> masks turns the boxes into outlines (segmentation projects)."""
     from engine import detector, hw
     run_dir = Path(run_dir)
@@ -237,6 +238,11 @@ def label_project(project, run_dir, task_ids, outline=None, parent_every: int = 
                                                      float(y2 + crop[1])], float(p))
                                for (x1, y1, x2, y2), c, p in zip(det.xyxy, det.class_id, det.confidence)
                                if int(c) in to_project), key=lambda d: -d[2])
+                kept = []                                     # one part, two labels on the same box: the surer one
+                for d in dets:
+                    if all(_iou(d[1], k[1]) < 0.7 for k in kept):
+                        kept.append(d)
+                dets = kept
                 masks = outline(k, [d[1] for d in dets]) if outline and dets else [None] * len(dets)
                 with project.db:
                     project.db.execute("DELETE FROM boxes WHERE item=? AND source='imported'", (k,))

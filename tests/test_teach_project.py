@@ -49,7 +49,8 @@ def test_label_tasks_fills_unchecked_frames_and_keeps_part_ids(tmp_path, video, 
     p, (t1, t2) = two_tasks(tmp_path, video)
     a, b = p.ranges[t2]
     p.put(a + 3, 99, 2, [30, 30, 40, 40]); p.set_reviewed(a + 5)               # a person's frame and a confirmed one
-    run = fake_run(tmp_path, monkeypatch, [(0, [1, 1, 10, 10], 0.9), (1, [20, 20, 30, 30], 0.8)])
+    run = fake_run(tmp_path, monkeypatch, [(0, [1, 1, 10, 10], 0.9), (1, [20, 20, 30, 30], 0.8),
+                                           (2, [20, 20, 30, 31], 0.5)])        # a second label on the same box
     s = Session(p, lambda m: None)
     said = s.call({"type": "label_tasks", "run": str(run), "tasks": [t2]})
     assert "Labeled 8 frames with run" in said[-1] and "16 parts to check" in said[-1]
@@ -58,6 +59,9 @@ def test_label_tasks_fills_unchecked_frames_and_keeps_part_ids(tmp_path, video, 
     assert [x["obj"] for x in p.boxes(a + 1)] == [x["obj"] for x in got]      # the same parts along the frames
     assert [x["cls"] for x in p.boxes(a + 3)] == [2] and p.boxes(a + 5) == []  # people's frames untouched
     assert all(p.boxes(k) == [] for k in range(*p.ranges[t1]))                # other tasks too
+    assert not set(range(a, b)) & set(p.flags())                             # sure, steady parts: nothing to check
+    p.db.execute("UPDATE boxes SET score=0.5 WHERE item=? AND cls=0", (a + 1,))
+    assert a + 1 in p.flags()                                                  # an unsure one is
     s.call({"type": "label_tasks", "run": str(run), "tasks": [t2]})           # again: replaced, not doubled
     assert len(p.boxes(a)) == 2
     s.call({"type": "undo"})

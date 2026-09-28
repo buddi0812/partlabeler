@@ -680,21 +680,25 @@ class Project:
             out[item] = 4
         return out
 
-    def flags(self, size: float = 1.5, moved: float = 0.3) -> list[int]:
+    def flags(self, size: float = 1.5, moved: float = 0.3, unsure: float = 0.6) -> list[int]:
         """Unreviewed items worth a look. A tracked box is suspect when its area differs from the
         person's nearest box of that part by more than `size` x, or its centre moved more than `moved`
         x its diagonal since the previous item; a part lost for a while is suspect where it went.
         (S4c, 1,794 tracked boxes: these catch 57% of wrong boxes and 2 of 3 flags are real; the
-        tracker's own score adds nothing on top, and Laya zero-shot did worse than chance.)"""
-        rows = self.db.execute("SELECT obj, item, x1, y1, x2, y2, source FROM boxes "
+        tracker's own score adds nothing on top, and Laya zero-shot did worse than chance.) A model's labels
+        (label_tasks, source "imported") get the same checks, and are suspect below `unsure` confidence (its
+        Teach threshold is lower, about 0.45)."""
+        rows = self.db.execute("SELECT obj, item, x1, y1, x2, y2, source, score FROM boxes "
                                "WHERE source != 'suggested' ORDER BY obj, item").fetchall()
         reviewed = {r[0] for r in self.db.execute("SELECT item FROM reviewed")}
         anchors: dict[int, list] = {}
-        for obj, item, x1, y1, x2, y2, source in rows:
+        for obj, item, x1, y1, x2, y2, source, _ in rows:
             if source == "manual":
                 anchors.setdefault(obj, []).append((item, (x2 - x1) * (y2 - y1)))
         flagged, prev = set(), None
-        for obj, item, x1, y1, x2, y2, source in rows:
+        for obj, item, x1, y1, x2, y2, source, score in rows:
+            if source == "imported" and score is not None and score < unsure:   # a model's label it was unsure of
+                flagged.add(item)
             if source in ("tracked", "imported"):
                 a = (x2 - x1) * (y2 - y1)
                 if obj in anchors:

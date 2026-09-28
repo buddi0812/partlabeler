@@ -435,8 +435,9 @@ It is optional and is the only part of PartLabeler that trains a model.
 the API (see *AI apps and scripts*) can run `teach` on it: its confirmed frames become the training set (frames
 confirmed empty teach the model when to label nothing), then `label_tasks` labels other tasks of the same project
 with the run. The model's parts (outlined by SAM 3 in segmentation projects) land on every frame nobody labeled or
-confirmed, shown dashed like tracked parts with the model's confidence; parts that jump or go missing are marked
-*to check*. Check them, fix, confirm; Ctrl+Z removes a whole labeling run.
+confirmed, shown dashed like tracked parts with the model's confidence; parts that jump or go missing, and parts
+the model was unsure of (under 0.6), are marked *to check*. When the model gives one part two labels, the surer one
+stays. Check them, fix, confirm; Ctrl+Z removes a whole labeling run.
 
 **Quick transfer (no training)**: in the Transfer form, set **Label with** to *No training: match a labeled
 dataset (quick preview)*, pick the labeled dataset folder, add the videos or folders and click **Start
