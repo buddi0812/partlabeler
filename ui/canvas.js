@@ -769,6 +769,13 @@ function render({ model, el }) {
             <option value="end" selected>to the end of the task</option></select></label>
           <label class="pl-chk"><input type="checkbox" class="pl-clear-confirmed"> also confirmed frames</label>
           <div class="pl-tools"><button type="button" class="primary" data-a="clearAfter">Clear</button><span class="pl-src">Ctrl+Z brings them back</span></div>
+          <hr><h3>Swap classes</h3>
+          <label>From <select class="pl-swap-src" aria-label="Class to change"></select></label>
+          <label>To <select class="pl-swap-dst" aria-label="Class it becomes"></select></label>
+          <label class="pl-chk"><input type="checkbox" class="pl-swap-both" checked> and the other way round (swap both)</label>
+          <label>Frames <select class="pl-swap-range" aria-label="Which frames"><option value="after">this one and all after it</option>
+            <option value="task">the whole task</option><option value="frame">this frame only</option></select></label>
+          <div class="pl-tools"><button type="button" data-a="swapClasses">Swap</button><span class="pl-src">Confirmed frames too. Ctrl+Z undoes it</span></div>
         </div></details>
       </span>
       <span class="pl-group">
@@ -897,7 +904,7 @@ function render({ model, el }) {
               saving: false, savedAt: null, hintHidden: false, started: false, brush: PREFS.brush || 12, hover: null, paint: null,
               grid: null, zoom: 1, pan: [0, 0], panning: null, space: false };
   try { S.hintHidden = window.PL ? PREFS.hints === false : localStorage.getItem("pl-hint-hidden") === "1"; } catch {}
-  const MUTATING = new Set(["box", "click", "cycle", "delete", "set_class", "review", "accept", "undo", "settings", "paint", "smart_paint", "tag", "accept_tags", "add_class"]);
+  const MUTATING = new Set(["box", "click", "cycle", "delete", "set_class", "swap_classes", "review", "accept", "undo", "settings", "paint", "smart_paint", "tag", "accept_tags", "add_class"]);
   const seg = () => S.project?.task === "segment", classify = () => S.project?.task === "classify";
   const send = (m) => { if (MUTATING.has(m.type)) { S.saving = true; renderSaved(); } model.send(m); };
   const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches || document.documentElement.dataset.motion === "off";
@@ -1097,7 +1104,7 @@ function render({ model, el }) {
     const flags = S.flags.filter((f) => f >= tk.start && f < tk.end).length;
     $(".pl-counts").textContent = `${lab} labeled, ${rev} confirmed, ${flags} to check${curJob() ? " in this job" : ""}`;
     const busy = S.busy;
-    el.querySelectorAll('[data-a="track"],[data-a="trackBack"],[data-a="retrack"],[data-a="retrackAll"],[data-a="clearAfter"],[data-b="suggest"],[data-b="findAll"],[data-b="export"]').forEach((b) => (b.disabled = busy));
+    el.querySelectorAll('[data-a="track"],[data-a="trackBack"],[data-a="retrack"],[data-a="retrackAll"],[data-a="clearAfter"],[data-a="swapClasses"],[data-b="suggest"],[data-b="findAll"],[data-b="export"]').forEach((b) => (b.disabled = busy));
     $('[data-a="stop"]').disabled = !busy;
     $('[data-a="undo"]').disabled = busy || !S.undo;
     $(".pl-video").hidden = view().kind !== "video";
@@ -1234,6 +1241,12 @@ function render({ model, el }) {
              direction: 1, confirmed: $(".pl-clear-confirmed").checked });
       $(".pl-after").open = false;
     },
+    swapClasses: () => {
+      const src = +$(".pl-swap-src").value, dst = +$(".pl-swap-dst").value;
+      if (src === dst) { hint("Pick two different classes"); return; }
+      send({ type: "swap_classes", item: S.item, src, dst, both: $(".pl-swap-both").checked, scope: $(".pl-swap-range").value });
+      $(".pl-after").open = false;
+    },
     stop: () => send({ type: "stop" }),
     undo: () => send({ type: "undo" }),
     suggest: () => send({ type: "suggest", item: S.item }),
@@ -1282,6 +1295,11 @@ function render({ model, el }) {
   $(".pl-after").addEventListener("toggle", (e) => {
     if (!e.target.open) return;
     $(".pl-n-echo").textContent = trackN();
+    for (const [sel, dflt] of [[".pl-swap-src", 0], [".pl-swap-dst", 1]]) {      // keep the picks while the list is the same
+      const s = $(sel), was = s.value;
+      s.innerHTML = (S.project?.classes || []).map((c, i) => `<option value="${i}">${esc(c)}</option>`).join("");
+      s.value = was !== "" && s.options[+was] ? was : String(Math.min(dflt, s.options.length - 1));
+    }
     const keep = new Set([...el.querySelectorAll(".pl-clear-cls:checked")].map((x) => +x.value));
     $(".pl-clear-classes").innerHTML = (S.project?.classes || []).map((c, i) => `<label class="pl-chk"><input type="checkbox" class="pl-clear-cls" value="${i}"${keep.has(i) ? " checked" : ""}>
       <i class="pl-sw" style="background:${colorOf(i)}"></i><span translate="no">${esc(c)}</span></label>`).join("");

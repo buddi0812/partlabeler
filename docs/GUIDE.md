@@ -289,6 +289,11 @@ and confirmed frames are never changed, and Ctrl+Z undoes it.
 from the frames after this one: the next N frames or to the end of the task. Confirmed frames are left alone unless
 you tick **also confirmed frames**. Ctrl+Z brings the parts back.
 
+**Swap classes.** In the same menu, **Swap classes** turns every part of one class (**From**) into another (**To**):
+on this frame and all after it, on the whole task, or on this frame only, confirmed frames included. With **and the
+other way round** ticked (the default) the two classes swap at the same time, for example after labeling the left
+and right side the wrong way round (swap `left_drl` and `right_drl`, then the next pair). Ctrl+Z undoes it.
+
 ## Frames to check
 
 After tracking, frames where a box jumped, changed size a lot or went missing get an amber *To check* mark.

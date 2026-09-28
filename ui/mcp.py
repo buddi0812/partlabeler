@@ -482,6 +482,19 @@ def clear_parts(args):
     return {**_where(p, item), "messages": said}
 
 
+@tool("Change one label into another on a frame, from a frame to the end of its task, or on the whole task "
+      "(both=true swaps the two labels at the same time). Confirmed frames too. Undoable.", ["project", "from_label", "to_label"],
+      **AT, from_label=S("Label to change"), to_label=S("Label it becomes"), both=B("Also turn to_label into from_label (swap)"),
+      scope=S("frame | after (default) | task", enum=["frame", "after", "task"]))
+def swap_classes(args):
+    sess = _sess(args)
+    p = sess.p
+    item = _item(p, args)
+    said = _run(sess, {"type": "swap_classes", "item": item, "src": _cls(p, args["from_label"]), "dst": _cls(p, args["to_label"]),
+                       "both": bool(args.get("both")), "scope": args.get("scope") or "after"})
+    return {**_where(p, item), "messages": said}
+
+
 @tool("Mark frames as confirmed (checked by a person) or not. Confirm only when the user asked you to.",
       ["project", "items"], project=PROJECT, items=A("Frame numbers", {"type": "integer"}),
       confirmed=B("true (default) or false"))

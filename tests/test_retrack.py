@@ -73,6 +73,22 @@ def test_confirmed_frames_steer_tracking_and_suggest_sees_every_class(tmp_path, 
     assert 7 in refs and len(refs) == 4
 
 
+def test_swap_classes(tmp_path, video, monkeypatch):
+    p, s = labeled(tmp_path, video, monkeypatch)                            # classes 0 and 1 on frames 0-5
+    s.call({"type": "box", "item": 2, "cls": 2, "box": [40, 5, 50, 15]})       # class 2 stays out of it
+    s.call({"type": "review", "item": 1})
+    box_of = lambda k, c: next(b["box"] for b in p.boxes(k) if b["cls"] == c)
+    said = s.call({"type": "swap_classes", "item": 1, "src": 0, "dst": 1, "both": True})
+    assert "Swapped left_drl and right_drl on 10 parts" in said[-1]          # frames 1-5, the confirmed one too
+    assert box_of(0, 0) == [1, 1, 10, 10] and box_of(1, 0) == [20, 20, 30, 30] and classes(p, 2) == [0, 1, 2]
+    s.call({"type": "undo"})
+    assert box_of(1, 0) == [1, 1, 10, 10]
+    s.call({"type": "swap_classes", "item": 3, "src": 0, "dst": 2, "scope": "task"})   # one way only
+    assert classes(p, 0) == [1, 2] and classes(p, 2) == [1, 2, 2]
+    s.call({"type": "swap_classes", "item": 3, "src": 2, "dst": 0, "scope": "frame"})
+    assert classes(p, 3) == [0, 1] and classes(p, 4) == [1, 2]
+
+
 def test_tracker_choice_and_fallback(tmp_path, monkeypatch):
     from engine import tracker as T
     monkeypatch.setenv("PARTLABELER_CONFIG", str(tmp_path))                  # no app.json: the default

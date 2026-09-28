@@ -59,7 +59,8 @@ UNDO_WORDS = {"box": "drawing a box", "outline": "outlining a part", "delete": "
               "class change": "a class change", "confirm": "confirming a frame", "accept": "accepting suggestions",
               "tracking": "tracking", "suggestions": "suggestions", "find similar": "find similar",
               "paint": "painting an outline", "outline boxes": "outlining boxes", "classes": "a class change",
-              "smart brush": "a smart brush stroke", "find text": "find by text", "clear": "clearing parts"}
+              "smart brush": "a smart brush stroke", "find text": "find by text", "clear": "clearing parts",
+              "class swap": "a class swap"}
 FORMAT_NAMES = {"yolo": "YOLO", "coco": "COCO", "cvat": "CVAT", "voc": "Pascal VOC", "labelstudio": "Label Studio",
                 "folders": "class folders", "csv": "CSV"}
 THUMB = 224                                               # px, longest side of grid thumbnails
@@ -666,6 +667,28 @@ class Session:
             self.send({"type": "item_changed", "items": list(span)})
 
         self._run("Tracking", job)
+
+    def on_swap_classes(self, msg):
+        """Parts of class `src` become `dst` (with `both`, `dst` becomes `src` at the same time) on this frame
+        (scope "frame"), from it to the end of its task ("after", the default) or on its whole task ("task");
+        confirmed frames too. One undo step."""
+        item, scope, both = msg["item"], msg.get("scope") or "after", bool(msg.get("both"))
+        src, dst = int(msg["src"]), int(msg["dst"])
+        if src == dst or not (0 <= src < len(self.p.classes) and 0 <= dst < len(self.p.classes)):
+            self.notify("info", "Nothing to swap", "Pick two different classes")
+            return
+        a, b = self.p.ranges[self.p.items[item]["task"]]
+        items = [item] if scope == "frame" else range(a, b) if scope == "task" else range(item, b)
+        self._remember(items, "class swap")
+        n, changed = self.p.swap_classes(items, src, dst, both)
+        names = self.p.classes[src], self.p.classes[dst]
+        what = f"Swapped {names[0]} and {names[1]}" if both else f"Changed {names[0]} to {names[1]}"
+        where = {"frame": f"on {self._frame(item)}", "task": "in this task"}.get(scope, f"from {self._frame(item)} on")
+        self.notify("success" if n else "info", f"{what} on {n} part{'s' if n != 1 else ''}",
+                    f"{len(changed)} frame{'s' if len(changed) != 1 else ''} {where}" + (". Ctrl+Z undoes it" if n else ""),
+                    self._goto(item))
+        self.send({"type": "item_changed", "items": changed})
+        self.send(self.status_msg())
 
     def on_clear(self, msg):
         """Remove the parts of some classes (classes: indices; none given = all) from the frames after (or before)

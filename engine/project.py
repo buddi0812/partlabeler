@@ -793,6 +793,23 @@ class Project:
                     self.db.execute("INSERT OR REPLACE INTO boxes VALUES (?,?,?,?,?,?,?,?,?,?)",
                                     (item, obj, cls, *map(float, box), "tracked", score, rle))
 
+    def swap_classes(self, items, src: int, dst: int, both: bool = False) -> tuple[int, list[int]]:
+        """Parts of class `src` on these items become `dst`; with `both`, parts of `dst` become `src` at the same time.
+        Returns (parts changed, items that changed)."""
+        if both:
+            sql, args = "UPDATE boxes SET cls = CASE cls WHEN ? THEN ? ELSE ? END WHERE item=? AND cls IN (?, ?)", (src, dst, src)
+        else:
+            sql, args = "UPDATE boxes SET cls = ? WHERE item=? AND cls = ?", (dst,)
+        n, changed = 0, []
+        with self.db:
+            for k in items:
+                done = self.db.execute(sql, (*args, k, src, dst) if both else (*args, k, src)).rowcount
+                if done:
+                    n += done
+                    changed.append(k)
+            self._touch(changed)
+        return n, changed
+
     def clear_parts(self, items, classes=None) -> tuple[int, list[int]]:
         """Delete the parts of `classes` (class indices; None = every class) on these items.
         Returns (parts deleted, items that changed)."""
