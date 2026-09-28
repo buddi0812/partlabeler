@@ -379,7 +379,7 @@ export function followJob(jid, el, { onDone, onEnd } = {}) {
   const tick = async () => {
     const j = await api(`/api/jobs/${jid}`).catch(() => null);
     if (!j) return setTimeout(tick, 1500);
-    el.querySelector(".j-text").textContent = j.text;
+    el.querySelector(".j-text").textContent = j.total > 1 && !j.finished ? `${j.text}: ${j.done} of ${j.total}` : j.text;
     el.querySelector(".h-bar i").style.width = j.total ? `${Math.min(100, j.done / j.total * 100)}%` : "4%";
     el.querySelector(".j-log").textContent = j.log.slice(-12).join("\n");
     if (!j.finished) return setTimeout(tick, 800);
