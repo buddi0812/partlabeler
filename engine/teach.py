@@ -28,6 +28,7 @@ TINY_PX = 8            # shorter box side, in pixels at the training resolution
 FEW_BOXES = 10
 FEW_FRAMES = 0.10      # a class present in under 10% of labeled frames
 PARENT_MARGIN = 0.12
+PARENT_EVERY = 4     # video frames: the parent is searched on every 4th frame, its crop reused in between
 
 
 # ---- reading the source -------------------------------------------------------------------
@@ -205,6 +206,13 @@ def held_out_flags(items, held_out: float = 0.2) -> list[bool]:
     return flags
 
 
+def _inside(row, crop, W: int, H: int) -> bool:
+    """A YOLO row's box lies wholly inside crop (pixels)."""
+    _, cx, cy, w, h = row
+    return (cx - w / 2) * W >= crop[0] and (cy - h / 2) * H >= crop[1] and (cx + w / 2) * W <= crop[2] and \
+        (cy + h / 2) * H <= crop[3]
+
+
 def time_blocks(n: int, held_out: float = 0.2, blocks: int = 10) -> list[bool]:
     """Held-out flags for n frames in time order: whole blocks of neighbouring frames, spread over the
     source, so the test is not near-duplicates of training frames."""
@@ -276,7 +284,7 @@ def prepare(dataset_dir, out, parent: str | None = None, held_out: float = 0.2, 
     if parent:
         from engine.parent import ParentFinder, crop_box
         finder = ParentFinder(parent)
-    crops, missing, n = {}, [], Counter()
+    crops, missing, n, last = {}, [], Counter(), None      # last: (video, index, crop) of the latest search
     try:
         for k, (it, test) in enumerate(zip(items, held)):
             if should_stop and should_stop():
@@ -284,14 +292,25 @@ def prepare(dataset_dir, out, parent: str | None = None, held_out: float = 0.2, 
             img = Image.open(it["image"])
             W, H = img.size
             crop = (0, 0, W, H)
-            if finder:
-                box = finder.find(img.convert("RGB"))
-                if box:
-                    crop = crop_box(box, W, H, PARENT_MARGIN)
-                else:
-                    missing.append(it["name"])
-            crops[it["name"]] = list(crop)
             rows, _ = read_labels(it["label"], len(classes))
+            if finder:
+                # frames of one video (names _fNNNNNN): the object barely moves between neighbours, so its crop is
+                # reused for the next frames; searched again every PARENT_EVERY frames, or when a label of this
+                # frame would fall outside it. Pictures without frame numbers are searched one by one.
+                video = it["key"][0] if it["key"][1] >= 0 else None
+                crop = last[2] if last and video is not None and last[0] == video and k - last[1] < PARENT_EVERY else None
+                if crop and not all(_inside(r, crop, W, H) for r in rows):
+                    crop = None
+                if crop is None:
+                    box = finder.find(img.convert("RGB"))
+                    n["parent_searches"] += 1
+                    if box:
+                        crop = crop_box(box, W, H, PARENT_MARGIN)
+                        last = (video, k, crop)
+                    else:
+                        crop, last = (0, 0, W, H), None
+                        missing.append(it["name"])
+            crops[it["name"]] = list(crop)
             n["duplicates_removed"] += len(rows) - len(set(rows))
             lines = []
             for r in dict.fromkeys(rows):                 # exact duplicates dropped, order kept

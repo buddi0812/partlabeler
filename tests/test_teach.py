@@ -67,6 +67,32 @@ def test_time_blocks_are_whole_blocks_spread_over_the_video():
         time_blocks(10, 0)
 
 
+def test_parent_search_reuses_the_crop_along_a_video(tmp_path, monkeypatch):
+    import engine.parent as parent
+    from PIL import Image
+    from engine.teach import prepare
+    calls = []
+
+    class Finder:                                          # the "car" sits at the same place in every frame
+        def __init__(self, text):
+            pass
+
+        def find(self, img):
+            calls.append(1)
+            return (20, 20, 80, 80)
+    monkeypatch.setattr(parent, "ParentFinder", Finder)
+    src = tmp_path / "src"
+    (src / "images").mkdir(parents=True)
+    (src / "labels").mkdir()
+    (src / "classes.txt").write_text("lamp\n")
+    for f in range(8):
+        Image.new("RGB", (100, 100)).save(src / "images" / f"cam_f{f * 5:06d}.jpg")
+        (src / "labels" / f"cam_f{f * 5:06d}.txt").write_text("0 0.5 0.5 0.1 0.1\n" if f != 6 else "0 0.05 0.05 0.04 0.04\n")
+    rec = prepare(src, tmp_path / "out", parent="car")
+    # searched on frames 0 and 4, and on frame 6, whose label lies outside the reused crop
+    assert len(calls) == 3 and rec["boxes"]["parent_searches"] == 3
+
+
 def test_every_video_of_a_source_is_tested():
     from engine.teach import held_out_flags
     items = [{"key": (v, f)} for v, n in (("3", 500), ("5", 100), ("7", 20)) for f in range(0, 5 * n, 5)]
