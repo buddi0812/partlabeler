@@ -111,7 +111,7 @@ const CSS = `
 .pl-after .pl-jm h3 { margin:2px 0 0; font-size:12.5px; }
 .pl-after .pl-jm label.pl-chk { display:inline-flex; gap:5px; align-items:center; grid-template-columns:none; font-size:12.5px; }
 .pl-after .pl-jm .pl-src { margin:0; }
-.pl-clear-classes { display:flex; flex-wrap:wrap; gap:3px 12px; max-height:150px; overflow:auto; padding:2px 0; }
+.pl-clear-classes, .pl-track-classes { display:flex; flex-wrap:wrap; gap:3px 12px; max-height:150px; overflow:auto; padding:2px 0; }
 .pl-after hr { border:0; border-top:1px solid var(--line); margin:2px 0; width:100%; }
 .pl-jobstate { font-size:11.5px; font-weight:600; padding:1px 8px; border-radius:99px; background:var(--bg); color:var(--muted); }
 .pl-jobstate.completed { background:var(--c-ok-soft,#dcf1e4); color:var(--c-ok-ink,#1f7a44); }
@@ -773,6 +773,15 @@ function render({ model, el }) {
             <option value="end" selected>to the end of the task</option></select></label>
           <label class="pl-chk"><input type="checkbox" class="pl-clear-confirmed"> also confirmed frames</label>
           <div class="pl-tools"><button type="button" class="primary" data-a="clearAfter">Clear</button><span class="pl-src">Ctrl+Z brings them back</span></div>
+          <hr><h3>Track only some classes</h3>
+          <div class="pl-track-classes" role="group" aria-label="Classes to track"></div>
+          <label>Frames <select class="pl-track-range" aria-label="Which frames"><option value="n">the next N (as Track)</option>
+            <option value="end">to the end (or start) of the task</option></select></label>
+          <label class="pl-chk"><input type="checkbox" class="pl-track-confirmed"> also confirmed frames</label>
+          <p class="pl-src">Follows only the ticked classes from this frame. On the frames reached, their tracked or model
+            parts are replaced; every other class and your own boxes stay as they are.</p>
+          <div class="pl-tools"><button type="button" data-a="trackSomeBack">◀ Back</button>
+            <button type="button" data-a="trackSome">Ahead ▶</button></div>
           <hr><h3>Swap classes</h3>
           <label>From <select class="pl-swap-src" aria-label="Class to change"></select></label>
           <label>To <select class="pl-swap-dst" aria-label="Class it becomes"></select></label>
@@ -1109,7 +1118,7 @@ function render({ model, el }) {
     const flags = S.flags.filter((f) => f >= tk.start && f < tk.end).length;
     $(".pl-counts").textContent = `${lab} labeled, ${rev} confirmed, ${flags} to check${curJob() ? " in this job" : ""}`;
     const busy = S.busy;
-    el.querySelectorAll('[data-a="track"],[data-a="trackBack"],[data-a="retrack"],[data-a="retrackAll"],[data-a="clearAfter"],[data-a="swapClasses"],[data-b="suggest"],[data-b="findAll"],[data-b="export"]').forEach((b) => (b.disabled = busy));
+    el.querySelectorAll('[data-a="track"],[data-a="trackBack"],[data-a="retrack"],[data-a="retrackAll"],[data-a="clearAfter"],[data-a="swapClasses"],[data-a="trackSome"],[data-a="trackSomeBack"],[data-b="suggest"],[data-b="findAll"],[data-b="export"]').forEach((b) => (b.disabled = busy));
     $('[data-a="stop"]').disabled = !busy;
     $('[data-a="undo"]').disabled = busy || !S.undo;
     $(".pl-video").hidden = view().kind !== "video";
@@ -1218,6 +1227,14 @@ function render({ model, el }) {
     if (S.target >= view().end - 1) goto(view().start);       // at the end: from the start again
     S.playing = true; S.playAt = performance.now(); renderPlay(); playNext();
   }
+  function trackSome(direction) {                          // After this frame > Track only some classes
+    const classes = [...el.querySelectorAll(".pl-track-cls:checked")].map((x) => +x.value);
+    if (!classes.length) { hint("Tick the classes to track"); return; }
+    if (!video()) return;
+    send({ type: "track", item: S.item, count: $(".pl-track-range").value === "end" ? -1 : trackN(), direction, classes,
+           confirmed: $(".pl-track-confirmed").checked });
+    $(".pl-after").open = false;
+  }
   const jobUrl = (j) => `${model.homeUrl}projects/${encodeURIComponent(S.project.name)}/tasks/${j.task}/jobs/${j.id}`;
   function openJob(id, item) {
     const j = jobs().find((x) => x.id === id); if (!j) return;
@@ -1274,6 +1291,7 @@ function render({ model, el }) {
              direction: 1, confirmed: $(".pl-clear-confirmed").checked });
       $(".pl-after").open = false;
     },
+    trackSome: () => trackSome(1), trackSomeBack: () => trackSome(-1),
     swapClasses: () => {
       const src = +$(".pl-swap-src").value, dst = +$(".pl-swap-dst").value;
       if (src === dst) { hint("Pick two different classes"); return; }
@@ -1333,6 +1351,11 @@ function render({ model, el }) {
       s.innerHTML = (S.project?.classes || []).map((c, i) => `<option value="${i}">${esc(c)}</option>`).join("");
       s.value = was !== "" && s.options[+was] ? was : String(Math.min(dflt, s.options.length - 1));
     }
+    const picked = new Set([...el.querySelectorAll(".pl-track-cls:checked")].map((x) => +x.value));
+    const selCls = S.data?.boxes?.find((b) => b.obj === S.sel)?.cls;          // nothing ticked yet: the selected part's class
+    if (!picked.size && selCls != null) picked.add(selCls);
+    $(".pl-track-classes").innerHTML = (S.project?.classes || []).map((c, i) => `<label class="pl-chk"><input type="checkbox" class="pl-track-cls" value="${i}"${picked.has(i) ? " checked" : ""}>
+      <i class="pl-sw" style="background:${colorOf(i)}"></i><span translate="no">${esc(c)}</span></label>`).join("");
     const keep = new Set([...el.querySelectorAll(".pl-clear-cls:checked")].map((x) => +x.value));
     $(".pl-clear-classes").innerHTML = (S.project?.classes || []).map((c, i) => `<label class="pl-chk"><input type="checkbox" class="pl-clear-cls" value="${i}"${keep.has(i) ? " checked" : ""}>
       <i class="pl-sw" style="background:${colorOf(i)}"></i><span translate="no">${esc(c)}</span></label>`).join("");

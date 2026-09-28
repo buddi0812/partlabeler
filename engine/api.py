@@ -635,9 +635,17 @@ class Session:
     def on_track(self, msg):
         """Track within the start item's task: the next video's first frame is another scene. With redo, each
         unconfirmed frame reached keeps only the new tracking (parts removed or relabeled here go there too);
-        people's own boxes and confirmed frames are never changed."""
+        people's own boxes and confirmed frames are never changed. With classes (indices), only the parts of
+        those classes are tracked, replacing tracked or model parts of those classes on the frames reached and
+        leaving every other part alone; confirmed: also on confirmed frames (they stay confirmed)."""
         start, redo = msg["item"], bool(msg.get("redo"))
+        only = {int(c) for c in msg.get("classes") or []} or None
+        confirmed = bool(msg.get("confirmed")) and only is not None
         direction = -1 if (msg.get("direction") or 1) < 0 else 1
+        if only and not any(b["cls"] in only for b in self.p.boxes(start) if b["source"] != "suggested"):
+            self.notify("info", "Nothing to track", f"No {' or '.join(self.p.classes[c] for c in sorted(only))} on "
+                        f"{self._frame(start)}: label it here first", self._goto(start))
+            return
         span = self._span(start, msg.get("count", 20), direction)
         if span is None:
             return
@@ -650,7 +658,8 @@ class Session:
 
             def on_item(item, res):
                 nonlocal last_push
-                self.p.put_tracked(item, guide.apply(item, res) if guide.examples else res, replace=redo)
+                self.p.put_tracked(item, guide.apply(item, res, only) if guide.examples else res,
+                                   replace=redo and not only, only=only, confirmed=confirmed)
                 done = abs(item - start)
                 if time.perf_counter() - last_push > 1.0 or done == total:
                     last_push = time.perf_counter()
@@ -660,8 +669,10 @@ class Session:
 
             with self._locks["track"]:
                 n = self._model("track").track(self.p, start, count, on_item, lambda: self.stop_flag, direction,
-                                               masks=self.outlines_on)
-            self.notify("success", f"{'Re-tracked' if redo else 'Tracked'} {n} frames {'back' if direction < 0 else 'ahead'}",
+                                               masks=self.outlines_on, only=only)
+            what = f"{', '.join(self.p.classes[c] for c in sorted(only))} " if only else ""
+            self.notify("success", f"{'Re-tracked' if redo and not only else 'Tracked'} {what}{n} frames "
+                        f"{'back' if direction < 0 else 'ahead'}",
                         f"From {self._frame(start)} in {time.perf_counter() - t0:.0f} s with {getattr(self._model('track'), 'name', 'SAM 3')}. "
                         "Frames marked 'to check' may need a look.",
                         self._goto(start))

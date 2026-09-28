@@ -291,6 +291,13 @@ and confirmed frames are never changed, and Ctrl+Z undoes it.
 from the frames after this one: the next N frames or to the end of the task. Confirmed frames are left alone unless
 you tick **also confirmed frames**. Ctrl+Z brings the parts back.
 
+**Track only some classes.** In the same menu, tick one or more classes and press **Ahead ▶** (or **◀ Back**) to
+follow only those parts from this frame, the next N frames or to the end of the task: for example a lamp you just
+labeled on frames that already have the other lamps. On the frames reached, tracked or model parts of the ticked
+classes are replaced by the new tracking; every other class and your own boxes stay as they are. Confirmed frames
+are left alone unless you tick **also confirmed frames** (they then get the part and stay confirmed). A part that
+changes look only takes states among the ticked classes. With a part selected, its class is ticked for you.
+
 **Swap classes.** In the same menu, **Swap classes** turns every part of one class (**From**) into another (**To**):
 on this frame and all after it, on the whole task, or on this frame only, confirmed frames included. With **and the
 other way round** ticked (the default) the two classes swap at the same time, for example after labeling the left

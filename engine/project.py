@@ -779,17 +779,23 @@ class Project:
             self._touch([item])
             self.db.execute("UPDATE boxes SET source='manual' WHERE item=? AND source='suggested'", (item,))
 
-    def put_tracked(self, item: int, results: dict, replace: bool = False) -> None:
+    def put_tracked(self, item: int, results: dict, replace: bool = False, only=None, confirmed: bool = False) -> None:
         """Replace this item's tracked boxes for the given objects; manual/reviewed boxes are kept.
         results: {obj: (cls, box or None, score[, mask])}; a mask replaces the box with its own.
-        replace: also drop this item's other tracked boxes (re-tracking: parts gone from the start frame go here too)."""
+        replace: also drop this item's other tracked boxes (re-tracking: parts gone from the start frame go here too).
+        only: classes tracked alone: this item's tracked or model parts of those classes are replaced by the results,
+        every other part stays. confirmed: also items a person confirmed (they stay confirmed)."""
         with self.db:
-            if self.is_reviewed(item):
+            if self.is_reviewed(item) and not confirmed:
                 return
             self._touch([item])
             if replace:
                 self.db.execute(f"DELETE FROM boxes WHERE item=? AND source='tracked' AND obj NOT IN ({','.join('?' * len(results))})",
                                 (item, *results))
+            if only:
+                self.db.execute(f"DELETE FROM boxes WHERE item=? AND source IN ('tracked', 'imported') "
+                                f"AND cls IN ({','.join('?' * len(only))}) AND obj NOT IN ({','.join('?' * len(results))})",
+                                (item, *only, *results))
             for obj, (cls, box, score, *rest) in results.items():
                 mask = rest[0] if rest else None
                 rle = None
@@ -798,8 +804,10 @@ class Project:
                 row = self.db.execute("SELECT source FROM boxes WHERE item=? AND obj=?", (item, obj)).fetchone()
                 if row and row[0] == "manual":
                     continue
-                if box is None:
-                    self.db.execute("DELETE FROM boxes WHERE item=? AND obj=? AND source='tracked'", (item, obj))
+                if box is None:                               # lost here (tracked alone: a model's part goes too)
+                    gone = ("tracked", "imported") if only else ("tracked",)
+                    self.db.execute(f"DELETE FROM boxes WHERE item=? AND obj=? AND source IN ({','.join('?' * len(gone))})",
+                                    (item, obj, *gone))
                 else:
                     self.db.execute("INSERT OR REPLACE INTO boxes VALUES (?,?,?,?,?,?,?,?,?,?)",
                                     (item, obj, cls, *map(float, box), "tracked", score, rle))

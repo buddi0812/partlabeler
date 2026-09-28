@@ -7,8 +7,9 @@ from tests.test_project import CLASSES, video  # noqa: F401  (fixture)
 
 
 class FakeTracker:
-    def track(self, project, start, count, on_item, should_stop, direction=1, masks=False):
-        parts = {b["obj"]: (b["cls"], b["box"], 0.9) for b in project.boxes(start) if b["source"] != "suggested"}
+    def track(self, project, start, count, on_item, should_stop, direction=1, masks=False, only=None):
+        parts = {b["obj"]: (b["cls"], b["box"], 0.9) for b in project.boxes(start)
+                 if b["source"] != "suggested" and (not only or b["cls"] in only)}
         span = range(start + 1, start + count + 1) if direction > 0 else range(start - 1, start - count - 1, -1)
         for k in span:
             on_item(k, dict(parts))
@@ -71,6 +72,25 @@ def test_confirmed_frames_steer_tracking_and_suggest_sees_every_class(tmp_path, 
         s.call({"type": "review", "item": k})
     refs = Suggester._refs(p, 1, max_refs=4)                                 # few refs: every class still in
     assert 7 in refs and len(refs) == 4
+
+
+def test_track_some_classes_alone(tmp_path, video, monkeypatch):
+    p, s = labeled(tmp_path, video, monkeypatch)                            # classes 0 and 1 tracked onto 1-5
+    p.put(3, 90, 2, [40, 40, 50, 50], "imported", 0.9)                     # a model's class-2 part on frame 3
+    p.put(4, 91, 1, [60, 60, 70, 70])                                       # a person's own class-1 box on frame 4
+    s.call({"type": "review", "item": 5})
+    s.call({"type": "box", "item": 1, "cls": 2, "box": [5, 5, 15, 15]})    # class 2 drawn on frame 1
+    moved = {k: [b["box"] for b in p.boxes(k) if b["cls"] == 0] for k in range(2, 6)}
+    said = s.call({"type": "track", "item": 1, "count": -1, "classes": [2]})
+    assert "Tracked grill 8 frames ahead" in said[-1]
+    assert [b["box"] for b in p.boxes(3) if b["cls"] == 2] == [[5, 5, 15, 15]]   # the model's part replaced
+    assert {k: [b["box"] for b in p.boxes(k) if b["cls"] == 0] for k in range(2, 6)} == moved   # others untouched
+    assert sorted(b["cls"] for b in p.boxes(4)) == [0, 1, 1, 2]            # the person's own box stays
+    assert 2 not in [b["cls"] for b in p.boxes(5)]                         # confirmed: left alone ...
+    s.call({"type": "track", "item": 1, "count": -1, "classes": [2], "confirmed": True})
+    assert sorted(b["cls"] for b in p.boxes(5)) == [0, 1, 2] and p.is_reviewed(5)   # ... unless asked
+    said = s.call({"type": "track", "item": 7, "count": 2, "classes": [1]})   # frame 7 has no class 1
+    assert "Nothing to track" in said[-1]
 
 
 def test_swap_classes(tmp_path, video, monkeypatch):

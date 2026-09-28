@@ -88,12 +88,13 @@ class Tracker:
 
     @torch.inference_mode()
     def track(self, project, start: int, count: int, on_item=None, should_stop=lambda: False,
-              direction: int = 1, masks: bool = False) -> int:
-        """Track the boxes on item `start` through the next `count` items (direction 1) or the previous
+              direction: int = 1, masks: bool = False, only=None) -> int:
+        """Track the boxes on item `start` (only those of the classes in `only`, when given) through the next
+        `count` items (direction 1) or the previous
         `count` items (direction -1). Calls on_item(item, {obj: (cls, box or None, score)}) per item, with the
         part's mask as a 4th value when `masks` (outline projects; the box is then the mask's own box);
         returns the items processed. Out of GPU memory, the chunk is halved and retried."""
-        seeds = {b["obj"]: b for b in project.boxes(start) if b["source"] != "suggested"}
+        seeds = {b["obj"]: b for b in project.boxes(start) if b["source"] != "suggested" and (not only or b["cls"] in only)}
         if not seeds:
             return 0
         classes = {o: b["cls"] for o, b in seeds.items()}
@@ -237,13 +238,13 @@ class Tracker31:
 
     @torch.inference_mode()
     def track(self, project, start: int, count: int, on_item=None, should_stop=lambda: False,
-              direction: int = 1, masks: bool = False) -> int:
-        seeds = {b["obj"]: b for b in project.boxes(start) if b["source"] != "suggested"}
+              direction: int = 1, masks: bool = False, only=None) -> int:
+        seeds = {b["obj"]: b for b in project.boxes(start) if b["source"] != "suggested" and (not only or b["cls"] in only)}
         if not seeds:
             return 0
         if len(seeds) > self.MAX_PARTS:
             self.fallback = self.fallback or Tracker(self.device, self.dtype)
-            return self.fallback.track(project, start, count, on_item, should_stop, direction, masks)
+            return self.fallback.track(project, start, count, on_item, should_stop, direction, masks, only)
         objs = sorted(seeds)
         classes = {o: seeds[o]["cls"] for o in objs}
         img = project.image(start)

@@ -455,14 +455,17 @@ def accept_suggestions(args):
       frames=I("How many frames (default 20)", minimum=1), to_end=B("Track to the end (or start) of the task"),
       direction=S("forward | backward", enum=["forward", "backward"]),
       redo=B("Re-track: on unconfirmed frames reached, replace every tracked part (parts gone from this frame go there too)"),
-      wait_s=WAIT)
+      labels=A("Track only the parts of these labels; other parts on the frames reached stay as they are",
+               {"type": "string"}),
+      include_confirmed=B("With labels: also frames people confirmed (they stay confirmed)"), wait_s=WAIT)
 def track(args):
     sess = _sess(args)
     p = sess.p
     item = _item(p, args)
     said = _run(sess, {"type": "track", "item": item, "count": -1 if args.get("to_end") else int(args.get("frames") or 20),
-                       "direction": -1 if args.get("direction") == "backward" else 1, "redo": bool(args.get("redo"))},
-                args.get("wait_s", 120))
+                       "direction": -1 if args.get("direction") == "backward" else 1, "redo": bool(args.get("redo")),
+                       "classes": [_cls(p, x) for x in args.get("labels") or []] or None,
+                       "confirmed": bool(args.get("include_confirmed"))}, args.get("wait_s", 120))
     return {**_where(p, item), "finished": not sess.running, "messages": said,
             "to_check": [i for i in p.flags() if p.task_of(i)["id"] == p.task_of(item)["id"]][:100]}
 

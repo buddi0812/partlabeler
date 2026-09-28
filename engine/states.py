@@ -110,10 +110,12 @@ class Guide:
                     self.examples.setdefault(c, []).append(features(img, region))
         self.examples = {c: np.array(v) for c, v in self.examples.items()}
 
-    def apply(self, item: int, results: dict) -> dict:
-        """results as trackers give them, {obj: (cls, box or None, score[, mask])}; returns them with states set."""
+    def apply(self, item: int, results: dict, allowed=None) -> dict:
+        """results as trackers give them, {obj: (cls, box or None, score[, mask])}; returns them with states set.
+        allowed: the only classes a state may become (classes tracked alone)."""
+        ok = lambda c: c in self.examples and (not allowed or c in allowed)
         todo = [o for o, r in results.items() if r[1] is not None and r[0] in self.group
-                and sum(c in self.examples for c in self.group[r[0]]) >= 2]
+                and sum(ok(c) for c in self.group[r[0]]) >= 2]
         if not todo:
             return results
         img, out = _array(self.project.image(item)), dict(results)
@@ -123,7 +125,7 @@ class Guide:
             if region is None:
                 continue
             f = features(img, region)
-            cands = [c for c in self.group[cls] if c in self.examples]
+            cands = [c for c in self.group[cls] if ok(c)]
             sd = np.concatenate([self.examples[c] for c in cands]).std(0) + 1e-3
             best = min(cands, key=lambda c: np.linalg.norm((self.examples[c] - f) / sd, axis=1).min())
             out[o] = (best, box, *rest)
