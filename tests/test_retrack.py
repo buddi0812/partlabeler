@@ -57,3 +57,17 @@ def test_clear_parts_after_a_frame_by_class_range_and_confirmed(tmp_path, video,
     s.call({"type": "undo"})
     assert classes(p, 4) == [0, 1] and classes(p, 3) == [0]
     assert s.call({"type": "clear", "item": 9, "count": -1}) == ["No frames after this one"]
+
+
+def test_confirmed_frames_steer_tracking_and_suggest_sees_every_class(tmp_path, video, monkeypatch):
+    from engine.suggest import Suggester
+    p, s = labeled(tmp_path, video, monkeypatch)
+    obj = next(b["obj"] for b in p.boxes(0) if b["cls"] == 0)
+    assert p.anchors(obj) == [0]
+    s.call({"type": "review", "item": 3})                                     # a person checked the tracked frame 3
+    assert p.anchors(obj) == [0, 3]
+    s.call({"type": "box", "item": 7, "cls": 2, "box": [2, 2, 8, 8]})         # class 2 only on frame 7
+    for k in range(4, 10):
+        s.call({"type": "review", "item": k})
+    refs = Suggester._refs(p, 1, max_refs=4)                                 # few refs: every class still in
+    assert 7 in refs and len(refs) == 4

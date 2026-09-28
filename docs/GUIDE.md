@@ -254,6 +254,13 @@ what you fixed by hand (a notch erased, an edge brushed) is what SAM 3 follows i
 fixing an outline, track again from that frame to redo the frames after it. Long videos are tracked in chunks, and if the GPU runs out of memory
 the chunk size is halved automatically.
 
+**What tracking carries.** Tracking follows the parts on the frame you start from, and only those: a class that is
+not on that frame is not added further on (useful when parts come and go, such as lamps switching on and off: a
+lamp that is off is not labeled as lit). Each part is steered by the nearest earlier frame where a person vouched
+for it, that is drew it or confirmed the frame. Frames you confirmed are never changed by tracking. When a part
+appears later (a lamp lights up), label it on the first frame where it shows, or press **S** (Suggest) there to
+find it from your earlier examples, then track from that frame.
+
 **Re-track after a fix.** Fixed or relabeled a part, or deleted one, on a frame after tracking past it? Open **After
 this frame ▾** in the toolbar and choose **Re-track** (the next N frames, or to the end of the task), or press **U** /
 **Shift+U**. On every frame you have not confirmed, the tracked parts are replaced by tracking from this frame, so your
@@ -341,7 +348,8 @@ look-alikes. **Back to frames** (Esc) returns to the annotator.
 ## Find parts: Suggest, Find similar, Accept all
 
 - **Suggest** (S) proposes boxes that look like parts you already labeled on other frames or images
-  (DINOv3 matching). Label a few examples first. Works in image folders and videos.
+  (DINOv3 matching). It learns from up to 30 labeled frames: for every class, the ones nearest to this frame, so a
+  class labeled long ago is still found. Label a few examples first. Works in image folders and videos.
 - **Find similar** (F): select one box first (Ctrl+click), then F finds more copies of that part on the
   same frame (SAM 3).
 - Suggestions are dotted boxes. **Accept all** (Y) keeps them all; select one and press Del to drop it.

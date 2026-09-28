@@ -653,8 +653,10 @@ class Project:
         return sorted(flagged - reviewed)
 
     def anchors(self, obj: int) -> list[int]:
+        """Items where a person vouched for this part: drew it, or confirmed the frame it was tracked onto."""
         return [r[0] for r in self.db.execute(
-            "SELECT item FROM boxes WHERE obj=? AND source='manual' ORDER BY item", (obj,))]
+            "SELECT item FROM boxes WHERE obj=? AND (source='manual' OR item IN (SELECT item FROM reviewed)) ORDER BY item",
+            (obj,))]
 
     # ---- writing --------------------------------------------------------------------------
     def new_obj(self) -> int:

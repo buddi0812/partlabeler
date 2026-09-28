@@ -67,7 +67,7 @@ class Suggester:
         """Per group (left/right twins share one): example vectors, per-image examples, sizes, horizontal
         positions per class and the most instances in one image, from the labeled items other than `item`."""
         names = project.classes
-        refs = [k for k, s in enumerate(project.statuses()) if s >= 3 and k != item][-max_refs:]
+        refs = self._refs(project, item, max_refs)
         vecs, per_ref, sizes, xs, counts = (defaultdict(list), defaultdict(dict), defaultdict(list),
                                             defaultdict(list), defaultdict(int))
         for k in refs:
@@ -87,6 +87,24 @@ class Suggester:
             for g, n in per_img.items():
                 counts[g] = max(counts[g], n)
         return vecs, per_ref, sizes, xs, counts
+
+    @staticmethod
+    def _refs(project, item: int, max_refs: int) -> list[int]:
+        """The labeled items to learn from: for every class group, the labeled items nearest to `item` that show it
+        (an even share of max_refs), so a class labeled long ago is still found; then the nearest others."""
+        labeled = [k for k, s in enumerate(project.statuses()) if s >= 3 and k != item]
+        if len(labeled) <= max_refs:
+            return labeled
+        names, by_group = project.classes, defaultdict(list)
+        for k in labeled:
+            for g in {group_of(names[b["cls"]]) for b in project.boxes(k) if b["source"] != "suggested"}:
+                by_group[g].append(k)
+        near = lambda ks: sorted(ks, key=lambda k: abs(k - item))
+        share, picked = max(1, max_refs // max(1, len(by_group))), []
+        for g in sorted(by_group):
+            picked += [k for k in near(by_group[g]) if k not in picked][:share]
+        picked += [k for k in near(labeled) if k not in picked][:max(0, max_refs - len(picked))]
+        return sorted(picked[:max_refs])
 
     def maxima(self, project, item: int, max_refs: int = 30) -> dict[str, float]:
         """The best match score of each group in `item` (used to calibrate thresholds on new videos)."""
