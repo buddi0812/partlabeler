@@ -695,13 +695,17 @@ class Project:
             self._touch([item])
             self.db.execute("UPDATE boxes SET source='manual' WHERE item=? AND source='suggested'", (item,))
 
-    def put_tracked(self, item: int, results: dict) -> None:
+    def put_tracked(self, item: int, results: dict, replace: bool = False) -> None:
         """Replace this item's tracked boxes for the given objects; manual/reviewed boxes are kept.
-        results: {obj: (cls, box or None, score[, mask])}; a mask replaces the box with its own."""
+        results: {obj: (cls, box or None, score[, mask])}; a mask replaces the box with its own.
+        replace: also drop this item's other tracked boxes (re-tracking: parts gone from the start frame go here too)."""
         with self.db:
             if self.is_reviewed(item):
                 return
             self._touch([item])
+            if replace:
+                self.db.execute(f"DELETE FROM boxes WHERE item=? AND source='tracked' AND obj NOT IN ({','.join('?' * len(results))})",
+                                (item, *results))
             for obj, (cls, box, score, *rest) in results.items():
                 mask = rest[0] if rest else None
                 rle = None
@@ -715,6 +719,20 @@ class Project:
                 else:
                     self.db.execute("INSERT OR REPLACE INTO boxes VALUES (?,?,?,?,?,?,?,?,?,?)",
                                     (item, obj, cls, *map(float, box), "tracked", score, rle))
+
+    def clear_parts(self, items, classes=None) -> tuple[int, list[int]]:
+        """Delete the parts of `classes` (class indices; None = every class) on these items.
+        Returns (parts deleted, items that changed)."""
+        n, changed = 0, []
+        where = "" if classes is None else f" AND cls IN ({','.join('?' * len(classes))})"
+        with self.db:
+            for k in items:
+                gone = self.db.execute(f"DELETE FROM boxes WHERE item=?{where}", (k, *(classes or []))).rowcount
+                if gone:
+                    n += gone
+                    changed.append(k)
+            self._touch(changed)
+        return n, changed
 
     # ---- image classes (classify projects) ---------------------------------------------------
     def tags(self) -> dict:

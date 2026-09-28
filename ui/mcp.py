@@ -453,15 +453,33 @@ def accept_suggestions(args):
 @tool("Track the frame's parts through the next (or previous) frames of its task with SAM 3; frames people "
       "confirmed are not changed. Then check the frames that status lists as to_check.", ["project"], **AT,
       frames=I("How many frames (default 20)", minimum=1), to_end=B("Track to the end (or start) of the task"),
-      direction=S("forward | backward", enum=["forward", "backward"]), wait_s=WAIT)
+      direction=S("forward | backward", enum=["forward", "backward"]),
+      redo=B("Re-track: on unconfirmed frames reached, replace every tracked part (parts gone from this frame go there too)"),
+      wait_s=WAIT)
 def track(args):
     sess = _sess(args)
     p = sess.p
     item = _item(p, args)
     said = _run(sess, {"type": "track", "item": item, "count": -1 if args.get("to_end") else int(args.get("frames") or 20),
-                       "direction": -1 if args.get("direction") == "backward" else 1}, args.get("wait_s", 120))
+                       "direction": -1 if args.get("direction") == "backward" else 1, "redo": bool(args.get("redo"))},
+                args.get("wait_s", 120))
     return {**_where(p, item), "finished": not sess.running, "messages": said,
             "to_check": [i for i in p.flags() if p.task_of(i)["id"] == p.task_of(item)["id"]][:100]}
+
+
+@tool("Remove parts of some labels (or all) from the frames after (or before) a frame in its task: the next N frames "
+      "or to the task's end. Confirmed frames only with include_confirmed. Undoable.", ["project"], **AT,
+      labels=A("Labels to remove (default: every label)", {"type": "string"}), frames=I("How many frames (default: to the end)", minimum=1),
+      direction=S("forward | backward", enum=["forward", "backward"]), include_confirmed=B("Also frames people confirmed"))
+def clear_parts(args):
+    sess = _sess(args)
+    p = sess.p
+    item = _item(p, args)
+    classes = [_cls(p, x) for x in args["labels"]] if args.get("labels") else None
+    said = _run(sess, {"type": "clear", "item": item, "classes": classes, "count": int(args.get("frames") or -1),
+                       "direction": -1 if args.get("direction") == "backward" else 1,
+                       "confirmed": bool(args.get("include_confirmed"))})
+    return {**_where(p, item), "messages": said}
 
 
 @tool("Mark frames as confirmed (checked by a person) or not. Confirm only when the user asked you to.",

@@ -105,6 +105,7 @@ projects stay restorable from the Trash list on the start screen (they are kept 
 | 1–9, 0, [ ] | pick the class; also re-labels the selected box |
 | T / Shift+T | track this frame's boxes ahead N frames / to the end |
 | R / Shift+R | track back N frames / to the start |
+| U / Shift+U | re-track ahead N frames / to the end: unconfirmed frames get this frame's parts again (fixes carry on); **After this frame ▾** also clears classes after the cursor |
 | X | stop the running job |
 | S · F · Y | suggest · find similar to the selected box · accept all suggestions |
 | ← → (A / D) · Shift+→ | previous / next frame · next frame to check |

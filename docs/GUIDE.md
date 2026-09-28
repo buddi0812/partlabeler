@@ -83,7 +83,7 @@ The tools: list_projects, get_project, create_project, set_labels, trash_project
 set_job, get_job; get_frame (the image with every part numbered, plus the parts as JSON; crop zooms in),
 get_annotations; add_part (click points and/or a box; SAM 3 outlines it), edit_part, delete_parts, find_parts (words,
 SAM 3 text search), find_similar, suggest, accept_suggestions; track; confirm_frames; set_image_class; undo; stop;
-status (progress and frames to check); export, backup, import_backup. Coordinates are pixels of the full-size frame.
+status (progress and frames to check); clear_parts; frames_to_video; export, backup, import_backup. Coordinates are pixels of the full-size frame.
 
 Everything a program does appears live in open annotator tabs, and Ctrl+Z (or the undo tool) reverts it. Tell the AI
 to confirm frames only after you checked them. **Revoke** a token in Settings to cut a program off; command line:
@@ -253,6 +253,16 @@ keeps the style of the boxes you drew. In a segmentation project tracking starts
 what you fixed by hand (a notch erased, an edge brushed) is what SAM 3 follows into the next frames; after
 fixing an outline, track again from that frame to redo the frames after it. Long videos are tracked in chunks, and if the GPU runs out of memory
 the chunk size is halved automatically.
+
+**Re-track after a fix.** Fixed or relabeled a part, or deleted one, on a frame after tracking past it? Open **After
+this frame ▾** in the toolbar and choose **Re-track** (the next N frames, or to the end of the task), or press **U** /
+**Shift+U**. On every frame you have not confirmed, the tracked parts are replaced by tracking from this frame, so your
+fix carries on, parts you deleted here disappear there too, and empty frames in the range are filled. Your own boxes
+and confirmed frames are never changed, and Ctrl+Z undoes it.
+
+**Clear parts after this frame.** In the same menu, **Clear parts** removes all classes, or only the ones you tick,
+from the frames after this one: the next N frames or to the end of the task. Confirmed frames are left alone unless
+you tick **also confirmed frames**. Ctrl+Z brings the parts back.
 
 ## Frames to check
 
@@ -430,7 +440,7 @@ the projects. If a project with the same name exists, the restored one gets `_2`
 Click: new part · M: next larger outline · Shift/Alt+click: grow/shrink the selected part · Ctrl+click:
 select · B: draw box · C: click mode · 1–9, 0, [ ]: class · Del: delete · Esc: deselect · Ctrl+Z: undo ·
 ← → (A / D): previous / next frame · Shift+→: next to check · Enter: confirm · T / Shift+T: track ahead /
-to the end · R / Shift+R: track back / to the start · X: stop · S: suggest · F: find similar · Y: accept all ·
+to the end · R / Shift+R: track back / to the start · U / Shift+U: re-track ahead / to the end · X: stop · S: suggest · F: find similar · Y: accept all ·
 N: notifications · ?: all shortcuts. Ctrl+wheel / + / −: zoom · Z: whole frame · Space+drag or wheel: move when zoomed. Outlines: P brush · E eraser ·
 Shift+P smart brush · Shift+E smart eraser · , and . brush size. G: sort parts (grid: group
 by look). Grid: 1–9 and 0 give the selected pictures a class · Ctrl+A select all shown · Del clear · Space or

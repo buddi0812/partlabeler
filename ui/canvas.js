@@ -106,6 +106,12 @@ const CSS = `
   box-shadow:0 14px 34px rgba(21,32,43,.18); padding:10px; display:grid; gap:8px; width:min(330px, 90vw); }
 .pl-jm label { display:grid; grid-template-columns:52px minmax(0,1fr); gap:8px; align-items:center; font-size:13px; }
 .pl-jm .pl-tools { justify-content:space-between; }
+.pl-after .pl-jm { width:min(360px, 92vw); }
+.pl-after .pl-jm h3 { margin:2px 0 0; font-size:12.5px; }
+.pl-after .pl-jm label.pl-chk { display:inline-flex; gap:5px; align-items:center; grid-template-columns:none; font-size:12.5px; }
+.pl-after .pl-jm .pl-src { margin:0; }
+.pl-clear-classes { display:flex; flex-wrap:wrap; gap:3px 12px; max-height:150px; overflow:auto; padding:2px 0; }
+.pl-after hr { border:0; border-top:1px solid var(--line); margin:2px 0; width:100%; }
 .pl-jobstate { font-size:11.5px; font-weight:600; padding:1px 8px; border-radius:99px; background:var(--bg); color:var(--muted); }
 .pl-jobstate.completed { background:var(--c-ok-soft,#dcf1e4); color:var(--c-ok-ink,#1f7a44); }
 .pl-brush { display:flex; gap:8px; align-items:center; font-size:13px; margin-top:6px; } .pl-brush input { flex:1; accent-color:var(--accent); }
@@ -748,6 +754,21 @@ function render({ model, el }) {
         <input type="number" class="pl-n" min="1" value="${PREFS.track_n || 20}" name="track-frames" autocomplete="off" aria-label="Frames to track" title="Frames to track">
         <button type="button" data-a="track" title="Track this frame's boxes ahead (T; Shift+T to the end)">Ahead ▶</button>
         <button type="button" data-a="stop" title="Stop the running job (X)">Stop</button>
+        <details class="pl-jobmenu pl-after"><summary title="Re-track or clear the frames after this one">After this frame ▾</summary><div class="pl-jm">
+          <h3>Re-track from this frame</h3>
+          <div class="pl-tools"><button type="button" data-a="retrack" title="Re-track the next frames (U)">Next <span class="pl-n-echo">20</span> frames</button>
+            <button type="button" data-a="retrackAll" title="Re-track to the end of the task (Shift+U)">To the end</button></div>
+          <p class="pl-src">Frames you have not confirmed get this frame's parts again, fixes included: tracked parts there are
+            replaced (parts gone from this frame go there too) and empty frames are filled. Your own boxes and confirmed
+            frames stay. U / Shift+U.</p>
+          <hr><h3>Clear parts after this frame</h3>
+          <label class="pl-chk"><input type="checkbox" class="pl-clear-all" checked> All classes</label>
+          <div class="pl-clear-classes" hidden></div>
+          <label>Frames <select class="pl-clear-range" aria-label="Which frames"><option value="n">the next N (as Track)</option>
+            <option value="end" selected>to the end of the task</option></select></label>
+          <label class="pl-chk"><input type="checkbox" class="pl-clear-confirmed"> also confirmed frames</label>
+          <div class="pl-tools"><button type="button" class="primary" data-a="clearAfter">Clear</button><span class="pl-src">Ctrl+Z brings them back</span></div>
+        </div></details>
       </span>
       <span class="pl-group">
         <button type="button" data-a="undo" title="Undo the last change (Ctrl+Z)">Undo</button>
@@ -839,6 +860,7 @@ function render({ model, el }) {
         <div><span>Confirm frame and go on</span><kbd>Enter</kbd></div>
         <div><span>Track ahead / to the end</span><span><kbd>T</kbd> / <kbd>Shift</kbd>+<kbd>T</kbd></span></div>
         <div><span>Track back / to the start</span><span><kbd>R</kbd> / <kbd>Shift</kbd>+<kbd>R</kbd></span></div>
+        <div><span>Re-track the next frames / to the end (replaces tracked parts)</span><span><kbd>U</kbd> / <kbd>Shift</kbd>+<kbd>U</kbd></span></div>
         <div><span>Stop the running job</span><kbd>X</kbd></div>
         <h3>Find and review</h3>
         <div><span>Suggest boxes from labeled frames</span><kbd>S</kbd></div>
@@ -1070,7 +1092,7 @@ function render({ model, el }) {
     const flags = S.flags.filter((f) => f >= tk.start && f < tk.end).length;
     $(".pl-counts").textContent = `${lab} labeled, ${rev} confirmed, ${flags} to check${curJob() ? " in this job" : ""}`;
     const busy = S.busy;
-    el.querySelectorAll('[data-a="track"],[data-a="trackBack"],[data-b="suggest"],[data-b="findAll"],[data-b="export"]').forEach((b) => (b.disabled = busy));
+    el.querySelectorAll('[data-a="track"],[data-a="trackBack"],[data-a="retrack"],[data-a="retrackAll"],[data-a="clearAfter"],[data-b="suggest"],[data-b="findAll"],[data-b="export"]').forEach((b) => (b.disabled = busy));
     $('[data-a="stop"]').disabled = !busy;
     $('[data-a="undo"]').disabled = busy || !S.undo;
     $(".pl-video").hidden = view().kind !== "video";
@@ -1197,6 +1219,15 @@ function render({ model, el }) {
     prev: () => goto(S.target - 1), next: () => goto(S.target + 1), nextTodo,
     track: () => track(trackN(), 1), trackAll: () => track(-1, 1),
     trackBack: () => track(trackN(), -1), trackBackAll: () => track(-1, -1),
+    retrack: () => { if (video()) send({ type: "track", item: S.item, count: trackN(), direction: 1, redo: true }); $(".pl-after").open = false; },
+    retrackAll: () => { if (video()) send({ type: "track", item: S.item, count: -1, direction: 1, redo: true }); $(".pl-after").open = false; },
+    clearAfter: () => {
+      const all = $(".pl-clear-all").checked, classes = [...el.querySelectorAll(".pl-clear-cls:checked")].map((x) => +x.value);
+      if (!all && !classes.length) { hint("Tick the classes to clear, or All classes"); return; }
+      send({ type: "clear", item: S.item, classes: all ? null : classes, count: $(".pl-clear-range").value === "end" ? -1 : trackN(),
+             direction: 1, confirmed: $(".pl-clear-confirmed").checked });
+      $(".pl-after").open = false;
+    },
     stop: () => send({ type: "stop" }),
     undo: () => send({ type: "undo" }),
     suggest: () => send({ type: "suggest", item: S.item }),
@@ -1242,6 +1273,15 @@ function render({ model, el }) {
     else if (t.dataset.obj) { S.sel = +t.dataset.obj; renderSide(); draw(); }
   });
   $(".pl-filter").addEventListener("input", (e) => { S.filter = e.target.value; renderSide(); });
+  $(".pl-after").addEventListener("toggle", (e) => {
+    if (!e.target.open) return;
+    $(".pl-n-echo").textContent = trackN();
+    const keep = new Set([...el.querySelectorAll(".pl-clear-cls:checked")].map((x) => +x.value));
+    $(".pl-clear-classes").innerHTML = (S.project?.classes || []).map((c, i) => `<label class="pl-chk"><input type="checkbox" class="pl-clear-cls" value="${i}"${keep.has(i) ? " checked" : ""}>
+      <i class="pl-sw" style="background:${colorOf(i)}"></i><span translate="no">${esc(c)}</span></label>`).join("");
+  });
+  $(".pl-clear-all").addEventListener("change", (e) => { $(".pl-clear-classes").hidden = e.target.checked; });
+  document.addEventListener("click", (e) => el.querySelectorAll("details.pl-jobmenu[open]").forEach((d) => { if (!d.contains(e.target)) d.open = false; }));
   $(".pl-bsize").addEventListener("input", (e) => { S.brush = +e.target.value; renderSide(); });
   $(".pl-bsize").addEventListener("change", (e) => savePref("brush", +e.target.value));           // remembered in the account
   $(".pl-n").addEventListener("change", () => savePref("track_n", trackN()));
@@ -1649,6 +1689,7 @@ function render({ model, el }) {
     else if (k === "Escape") { S.sel = null; S.drag = null; renderSide(); draw(); }
     else if (k === "t") actions.track(); else if (k === "T") actions.trackAll();
     else if (k === "r") actions.trackBack(); else if (k === "R") actions.trackBackAll();
+    else if (k === "u") actions.retrack(); else if (k === "U") actions.retrackAll();
     else if (k === "s") actions.suggest(); else if (k === "f") actions.findAll();
     else if (k === "y") actions.accept(); else if (k === "x") actions.stop();
     else if (k === "c" || k === "b") { S.tool = k === "c" ? "click" : "box"; renderSide(); draw(); }

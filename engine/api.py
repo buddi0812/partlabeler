@@ -6,7 +6,8 @@ export). Protocol:
 
 In:  ready | goto {item} | box {item, cls, box, obj?} | click {item, x, y, positive, cls, obj?}
      cycle {item, obj} | delete {item, obj} | set_class {obj, cls, item?} | review {item, value}
-     accept {item} | undo | track {item, count, direction} | stop | suggest {item}
+     accept {item} | undo | track {item, count, direction, redo?} | clear {item, count, direction, classes?, confirmed?}
+     stop | suggest {item}
      find_all {item, obj} | find_text {item, text, cls, threshold?} | settings {parent} | export {format, reviewed_only, tasks?}
      paint {item, obj?, cls, x, y, png} | smart_paint {item, obj?, cls, points, radius, erase}
      outline {item, all?}                                                          (outline projects)
@@ -57,7 +58,7 @@ UNDO_WORDS = {"box": "drawing a box", "outline": "outlining a part", "delete": "
               "class change": "a class change", "confirm": "confirming a frame", "accept": "accepting suggestions",
               "tracking": "tracking", "suggestions": "suggestions", "find similar": "find similar",
               "paint": "painting an outline", "outline boxes": "outlining boxes", "classes": "a class change",
-              "smart brush": "a smart brush stroke", "find text": "find by text"}
+              "smart brush": "a smart brush stroke", "find text": "find by text", "clear": "clearing parts"}
 FORMAT_NAMES = {"yolo": "YOLO", "coco": "COCO", "cvat": "CVAT", "voc": "Pascal VOC", "labelstudio": "Label Studio",
                 "folders": "class folders", "csv": "CSV"}
 THUMB = 224                                               # px, longest side of grid thumbnails
@@ -605,19 +606,27 @@ class Session:
         self.job = threading.Thread(target=wrapped, daemon=True)
         self.job.start()
 
-    def on_track(self, msg):
-        """Track within the start item's task: the next video's first frame is another scene."""
-        start, count = msg["item"], msg.get("count", 20)
-        direction = -1 if (msg.get("direction") or 1) < 0 else 1
+    def _span(self, start: int, count, direction: int):
+        """The next (or previous) `count` items after `start` within its task (count None / -1: to the task's end)."""
         a, b = self.p.ranges[self.p.items[start]["task"]]
-        count = len(self.p.items) if count in (None, -1) else count
+        count = len(self.p.items) if count in (None, -1) else int(count)
         total = min(count, start - a if direction < 0 else b - start - 1)
         if total <= 0:
             where = " in this task" if len(self.p.sources) > 1 else ""
             self.send({"type": "toast", "text": f"No frames {'before' if direction < 0 else 'after'} this one{where}"})
+            return None
+        return range(start - total, start) if direction < 0 else range(start + 1, start + total + 1)
+
+    def on_track(self, msg):
+        """Track within the start item's task: the next video's first frame is another scene. With redo, each
+        unconfirmed frame reached keeps only the new tracking (parts removed or relabeled here go there too);
+        people's own boxes and confirmed frames are never changed."""
+        start, redo = msg["item"], bool(msg.get("redo"))
+        direction = -1 if (msg.get("direction") or 1) < 0 else 1
+        span = self._span(start, msg.get("count", 20), direction)
+        if span is None:
             return
-        count = total
-        span = range(start - total, start) if direction < 0 else range(start + 1, start + total + 1)
+        count = total = len(span)
         self._remember(span, "tracking")
 
         def job():
@@ -625,7 +634,7 @@ class Session:
 
             def on_item(item, res):
                 nonlocal last_push
-                self.p.put_tracked(item, res)
+                self.p.put_tracked(item, res, replace=redo)
                 done = abs(item - start)
                 if time.perf_counter() - last_push > 1.0 or done == total:
                     last_push = time.perf_counter()
@@ -636,12 +645,29 @@ class Session:
             with self._locks["track"]:
                 n = self._model("track").track(self.p, start, count, on_item, lambda: self.stop_flag, direction,
                                                masks=self.outlines_on)
-            self.notify("success", f"Tracked {n} frames {'back' if direction < 0 else 'ahead'}",
+            self.notify("success", f"{'Re-tracked' if redo else 'Tracked'} {n} frames {'back' if direction < 0 else 'ahead'}",
                         f"From {self._frame(start)} in {time.perf_counter() - t0:.0f} s. Frames marked 'to check' may need a look.",
                         self._goto(start))
             self.send({"type": "item_changed", "items": list(span)})
 
         self._run("Tracking", job)
+
+    def on_clear(self, msg):
+        """Remove the parts of some classes (classes: indices; none given = all) from the frames after (or before)
+        this one in its task, the next `count` or to the end; confirmed frames only when asked. One undo step."""
+        item, classes = msg["item"], msg.get("classes")
+        span = self._span(item, msg.get("count", -1), -1 if (msg.get("direction") or 1) < 0 else 1)
+        if span is None:
+            return
+        items = [k for k in span if msg.get("confirmed") or not self.p.is_reviewed(k)]
+        self._remember(items, "clear")
+        n, changed = self.p.clear_parts(items, None if classes is None else [int(c) for c in classes])
+        which = "every class" if classes is None else ", ".join(self.p.classes[int(c)] for c in classes)
+        self.notify("info", f"Cleared {n} part{'s' if n != 1 else ''} from {len(changed)} frame{'s' if len(changed) != 1 else ''}",
+                    f"{which}, {'before' if (msg.get('direction') or 1) < 0 else 'after'} {self._frame(item)}"
+                    + (". Ctrl+Z brings them back" if n else ""), self._goto(item))
+        self.send({"type": "item_changed", "items": changed})
+        self.send(self.status_msg())
 
     def on_suggest(self, msg):
         item = msg["item"]
