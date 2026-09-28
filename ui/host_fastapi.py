@@ -1327,6 +1327,8 @@ def assistant_chat(body: dict = Body(...)):
 
 # ---- entry points -------------------------------------------------------------------------
 def serve(home: Path | None = None, port: int = 8765, open_browser: bool = True, project: str | None = None) -> None:
+    from engine import utf8_output
+    utf8_output()
     state["home"] = Path(home) if home else default_home()
     state["home"].mkdir(parents=True, exist_ok=True)
     url = f"http://127.0.0.1:{port}/" + (f"p/{project}" if project else "")

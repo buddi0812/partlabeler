@@ -27,6 +27,10 @@ from pathlib import Path
 import click
 import typer
 
+from engine import utf8_output
+
+utf8_output()                                                 # teach prints RF-DETR's tables (see engine/__init__.py)
+
 FORMATS = ("yolo", "coco", "cvat", "voc", "labelstudio", "folders", "csv")   # folders, csv: image classes
 SIZES = ("nano", "small", "medium")
 
