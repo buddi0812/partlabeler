@@ -67,6 +67,17 @@ def test_time_blocks_are_whole_blocks_spread_over_the_video():
         time_blocks(10, 0)
 
 
+def test_every_video_of_a_source_is_tested():
+    from engine.teach import held_out_flags
+    items = [{"key": (v, f)} for v, n in (("3", 500), ("5", 100), ("7", 20)) for f in range(0, 5 * n, 5)]
+    flags = held_out_flags(items)
+    for v in ("3", "5", "7"):
+        mine = [h for it, h in zip(items, flags) if it["key"][0] == v]
+        assert 0.1 < sum(mine) / len(mine) < 0.3                             # each video: about 20% held out
+    photos = [{"key": (f"img{i}", -1)} for i in range(30)]                  # no frame numbers: one group
+    assert 0 < sum(held_out_flags(photos)) < 30
+
+
 def test_prepare_splits_by_time_without_leakage(tmp_path):
     src = make_source(tmp_path / "src", n=30)
     (src / "images" / "cam_f000003.jpg").write_bytes((src / "images" / "cam_f000000.jpg").read_bytes())  # no label

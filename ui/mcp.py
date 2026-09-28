@@ -495,14 +495,16 @@ def swap_classes(args):
     return {**_where(p, item), "messages": said}
 
 
-@tool("Teach: train a detector (RF-DETR, on this computer's GPU) on the confirmed frames of one task, then prove it "
-      "on held-out frames. Takes a while (tens of minutes); check with get_job or list_runs. Only when the user asked "
-      "for it. Then label_tasks labels other tasks with it.", ["project", "task"], project=PROJECT, task=TASK,
+@tool("Teach: train a detector (RF-DETR, on this computer's GPU) on the confirmed frames of one or more tasks, then "
+      "prove it on held-out frames of each. Takes a while (tens of minutes); check with get_job or list_runs. Only when "
+      "the user asked for it. Then label_tasks labels other tasks with it.", ["project"], project=PROJECT, task=TASK,
+      tasks=A("Several task ids, learned together (instead of task)", {"type": "integer"}),
       run=S("Name for the run (default: run_<date>)"), parent=S("Object the parts sit on, to crop to (e.g. 'car')"),
       size=S("nano | small (default) | medium", enum=["nano", "small", "medium"]), epochs=I("Training epochs (default 30)", minimum=1),
       wait_s=WAIT)
 def teach(args):
-    body = {"project": args["project"], "task": args["task"], "name": args.get("run"), "parent": args.get("parent"),
+    body = {"project": args["project"], "task": args.get("task"), "tasks": args.get("tasks"), "name": args.get("run"),
+            "parent": args.get("parent"),
             "size": args.get("size"), "epochs": args.get("epochs")}
     res = H.teach(body)
     return {"run": res["run"], **_wait(res["job"], float(args.get("wait_s") or 0))}

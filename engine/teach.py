@@ -13,6 +13,7 @@ import json
 import shutil
 import time
 from collections import Counter, defaultdict
+from itertools import groupby
 from pathlib import Path
 
 import numpy as np
@@ -195,6 +196,15 @@ def analyse(dataset_dir, resolution: int = 640) -> dict:
 
 
 # ---- prepare --------------------------------------------------------------------------------
+def held_out_flags(items, held_out: float = 0.2) -> list[bool]:
+    """time_blocks per video (names ending in _fNNNNNN, grouped by what comes before), so every video of a
+    source made of several (e.g. several tasks) is tested; images without frame numbers form one group."""
+    flags = []
+    for _, group in groupby(items, key=lambda it: it["key"][0] if it["key"][1] >= 0 else ""):
+        flags += time_blocks(len(list(group)), held_out)
+    return flags
+
+
 def time_blocks(n: int, held_out: float = 0.2, blocks: int = 10) -> list[bool]:
     """Held-out flags for n frames in time order: whole blocks of neighbouring frames, spread over the
     source, so the test is not near-duplicates of training frames."""
@@ -251,7 +261,7 @@ def prepare(dataset_dir, out, parent: str | None = None, held_out: float = 0.2, 
     items = [it for it in source_items(root) if it["label"] is not None]
     if len(items) < 2:
         raise ValueError(f"{root}: need at least 2 labeled images")
-    held = time_blocks(len(items), held_out)
+    held = held_out_flags(items, held_out)
     key = hashlib.sha1(json.dumps([str(root.resolve()), parent, held_out, classes,
                                    [it["name"] for it in items]]).encode()).hexdigest()[:12]
     if (out / "prepared.json").exists():
