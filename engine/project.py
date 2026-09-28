@@ -74,11 +74,72 @@ def mirrored_pairs(classes) -> bool:
     return any(n.startswith("left_") and "right_" + n[5:] in names for n in names)
 
 
+class _Rows(list):
+    """A statement's rows, already fetched (iterate, fetchone, fetchall, rowcount)."""
+    def __init__(self, rows, rowcount):
+        super().__init__(rows)
+        self.rowcount = rowcount
+
+    def fetchone(self):
+        return self[0] if self else None
+
+    def fetchall(self):
+        return list(self)
+
+
+class SharedDB:
+    """The project's one SQLite connection, used by the app's request thread and background jobs (tracking writes
+    frames while a person confirms others). Python's sqlite3 connection is not safe for that: two threads running the
+    same statement share one cached prepared statement ("InterfaceError: bad parameter or other API misuse"). So every
+    statement runs under one lock and returns its rows fetched, and a `with db:` transaction holds the lock to its end."""
+    def __init__(self, conn: sqlite3.Connection):
+        self.conn, self.lock = conn, threading.RLock()
+
+    def execute(self, sql, params=()):
+        with self.lock:
+            cur = self.conn.execute(sql, params)
+            return _Rows(cur.fetchall(), cur.rowcount)
+
+    def executemany(self, sql, rows):
+        with self.lock:
+            return self.conn.executemany(sql, rows).rowcount
+
+    def executescript(self, script):
+        with self.lock:
+            self.conn.executescript(script)
+
+    def commit(self):
+        with self.lock:
+            self.conn.commit()
+
+    def backup(self, target, **kw):
+        with self.lock:
+            self.conn.backup(target, **kw)
+
+    def close(self):
+        with self.lock:
+            self.conn.close()
+
+    def __enter__(self):
+        self.lock.acquire()
+        try:
+            return self.conn.__enter__()
+        except BaseException:
+            self.lock.release()
+            raise
+
+    def __exit__(self, *exc):
+        try:
+            return self.conn.__exit__(*exc)
+        finally:
+            self.lock.release()
+
+
 class Project:
     def __init__(self, folder):
         self.folder = Path(folder)
         self.meta = json.loads((self.folder / "project.json").read_text(encoding="utf-8"))
-        self.db = sqlite3.connect(self.folder / "labels.sqlite", check_same_thread=False)
+        self.db = SharedDB(sqlite3.connect(self.folder / "labels.sqlite", check_same_thread=False))
         self.db.executescript("""
             CREATE TABLE IF NOT EXISTS boxes (item INTEGER, obj INTEGER, cls INTEGER, x1 REAL, y1 REAL,
                 x2 REAL, y2 REAL, source TEXT, score REAL, PRIMARY KEY (item, obj));

@@ -87,3 +87,26 @@ def test_tracker_choice_and_fallback(tmp_path, monkeypatch):
         raise OSError("no internet for the first download")
     monkeypatch.setattr(T, "Tracker31", offline)
     assert T.make_tracker() == "sam3"
+
+
+def test_tracking_writes_while_a_person_confirms(tmp_path, video):
+    """Tracking writes frames from its job thread while the request thread confirms others (both mark items
+    touched with the same statement). One unlocked connection failed with "bad parameter or other API misuse"."""
+    import threading
+    p = Project.create(tmp_path / "proj", CLASSES, video=video, every=2)
+    errors = []
+
+    def run(fn):
+        try:
+            for i in range(400):
+                fn(i % len(p.items))
+        except Exception as e:                                 # noqa: BLE001  (reported below)
+            errors.append(e)
+    threads = [threading.Thread(target=run, args=(lambda k: p.put_tracked(k, {1: (0, [1, 1, 9, 9], 0.9)}),)),
+               threading.Thread(target=run, args=(lambda k: p.set_reviewed(k, k % 2 == 0),)),
+               threading.Thread(target=run, args=(lambda k: p.statuses(),))]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert not errors, errors[:1]
