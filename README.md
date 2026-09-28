@@ -63,6 +63,8 @@ folder; teammates sharing the computer add their own). The start screen is where
   review or finish, and set a *parent object*, the thing the parts sit on (for example "engine block").
   Suggestions then search inside it, which helps when the camera or distance changes;
 - **open a project** to annotate;
+- let **AI apps drive it**: Claude Code, opencode, Gemini CLI or Cursor connect to its MCP endpoint
+  (`/mcp`) with a token from Settings → API access, and scripts call `/api/tools/<name>`; every feature is a tool;
 - open **Settings** (the round account button, top right): light, dark or system theme, colour palettes,
   animations, Rivet and pop-ups on or off, default track length, brush size, export format and new-task values,
   and your projects folder (it can move your projects there);

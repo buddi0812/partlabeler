@@ -23,4 +23,8 @@
   (`themed()`: data-theme/-accent on <html>, `window.PL`) and each account may pick its own projects folder
   (`home()` per request; background jobs keep it). Notebooks have no sign-in. Theme tokens: `ui/theme.css`
   (`--c-*`, modules fall back to their light values). Never commit an accounts file.
+- API for programs (`ui/mcp.py`): MCP at `/mcp` (streamable HTTP, plain JSON replies, stateless) and the same tools at
+  `/api/tools/<name>`; Bearer API tokens (accounts.py, hashed, revocable) are checked in the `signed_in` middleware;
+  tools call `Session.call` (engine/api.py) so edits are live in open tabs and undoable. Default projects folder of a
+  computer: `~/.partlabeler/app.json` {"home": ...} (`accounts.default_home`).
 - Layout: `engine/` (no UI code; `api.py` is the one message protocol), `ui/` (`canvas.js` annotator, `home.js` start screen, two hosts), `engine/cli.py` (`partlabeler` CLI). User data lives in `data/` and `projects/`, both gitignored: never commit them.

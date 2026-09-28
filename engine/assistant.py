@@ -83,6 +83,8 @@ TIPS = [
      "ask": "How are projects, tasks and jobs organised?", "guide": "Projects, tasks and jobs (as in CVAT)"},
     {"text": "Give tasks a subset (Train, Validation, Test): exporting the project puts each subset in its own folders.",
      "ask": "How do subsets work when exporting?", "guide": "Create a task"},
+    {"text": "Claude Code, opencode or Gemini CLI can drive PartLabeler for you: Settings, API access.",
+     "ask": "How do I use PartLabeler from Claude Code?", "guide": "Use PartLabeler from AI apps and scripts (API)"},
     {"text": "Dark mode and colour palettes: open Settings from the round account button at the top right.",
      "ask": "How do I turn on dark mode?", "guide": "Settings"},
     {"text": "Backup task zips one unfinished task; Import task on a project page carries on with it there.",

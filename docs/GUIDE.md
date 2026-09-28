@@ -12,8 +12,10 @@ Everything runs on your own computer. This guide is also what Rivet, the in-app 
 Double-click `run_windows.bat` (Windows), run `./run.sh` (Linux / macOS) or `python -m engine.cli app`.
 The start screen opens in your browser at http://127.0.0.1:8765. Keep the black console window open while
 you work: closing it stops the app. Your work is saved as you go, so you can close the browser at any time.
-Projects are saved in the `projects` folder next to the app (start with `--home <folder>` to use another), or in
-the folder your account chose in Settings.
+Projects are saved in the `projects` folder next to the app, or in this computer's default folder, or in the folder
+your account chose in Settings. To make another folder the default for everyone on this computer (for example a
+bigger drive), put `{"home": "F:\\PartLabeler\\projects"}` in `~/.partlabeler/app.json` (or set PARTLABELER_HOME, or
+start with `--home <folder>`).
 
 ## Accounts and signing in
 
@@ -59,6 +61,34 @@ belongs to your account.
   the old folder then no longer see what moved. **Back to the default folder** fills in the app's folder.
 - **Unfinished work as a zip**: how to back up a project or a task, and **Import a zip…** as a new project or
   into one of your projects (see Backup and restore).
+- **API access**: tokens for AI apps and scripts (see Use PartLabeler from AI apps and scripts).
+
+## Use PartLabeler from AI apps and scripts (API)
+
+Every feature is also available to programs: AI apps such as **Claude Code, opencode, Gemini CLI or Cursor** use it
+through MCP (the Model Context Protocol) at `http://127.0.0.1:8765/mcp`, and scripts through plain JSON at
+`/api/tools/<name>` (`GET /api/tools` lists every tool with its inputs; the other `/api/...` routes accept the token
+too). A program acts as your account, in your projects folder, and only while PartLabeler runs on this computer.
+
+1. Open **Settings → API access**, type what the token is for (for example "Claude Code") and click **Create
+   token**. Copy it at once: it is shown only once (only a fingerprint is stored).
+2. Paste the setup line shown for your program. Claude Code:
+   `claude mcp add --transport http partlabeler http://127.0.0.1:8765/mcp --header "Authorization: Bearer <token>"`.
+   opencode, Gemini CLI and Cursor get a JSON block for their config file; scripts send the header
+   `Authorization: Bearer <token>`.
+3. Ask the AI in plain words, for example "list my PartLabeler projects", "in line2 task 1, outline the connector on
+   frame 1 and track it 50 frames" or "export line2 as YOLO".
+
+The tools: list_projects, get_project, create_project, set_labels, trash_project; add_tasks, update_task, delete_task,
+set_job, get_job; get_frame (the image with every part numbered, plus the parts as JSON; crop zooms in),
+get_annotations; add_part (click points and/or a box; SAM 3 outlines it), edit_part, delete_parts, find_parts (words,
+SAM 3 text search), find_similar, suggest, accept_suggestions; track; confirm_frames; set_image_class; undo; stop;
+status (progress and frames to check); export, backup, import_backup. Coordinates are pixels of the full-size frame.
+
+Everything a program does appears live in open annotator tabs, and Ctrl+Z (or the undo tool) reverts it. Tell the AI
+to confirm frames only after you checked them. **Revoke** a token in Settings to cut a program off; command line:
+`.venv\Scripts\python -m engine.cli account token USERNAME --label "my script"` makes one. Some apps (opencode with
+OpenAI-compatible models) only pass the JSON to the model, not the frame images.
 
 ## Projects, tasks and jobs (as in CVAT)
 

@@ -52,7 +52,7 @@ def _classes(path: Path) -> list[str]:
 
 
 @app.command("app")
-def app_cmd(home: Path = typer.Option(Path("projects"), help="Folder holding the projects."),
+def app_cmd(home: Path = typer.Option(None, help="Folder holding the projects (default: PARTLABELER_HOME, else \"home\" in ~/.partlabeler/app.json, else projects/)."),
             port: int = typer.Option(8765, help="Local port."),
             browser: bool = typer.Option(True, "--browser/--no-browser", help="Open the page in a browser.")):
     """Start the annotator (start page, projects, Teach & Transfer) at http://127.0.0.1:PORT."""
@@ -67,7 +67,9 @@ def update(home: Path = typer.Option(None, help="Projects folder whose labels ar
            check: bool = typer.Option(False, "--check", help="Only say whether a newer version exists.")):
     """Update PartLabeler from GitHub. Projects, labels, exports and models are kept; labels are backed up first."""
     from engine import update as up
-    home = home or up.APP / "projects"
+    from engine.accounts import default_home
+    home = home or default_home()
+    home = home if home.is_absolute() else up.APP / home
     try:
         res = up.check()
     except Exception as e:
@@ -211,6 +213,18 @@ def account_reset(username: str = typer.Argument(..., help="The account's userna
     except ValueError as e:
         raise typer.BadParameter(str(e))
     typer.echo(f"New password set for {username}.")
+
+
+@account_app.command("token")
+def account_token(username: str = typer.Argument(..., help="The account's username."),
+                  label: str = typer.Option("", help="What the token is for, e.g. 'Claude Code'.")):
+    """Create an API token for programs (Claude Code, opencode, scripts); printed once, keep it secret."""
+    from engine.accounts import Accounts
+    acc = Accounts()
+    key = next((u["username"] for u in acc.users() if u["username"].lower() == username.lower()), None)
+    if key is None:
+        raise typer.BadParameter(f"no account called {username}")
+    typer.echo(acc.create_token(key, label or "command line"))
 
 
 @account_app.command("remove")

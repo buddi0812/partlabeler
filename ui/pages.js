@@ -92,6 +92,10 @@ const PAGE_CSS = `
 .st-saved { color:var(--ok-ink); font-weight:600; font-size:13px; opacity:0; transition:opacity .3s; } .st-saved.on { opacity:1; }
 .st-danger { color:var(--bad); } .st-danger:hover:not(:disabled) { border-color:var(--bad); }
 .st-list { margin:2px 0 8px; padding-left:20px; } .st-list li { margin:3px 0; }
+.st-snip { margin:4px 0 10px; padding:9px 11px; background:var(--alu); border-radius:8px; font:12px/1.45 ui-monospace,"Cascadia Mono",Consolas,monospace;
+  white-space:pre-wrap; overflow-wrap:anywhere; max-height:220px; overflow:auto; }
+.st-newtok { border:1px solid var(--teal); border-radius:10px; padding:10px 12px; margin:6px 0 4px; background:var(--teal-soft); }
+.st-newtok h3 { margin:0 0 4px; font:600 15px var(--display); }
 .st-more summary { cursor:pointer; color:var(--teal-deep); font-weight:600; font-size:13.5px; padding:10px 0 4px; border-top:1px solid var(--line); }
 .st-more .h-form { max-width:420px; margin:8px 0 6px; }
 @media (max-width: 900px) { .st { grid-template-columns:minmax(0,1fr); } .st-nav { position:static; display:flex; flex-wrap:wrap; }
@@ -138,7 +142,16 @@ function progress(t) {                                // CVAT's task row: done �
 function statusChip(s) { return `<span class="pg-status ${esc(s)}">${esc(s)}</span>`; }
 
 const SECTIONS = [["account", "Account"], ["appearance", "Appearance"], ["helpers", "Helpers and messages"], ["annotating", "Annotating and export"],
-                  ["tasks", "New tasks"], ["storage", "Projects folder"], ["transfer", "Unfinished work as a zip"]];
+                  ["tasks", "New tasks"], ["storage", "Projects folder"], ["transfer", "Unfinished work as a zip"],
+                  ["api", "API access"]];
+// Setup lines for programs that use PartLabeler's API (ui/mcp.py): its MCP endpoint, with the token as a header.
+const CLIENTS = [
+  ["Claude Code", "Run in a terminal:", (u, t) => `claude mcp add --transport http partlabeler ${u}/mcp --header "Authorization: Bearer ${t}"`],
+  ["opencode", "Add to opencode.json:", (u, t) => JSON.stringify({ mcp: { partlabeler: { type: "remote", url: `${u}/mcp`, headers: { Authorization: `Bearer ${t}` } } } }, null, 2)],
+  ["Gemini CLI", "Add to ~/.gemini/settings.json:", (u, t) => JSON.stringify({ mcpServers: { partlabeler: { httpUrl: `${u}/mcp`, headers: { Authorization: `Bearer ${t}` } } } }, null, 2)],
+  ["Cursor", "Add to .cursor/mcp.json:", (u, t) => JSON.stringify({ mcpServers: { partlabeler: { url: `${u}/mcp`, headers: { Authorization: `Bearer ${t}` } } } }, null, 2)],
+  ["Scripts (REST)", "Every tool is also POST /api/tools/<name> with JSON; list them with:", (u, t) => `curl -H "Authorization: Bearer ${t}" ${u}/api/tools`],
+];
 const THEMES = ["light", "dark", "system"], THEME_NAMES = { light: "Light", dark: "Dark", system: "Match my computer" };
 const ACCENTS = { teal: ["Teal", "#0a7c78"], blue: ["Blue", "#2563c9"], indigo: ["Indigo", "#4f46c8"], violet: ["Violet", "#7c3aca"],   // ui/theme.css
                   rose: ["Rose", "#c2305a"], orange: ["Orange", "#b4530a"], green: ["Green", "#287a36"], graphite: ["Graphite", "#4b5a66"] };
@@ -615,6 +628,16 @@ export function page(root, args) {
           <select class="st-into" aria-label="Import as"><option value="">a new project</option>${projects.map((p) =>
             `<option value="${esc(p.name)}">tasks of ${esc(p.name)} (${esc(TASKS[p.task] || p.task)})</option>`).join("")}</select></label></div>
         <div class="st-ijob"></div></section>
+
+      <section class="h-panel st-sec" id="api"><h2>API access</h2>
+        <p class="h-sub">AI apps and scripts (Claude Code, opencode, Gemini CLI, Cursor…) can use every PartLabeler feature
+          through its API, acting as you: projects, tasks, frames, parts, tracking, text search, confirming and export.
+          Give each program its own token; it works only on this computer while PartLabeler runs, and you can revoke it
+          any time. Anything a program changes shows up live in the app and Ctrl+Z undoes it.</p>
+        <form class="h-row st-tok" autocomplete="off"><input type="text" name="label" maxlength="60" placeholder="What it's for, e.g. Claude Code"
+          aria-label="Token name"><button type="submit" class="primary">Create token</button></form>
+        <div class="st-newtok" hidden></div>
+        <div class="st-toks"></div></section>
       </div></div>`;
 
     const saved = $(".st-saved");
@@ -693,6 +716,34 @@ export function page(root, args) {
         } });
       } catch (err) { $(".st-ijob").innerHTML = `<div class="h-err">${esc(err.message)}</div>`; }
     }
+    // API tokens: shown once when made, with ready-to-paste setup for each program
+    const renderTokens = (ts) => {
+      $(".st-toks").innerHTML = ts.length ? ts.map((t) => `<div class="st-row"><span><b translate="no">${esc(t.label)}</b>
+        <small>Created ${esc(ago(t.created))} · ${t.used ? `last used ${esc(ago(t.used))}` : "not used yet"}</small></span>
+        <button type="button" class="st-danger" data-revoke="${esc(t.id)}" data-label="${esc(t.label)}">Revoke</button></div>`).join("")
+        : `<p class="h-sub">No tokens yet.</p>`;
+    };
+    api("/api/me/tokens").then(renderTokens).catch(() => {});
+    $(".st-tok").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      try {
+        const r = await api("/api/me/tokens", { label: e.target.label.value.trim() });
+        e.target.reset(); renderTokens(r.tokens);
+        const box = $(".st-newtok"); box.hidden = false;
+        box.innerHTML = `<h3>Your new token</h3><p class="h-sub">Copy it now: it is shown only once. Anyone with it can use PartLabeler as you on this computer.</p>
+          <div class="h-row"><code class="st-code" translate="no">${esc(r.token)}</code><button type="button" data-copy="${esc(r.token)}">Copy</button></div>
+          ${CLIENTS.map(([name, how, cmd]) => { const text = cmd(location.origin.replace("//localhost:", "//127.0.0.1:"), r.token);
+            return `<p class="h-sub" style="margin:10px 0 0"><b>${esc(name)}</b>: ${esc(how)} <button type="button" data-copy="${esc(text)}">Copy</button></p><pre class="st-snip">${esc(text)}</pre>`; }).join("")}`;
+      } catch (err) { toast({ level: "error", title: "No token made", detail: err.message }); }
+    });
+    main.addEventListener("click", async (e) => {
+      const cp = e.target.closest("[data-copy]"), rv = e.target.closest("[data-revoke]");
+      if (cp) { try { await navigator.clipboard.writeText(cp.dataset.copy); flashSaved("Copied"); } catch { toast({ level: "error", title: "Could not copy; select the text instead" }); } }
+      else if (rv && await ask(`Revoke “${rv.dataset.label}”?`, "Programs using this token lose access at once.", "Revoke")) {
+        try { renderTokens(await api(`/api/me/tokens/${enc(rv.dataset.revoke)}`, undefined, "DELETE")); $(".st-newtok").hidden = true; }
+        catch (err) { toast({ level: "error", title: "Could not revoke", detail: err.message }); }
+      }
+    });
     if (location.hash) document.getElementById(location.hash.slice(1))?.scrollIntoView();
   }
 

@@ -33,7 +33,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.staticfiles import StaticFiles
 
 from engine import assistant
-from engine.accounts import Accounts
+from engine.accounts import Accounts, default_home
 from engine.api import Session
 from engine.notify import Notifications
 from engine.project import IMAGE_EXTS, Project, read_classes
@@ -256,11 +256,16 @@ OPEN = ("/login", "/api/auth/", "/ui/")                  # reachable before sign
 
 @app.middleware("http")
 async def signed_in(request, call_next):
-    """Pages send people to /login until they sign in; API calls answer 401. Sets USER for the request."""
-    user = accounts().user_for(request.cookies.get(COOKIE))
+    """Pages send people to /login until they sign in; API calls answer 401. Programs send an API token
+    (`Authorization: Bearer …`, ui/mcp.py) instead of the sign-in cookie. Sets USER for the request."""
+    auth = request.headers.get("authorization", "")
+    bearer = auth[7:].strip() if auth[:7].lower() == "bearer " else None
+    user = accounts().user_for_token(bearer) if bearer else accounts().user_for(request.cookies.get(COOKIE))
     path = request.url.path
     if user is None and not path.startswith(OPEN):
-        if request.method == "GET" and not path.startswith(("/api/", "/items/", "/thumbs/", "/previews/")):
+        if bearer:
+            return JSONResponse({"detail": "Unknown or revoked API token (Settings → API access)"}, status_code=401)
+        if request.method == "GET" and not path.startswith(("/api/", "/items/", "/thumbs/", "/previews/", "/mcp")):
             back = path + (f"?{request.url.query}" if request.url.query else "")
             return RedirectResponse(f"/login?next={quote(back)}", status_code=303)
         return JSONResponse({"detail": "Sign in first (open the start page)"}, status_code=401)
@@ -347,6 +352,24 @@ def change_password(request: Request, response: Response, body: dict = Body(...)
     except ValueError as e:
         raise HTTPException(400, str(e))
     return _signed_in_as(response, user, True)                        # …except here
+
+
+@app.get("/api/me/tokens")
+def my_tokens() -> list:
+    return accounts().tokens(USER.get())
+
+
+@app.post("/api/me/tokens")
+def new_token(body: dict = Body(...)) -> dict:
+    """An API token for a program (Claude Code, opencode, a script); the token is shown only in this answer."""
+    return {"token": accounts().create_token(USER.get(), body.get("label", "")), "tokens": accounts().tokens(USER.get())}
+
+
+@app.delete("/api/me/tokens/{tid}")
+def revoke_token(tid: str) -> list:
+    if not accounts().revoke_token(USER.get(), tid):
+        raise HTTPException(404, "No such token")
+    return accounts().tokens(USER.get())
 
 
 @app.post("/api/me/delete")
@@ -1253,8 +1276,8 @@ def assistant_chat(body: dict = Body(...)):
 
 
 # ---- entry points -------------------------------------------------------------------------
-def serve(home: Path = Path("projects"), port: int = 8765, open_browser: bool = True, project: str | None = None) -> None:
-    state["home"] = Path(home)
+def serve(home: Path | None = None, port: int = 8765, open_browser: bool = True, project: str | None = None) -> None:
+    state["home"] = Path(home) if home else default_home()
     state["home"].mkdir(parents=True, exist_ok=True)
     url = f"http://127.0.0.1:{port}/" + (f"p/{project}" if project else "")
     print(f"PartLabeler: {url}   (projects in {state['home'].resolve()}; Ctrl+C to quit)", flush=True)
@@ -1267,7 +1290,7 @@ def serve(home: Path = Path("projects"), port: int = 8765, open_browser: bool = 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--home", default=os.environ.get("PARTLABELER_HOME", "projects"), help="folder holding the projects")
+    ap.add_argument("--home", help="folder holding the projects (default: PARTLABELER_HOME, else ~/.partlabeler/app.json, else projects)")
     ap.add_argument("--project", help="open this project folder directly (its parent becomes the home folder)")
     ap.add_argument("--port", type=int, default=8765)
     ap.add_argument("--no-browser", action="store_true")
@@ -1278,8 +1301,11 @@ def main():
             raise SystemExit(f"{folder} is not a project; create one on the start screen or with `partlabeler new`")
         serve(folder.parent, args.port, not args.no_browser, folder.name)
     else:
-        serve(Path(args.home), args.port, not args.no_browser)
+        serve(args.home and Path(args.home), args.port, not args.no_browser)
 
+
+from ui import mcp as _mcp                                   # noqa: E402  (/mcp and /api/tools use the functions above)
+_mcp.mount(app, sys.modules[__name__])
 
 if __name__ == "__main__":
     main()

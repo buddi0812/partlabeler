@@ -1,7 +1,8 @@
 """Local accounts: who is signed in to the app on this computer, and each person's settings.
 
 Stored in ~/.partlabeler/accounts.json (the folder can be moved with PARTLABELER_CONFIG). Passwords are kept as
-scrypt hashes and sign-in tokens as SHA-256 hashes, so the file holds no password and no usable token.
+scrypt hashes and sign-in tokens as SHA-256 hashes, so the file holds no password and no usable token. API tokens
+(for programs such as Claude Code or opencode, ui/mcp.py) are stored the same way and are shown only once.
 An account keeps people's preferences and projects folders apart; it does not encrypt anything: whoever can read
 this computer's files can read the projects. Forgotten password: `partlabeler account reset NAME` on this computer.
 """
@@ -48,6 +49,17 @@ def config_dir() -> Path:
     return Path(os.environ.get("PARTLABELER_CONFIG") or Path.home() / ".partlabeler")
 
 
+def default_home() -> Path:
+    """The app's projects folder when none is given: PARTLABELER_HOME, else "home" in ~/.partlabeler/app.json
+    (this computer's choice, e.g. a bigger drive), else projects/ next to the app."""
+    if os.environ.get("PARTLABELER_HOME"):
+        return Path(os.environ["PARTLABELER_HOME"])
+    try:
+        return Path(json.loads((config_dir() / "app.json").read_text(encoding="utf-8"))["home"])
+    except (OSError, ValueError, KeyError, TypeError):
+        return Path("projects")
+
+
 def _hash(password: str, salt: bytes) -> str:
     return hashlib.scrypt(password.encode(), salt=salt, n=2 ** 14, r=8, p=1, dklen=32).hex()
 
@@ -63,6 +75,7 @@ class Accounts:
         self.data = json.loads(self.path.read_text(encoding="utf-8")) if self.path.exists() else {}
         self.data.setdefault("users", {})
         self.data.setdefault("sessions", {})
+        self.data.setdefault("tokens", {})
 
     def _save(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -128,6 +141,7 @@ class Accounts:
                 raise KeyError(f"No account called {username}")
             del self.data["users"][key]
             self.data["sessions"] = {k: s for k, s in self.data["sessions"].items() if s["user"] != key}
+            self.data["tokens"] = {k: t for k, t in self.data["tokens"].items() if t["user"] != key}
             self._save()
 
     def profile(self, username: str) -> dict:
@@ -151,6 +165,40 @@ class Accounts:
         with self.lock:
             if token and self.data["sessions"].pop(_token_key(token), None):
                 self._save()
+
+    # ---- API tokens: programs act as the account, until the token is revoked -----------------------------
+    def create_token(self, username: str, label: str = "") -> str:
+        token = "plt_" + secrets.token_urlsafe(32)
+        with self.lock:
+            self.data["tokens"][_token_key(token)] = {"user": username, "label": " ".join(str(label).split())[:60] or "API token",
+                                                      "created": time.time(), "used": None}
+            self._save()
+        return token
+
+    def tokens(self, username: str) -> list[dict]:
+        """The account's tokens (never the token itself): id (a short prefix of its hash), label, created, last used."""
+        return [{"id": k[:12], "label": t["label"], "created": t["created"], "used": t["used"]}
+                for k, t in sorted(self.data["tokens"].items(), key=lambda kv: kv[1]["created"]) if t["user"] == username]
+
+    def revoke_token(self, username: str, token_id: str) -> bool:
+        with self.lock:
+            gone = [k for k, t in self.data["tokens"].items()
+                    if len(token_id) >= 8 and k.startswith(token_id) and t["user"] == username]
+            for k in gone:
+                del self.data["tokens"][k]
+            if gone:
+                self._save()
+        return bool(gone)
+
+    def user_for_token(self, token: str | None) -> str | None:
+        t = self.data["tokens"].get(_token_key(token)) if token else None
+        if not t or t["user"] not in self.data["users"]:
+            return None
+        if not t["used"] or time.time() - t["used"] > 300:          # "last used", saved at most every 5 minutes
+            with self.lock:
+                t["used"] = time.time()
+                self._save()
+        return t["user"]
 
     # ---- preferences ---------------------------------------------------------------------------
     def prefs(self, username: str | None) -> dict:

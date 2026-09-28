@@ -7,7 +7,7 @@ export). Protocol:
 In:  ready | goto {item} | box {item, cls, box, obj?} | click {item, x, y, positive, cls, obj?}
      cycle {item, obj} | delete {item, obj} | set_class {obj, cls, item?} | review {item, value}
      accept {item} | undo | track {item, count, direction} | stop | suggest {item}
-     find_all {item, obj} | settings {parent} | export {format, reviewed_only, tasks?}
+     find_all {item, obj} | find_text {item, text, cls, threshold?} | settings {parent} | export {format, reviewed_only, tasks?}
      paint {item, obj?, cls, x, y, png} | smart_paint {item, obj?, cls, points, radius, erase}
      outline {item, all?}                                                          (outline projects)
      add_task {path, every?} | add_class {name, of?, keys?} | grid {of} | thumbs {of, keys} | sort {of, k?} | tag {of, keys, cls} | accept_tags {keys}
@@ -28,6 +28,9 @@ sorting from engine/sort.py; box and outline projects use the same grid to sort 
 Events worth finding later (confirmed, deleted, tracked, exported, errors...) go through `notify`, which
 records them in the notification history (engine/notify.py) and shows them as a toast; `toast` is only
 for passing hints.
+
+Programs (the API and MCP server, ui/mcp.py) use `Session.call(msg)`: the same handlers, but errors are raised,
+background jobs are waited for and the hints they gave come back, while open screens still see every change.
 
 Models load on first use and are shared by every open project (one copy in GPU memory).
 """
@@ -54,10 +57,11 @@ UNDO_WORDS = {"box": "drawing a box", "outline": "outlining a part", "delete": "
               "class change": "a class change", "confirm": "confirming a frame", "accept": "accepting suggestions",
               "tracking": "tracking", "suggestions": "suggestions", "find similar": "find similar",
               "paint": "painting an outline", "outline boxes": "outlining boxes", "classes": "a class change",
-              "smart brush": "a smart brush stroke"}
+              "smart brush": "a smart brush stroke", "find text": "find by text"}
 FORMAT_NAMES = {"yolo": "YOLO", "coco": "COCO", "cvat": "CVAT", "voc": "Pascal VOC", "labelstudio": "Label Studio",
                 "folders": "class folders", "csv": "CSV"}
 THUMB = 224                                               # px, longest side of grid thumbnails
+JOBS = {"track", "suggest", "find_all", "find_text", "outline", "sort", "suggest_tags", "odd", "export", "add_task"}
 
 _MODELS: dict = {}
 _LOCKS = {k: threading.Lock() for k in ("seg", "track", "suggest", "concept", "embed", "load")}
@@ -135,7 +139,7 @@ class Session:
         self.points = {}                                  # (item, obj) -> [[x, y, label], ...]
         self.outlines = {}                                # (item, obj) -> ([(mask, score), ...] small->large, index)
         self.history = []                                 # [(label, snapshot)] for undo
-        self.job, self.running, self.stop_flag = None, False, False
+        self.job, self.running, self.stop_flag, self.error = None, False, False, None
         self.thumb_src = None                              # web host: (of, key) -> URL; notebooks ask with `thumbs`
         self.sorting = {}                                  # of -> {"keys", "vectors", "groups"}
         self._thumbs, self._frames, self._frame_lock = {}, {}, threading.Lock()
@@ -220,6 +224,35 @@ class Session:
         except Exception as e:                            # report, keep the session alive
             traceback.print_exc()
             self.notify("error", "Something went wrong", f"{type(e).__name__}: {e}")
+
+    def call(self, msg: dict, wait: float = 600) -> list[str]:
+        """Run one message for a program: raises on errors (also a failed background job), waits up to `wait` s for
+        a job it starts, and returns the hints and notices it produced. Screens still get every update."""
+        if msg.get("type") in JOBS and self.running:
+            raise RuntimeError("Busy with another job (tracking, suggestions, export…): wait for it or stop it first")
+        handler = getattr(self, "on_" + str(msg.get("type")), None)
+        if handler is None or msg.get("type") in ("assistant", "assistant_key"):
+            raise ValueError(f"unknown message {msg.get('type')!r}")
+        said, send = [], self.send
+        before = {n["id"]: n["count"] for n in self.notes.snapshot()["items"]}
+
+        def capture(m):
+            if m.get("type") == "toast":
+                said.append(m["text"])
+            send(m)
+
+        self.send = capture
+        try:
+            handler(msg)
+            if msg["type"] in JOBS and self.job is not None:
+                self.job.join(wait)
+        finally:
+            self.send = send
+        said += [f"{n['title']}. {n['detail']}".rstrip(". ") for n in reversed(self.notes.snapshot()["items"])
+                 if before.get(n["id"]) != n["count"] and n.get("project") == self.p.meta["name"]]
+        if msg["type"] in JOBS and not self.running and self.error:
+            raise RuntimeError(self.error)
+        return said
 
     def on_unknown(self, msg):
         self.notify("error", "The app sent a message the server does not know", repr(msg.get("type")))
@@ -555,7 +588,7 @@ class Session:
         if self.running:
             self.send({"type": "toast", "text": "Busy with another job; press Stop first"})
             return
-        self.stop_flag, self.running = False, True
+        self.stop_flag, self.running, self.error = False, True, None
         self.send({"type": "progress", "task": name, "done": 0, "total": 1})
 
         def wrapped():
@@ -564,6 +597,7 @@ class Session:
             except Exception as e:
                 traceback.print_exc()
                 hint = " Close other programs that use the GPU and try again." if "out of memory" in str(e) else ""
+                self.error = f"{name} failed: {type(e).__name__}: {e}.{hint}"
                 self.notify("error", f"{name} failed", f"{type(e).__name__}: {e}.{hint}")
             finally:
                 self.running = False
@@ -640,24 +674,45 @@ class Session:
             return
 
         def job():
-            from engine.parent import overlap
             with self._locks["concept"]:
                 hits = self._model("concept").find_like(self.p.image(item), ex["box"],
                                                         threshold=msg.get("threshold", 0.3))
-            have = [b["box"] for b in self.p.boxes(item)]
-            new = [(box, sc) for box, sc in hits if all(overlap(box, h) < 0.5 for h in have)]
-            self._remember([item], "find similar")
-            obj0 = self.p.new_obj()
-            masks = self._outline_boxes(item, [box for box, _ in new]) if self.outlines_on else [None] * len(new)
-            for k, ((box, sc), mask) in enumerate(zip(new, masks)):
-                self.p.put(item, obj0 + k, self._side(ex["cls"], box), box, "suggested", sc,
-                           mask=mask if mask is not None and mask.any() else None)
-            self.notify("info", f"Found {len(new)} more like this on {self._frame(item)}",
-                        "Y accepts all; select one and press Delete to drop it" if new else
+            n = self._add_suggestions(item, hits, ex["cls"], "find similar")
+            self.notify("info", f"Found {n} more like this on {self._frame(item)}",
+                        "Y accepts all; select one and press Delete to drop it" if n else
                         "Try a lower threshold or another example", self._goto(item))
-            self.refresh(item)
 
         self._run("Finding similar", job)
+
+    def on_find_text(self, msg):
+        """Parts described in words ("round amber lamp") in this image (SAM 3 text search), as suggestions of `cls`."""
+        item, cls, text = msg["item"], msg["cls"], str(msg.get("text") or "").strip()
+        if not text:
+            raise ValueError("give the words to search for")
+
+        def job():
+            with self._locks["concept"]:
+                hits = self._model("concept").detect(self.p.image(item), text=text, threshold=msg.get("threshold", 0.5))
+            n = self._add_suggestions(item, hits, cls, "find text")
+            self.notify("info", f"Found {n} “{text}” on {self._frame(item)}",
+                        "Y accepts all; select one and press Delete to drop it" if n else
+                        "Try other words or a lower threshold", self._goto(item))
+
+        self._run("Finding by text", job)
+
+    def _add_suggestions(self, item: int, hits, cls: int, label: str) -> int:
+        """Hits [(box, score)] not already covered by a box become suggestions (outlined in outline projects)."""
+        from engine.parent import overlap
+        have = [b["box"] for b in self.p.boxes(item)]
+        new = [(box, sc) for box, sc in hits if all(overlap(box, h) < 0.5 for h in have)]
+        self._remember([item], label)
+        obj0 = self.p.new_obj()
+        masks = self._outline_boxes(item, [box for box, _ in new]) if self.outlines_on else [None] * len(new)
+        for k, ((box, sc), mask) in enumerate(zip(new, masks)):
+            self.p.put(item, obj0 + k, self._side(cls, box), box, "suggested", sc,
+                       mask=mask if mask is not None and mask.any() else None)
+        self.refresh(item)
+        return len(new)
 
     # ---- the grid: image classes, and sorting parts --------------------------------------------
     # Cards are images (of="images", class projects) or parts (of="parts": one card per tracked part, shown by
