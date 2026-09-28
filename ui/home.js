@@ -556,9 +556,10 @@ export default function home(root) {
           <details class="h-more"><summary>Advanced configuration</summary>
             <div class="h-form" style="margin-top:12px">
               <label class="h-field"><span>Frames</span><select name="frames">
-                <option value="jpg">Compact: JPEG, visually lossless (default)</option>
-                <option value="webp">Lossless: exact pixels, about twice the disk space</option></select>
-                <small>The default for this project's videos (each task can choose). Exports link to the frames, so they take no extra space.</small></label>
+                <option value="video">In the video: no copies, the video's own pixels, ready in seconds (default)</option>
+                <option value="jpg">JPEG files: quality 95, about 10x the video's size</option>
+                <option value="webp">Lossless WebP files: about 20x the video's size, slow to make</option></select>
+                <small>How this project keeps its videos' frames (each task can choose). Exports write image files.</small></label>
             </div></details>
           <div class="h-row"><button class="primary" type="submit" value="open">Submit &amp; Open</button><button type="submit" value="continue">Submit &amp; Continue</button><span class="h-sub h-newmsg"></span></div>
         </form>
@@ -616,6 +617,7 @@ export default function home(root) {
   <div class="h-toasts" aria-live="polite"></div>`;
   const $ = (s) => root.querySelector(s);
   const newForm = $(".h-new"), teachForm = $(".h-teach"), transferForm = $(".h-transfer");
+  newForm.frames.value = prefs().frames || "video";                   // Settings: frame storage for new projects
   let task = "detect", sources = [], projects = [], info = {}, seen = null;
 
   heroDemo($(".h-demo"));

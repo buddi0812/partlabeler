@@ -12,6 +12,7 @@ Every page and API call needs a signed-in account, except /login, /api/auth/* an
 import argparse
 import asyncio
 import contextvars
+import io
 import json
 import os
 import shutil
@@ -36,7 +37,7 @@ from engine import assistant
 from engine.accounts import Accounts, default_home
 from engine.api import Session
 from engine.notify import Notifications
-from engine.project import IMAGE_EXTS, Project, read_classes
+from engine.project import FRAME_FORMATS, IMAGE_EXTS, Project, read_classes
 
 UI_DIR = Path(__file__).parent
 VIDEO_EXTS = {".mp4", ".avi", ".mov", ".mkv", ".webm", ".m4v", ".mpg", ".mpeg", ".wmv"}
@@ -562,7 +563,7 @@ def create_tasks(name: str, body: dict = Body(...)) -> dict:
     opts = {"subset": body.get("subset") or "", "every": int(body.get("every") or 5),
             "start": int(body["start"]) if str(body.get("start", "")).strip() else None,
             "stop": int(body["stop"]) if str(body.get("stop", "")).strip() else None,
-            "quality": int(body.get("quality") or 95), "lossless": bool(body.get("lossless")),
+            "quality": int(body.get("quality") or 95), "frames": body.get("frames") or ("webp" if body.get("lossless") else None),
             "sorting": body.get("sorting") or "lexicographical", "segment_size": int(body.get("segment_size") or 0)}
 
     def job(progress, should_stop):
@@ -673,6 +674,39 @@ def export_dataset(name: str, body: dict = Body(...)) -> dict:
              {"type": "folder", "path": res["folder"], "label": "Open folder"})
 
     return {"job": start_job("export", job, done, f"Could not export {name}")}
+
+
+@app.post("/api/projects/{name}/frames-to-video")
+def frames_to_video(name: str) -> dict:
+    """Read the project's video frames straight from its videos instead of stored image files: the same frames and
+    labels in a fraction of the space. The old files move to <projects>/_old_frames/<name>/ to delete when happy."""
+    project_dir(name)
+    p = project(name)
+    todo = [t["id"] for t in p.sources if t["kind"] == "video" and t.get("format") != "video"]
+    if not todo:
+        raise HTTPException(400, "Every video task already reads its frames from the video")
+    if session(name).running:
+        raise HTTPException(409, "A job is running in this project: let it finish or stop it first")
+    out = home() / "_old_frames" / name
+
+    def job(progress, should_stop):
+        freed, done = 0, 0
+        for k, tid in enumerate(todo):
+            if should_stop():
+                break
+            progress(k, len(todo), f"Task {k + 1} of {len(todo)}: reading its frames from the video")
+            freed += p.frames_to_video(tid, out)["freed"]
+            done += 1
+        p.set_meta(frame_format="video")
+        refresh(name, reload=True)                         # open tabs reload onto the same frame
+        return {"tasks": done, "freed": freed, "old": str(out)}
+
+    def done(res):
+        note("success", f"{name} now reads its frames from the videos",
+             f"{res['tasks']} tasks. {res['freed'] / 2**30:.1f} GB of old frame files can go: delete {res['old']}", name,
+             {"type": "folder", "path": res["old"], "label": "Open folder"})
+
+    return {"job": start_job("frames to video", job, done, f"Could not switch {name} to its videos")}
 
 
 @app.post("/api/projects/{name}/backup")
@@ -791,7 +825,11 @@ def item_image(name: str, item: int):
     items = session(name).p.items
     if not 0 <= item < len(items):
         raise HTTPException(404)
-    return FileResponse(items[item]["path"])
+    if items[item]["path"]:
+        return FileResponse(items[item]["path"])
+    buf = io.BytesIO()                                     # a frame read from the video: sent as a high-quality JPEG
+    session(name).p.image(item).save(buf, "JPEG", quality=92)
+    return Response(buf.getvalue(), media_type="image/jpeg")
 
 
 @app.get("/thumbs/{name}/{of}/{key}.jpg")
@@ -934,7 +972,7 @@ def create_project(body: dict = Body(...)) -> dict:
             raise HTTPException(400, f"Unknown project type {task!r}")
         try:
             Project.create(folder, classes, task=task, colors=colors,
-                           frame_format="webp" if body.get("frame_format") == "webp" else "jpg").db.close()
+                           frame_format=body.get("frame_format") if body.get("frame_format") in FRAME_FORMATS else "video").db.close()
         except ValueError as e:
             raise HTTPException(400, str(e))
         note("success", f"Created project {name}", "Add its first task on the project page", name, open_action(name))
@@ -943,10 +981,10 @@ def create_project(body: dict = Body(...)) -> dict:
     if not src.exists():
         raise HTTPException(400, f"Not found: {src}")
     labels, parent, every = body.get("labels") or None, (body.get("parent") or "").strip() or None, int(body.get("every") or 5)
-    task, frame_format = body.get("task") or "detect", body.get("frame_format") or "jpg"
+    task, frame_format = body.get("task") or "detect", body.get("frame_format") or "video"
     if task not in ("detect", "segment", "classify"):
         raise HTTPException(400, f"Unknown label type {task!r}")
-    if frame_format not in ("jpg", "webp"):
+    if frame_format not in FRAME_FORMATS:
         raise HTTPException(400, f"Unknown frame format {frame_format!r}")
 
     def job(progress, should_stop):

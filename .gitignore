@@ -18,7 +18,6 @@ projects/
 *.ckpt
 .graphify_*
 graphify-out/.graphify_*
-.claude/settings.local.json
 # promo video project: keep sources, staged assets and the final render; skip caches and raw capture
 videos/*/node_modules/
 videos/*/snapshots/
@@ -31,3 +30,5 @@ videos/*/.hyperframes/preview/
 videos/*/.hyperframes/history-id
 videos/*/renders/.*
 graphify-out/
+.claude/
+.graphifyignore

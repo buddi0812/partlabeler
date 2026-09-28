@@ -106,8 +106,8 @@ def new(project: Path = typer.Argument(..., help="New project folder."),
         every: int = typer.Option(5, min=1, help="Video: keep 1 frame in N."),
         task: str = typer.Option("detect", click_type=click.Choice(["detect", "segment", "classify"]),
                                  help="Project type, fixed once made: detect (object detection, boxes), segment (segmentation, outlines) or classify (classification, one class per image)."),
-        frames: str = typer.Option("jpg", click_type=click.Choice(["jpg", "webp"]),
-                                   help="Video frames: jpg (compact, visually lossless) or webp (lossless, about 2x the space)."),
+        frames: str = typer.Option("video", click_type=click.Choice(["video", "jpg", "webp"]),
+                                   help="Video frames: video (read from the video: no copies, exact), jpg files or webp (lossless) files."),
         labels: Path | None = typer.Option(None, exists=True, file_okay=False, help="YOLO labels to import.")):
     """Create a project from a video or an image folder (more can be added: `partlabeler add`), optionally with existing YOLO labels."""
     from engine.project import Project
@@ -133,7 +133,8 @@ def add(project: Path = typer.Argument(..., exists=True, file_okay=False, help="
         segment_size: int = typer.Option(0, min=0, help="Frames per job (0: one job for the task)."),
         start: int | None = typer.Option(None, help="Video: first frame."), stop: int | None = typer.Option(None, help="Video: last frame."),
         quality: int = typer.Option(95, min=5, max=100, help="Video: JPEG quality of the stored frames."),
-        lossless: bool = typer.Option(False, "--lossless", help="Video: store frames losslessly (exact pixels, about 2x space)."),
+        frames: str | None = typer.Option(None, click_type=click.Choice(["video", "jpg", "webp"]),
+                                          help="Video frames: video (read from the video, no copies), jpg or webp files (default: the project's)."),
         name: str | None = typer.Option(None, help="Task name (default: the file or folder name).")):
     """Add a video or an image folder to a project as a new task (as CVAT's Create a new task)."""
     from engine.api import describe
@@ -143,7 +144,7 @@ def add(project: Path = typer.Argument(..., exists=True, file_okay=False, help="
     p = Project(project)
     with _bar() as progress:
         t = p.add_source(video=video, images=images, every=every, progress=progress, subset=subset, name=name,
-                         segment_size=segment_size, start=start, stop=stop, quality=quality, lossless=lossless or None)
+                         segment_size=segment_size, start=start, stop=stop, quality=quality, frames=frames)
     a, b = p.ranges[t["id"]]
     typer.echo(f"added task {t['name']}: {b - a} {'frames' if video else 'images'} ({describe(t)}); "
                f"the project has {len(p.sources)} tasks, {len(p.items)} frames/images")
@@ -186,6 +187,24 @@ def import_task(project: Path = typer.Argument(..., exists=True, file_okay=False
     res = Project(project).add_tasks_from(backup_zip)
     typer.echo(f"added {', '.join(res['tasks'])}: {res['items']} frames or images"
                + (f"; new labels: {', '.join(res['labels_added'])}" if res["labels_added"] else ""))
+
+
+@app.command("frames-to-video")
+def frames_to_video(project: Path = typer.Argument(..., exists=True, file_okay=False, help="Project folder."),
+                    task: list[str] = typer.Option(None, "--task", help="Only this task (name); default: every video task.")):
+    """Read a project's video frames straight from the videos instead of stored image files: the same frames and
+    labels, a fraction of the space. The old files move to <projects>/_old_frames/<project>/ (delete it when happy)."""
+    from engine.project import Project
+    p = Project(project)
+    old_to = project.parent / "_old_frames" / project.name
+    todo = [t for t in p.sources if t["kind"] == "video" and t.get("format") != "video" and (not task or t["name"] in task)]
+    freed = 0
+    for t in todo:
+        res = p.frames_to_video(t["id"], old_to)
+        freed += res["freed"]
+        typer.echo(f"{res['task']}: {res['frames']} frames now read from the video; {res['freed'] / 2**20:.0f} MB of files moved out")
+    p.set_meta(frame_format="video")
+    typer.echo(f"{len(todo)} tasks, {freed / 2**30:.1f} GB can be freed: delete {old_to}" if todo else "nothing to change")
 
 
 account_app = typer.Typer(help="Accounts of the local app: each keeps its settings and projects folder.", no_args_is_help=True)

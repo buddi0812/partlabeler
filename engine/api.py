@@ -111,7 +111,7 @@ def describe(t: dict) -> str:
         parts += [f"{i['fps']:g} fps" if i.get("fps") else None, f"{int(d // 60)}:{int(d % 60):02d}" if d else None,
                   (i.get("codec") or "").upper() or None, mb(i.get("size"))]
         kept = f"{i['kept']} frames kept (every {t.get('every', 1)}), " if i.get("kept") is not None else ""
-        store = "lossless WebP" if t.get("format") == "webp" else "JPEG"
+        store = {"webp": "lossless WebP", "video": "read from the video"}.get(t.get("format"), "JPEG")
         return ", ".join(p for p in parts if p) + (f"; {kept}{store} {mb(i.get('stored'))}" if kept else "")
     parts += [f"{i.get('images', 0)} images", "mixed sizes" if i.get("mixed_sizes") else None, mb(i.get("size"))]
     return ", ".join(p for p in parts if p)
@@ -195,8 +195,7 @@ class Session:
 
     def item_msg(self, item: int):
         it = self.p.items[item]
-        with Image.open(it["path"]) as im:
-            w, h = im.size
+        w, h = self.p.image_size(item)
         boxes = self.p.boxes(item)
         if self.p.task == "segment":
             rles = self.p.masks(item)
@@ -210,8 +209,7 @@ class Session:
         return msg
 
     def _size(self, item: int):
-        with Image.open(self.p.items[item]["path"]) as im:
-            return im.size
+        return self.p.image_size(item)
 
     def refresh(self, item: int):
         self.send(self.item_msg(item))
@@ -746,9 +744,7 @@ class Session:
     def thumb_image(self, of: str, key: int) -> Image.Image:
         """A grid thumbnail: the image, or a square around the part with some context."""
         if of == "images":
-            with Image.open(self.p.items[key]["path"]) as im:
-                im.draft("RGB", (THUMB * 2, THUMB * 2))           # JPEG: decode at a fraction of full size
-                img = im.convert("RGB")
+            img = self.p.thumbnail(key, THUMB)
         else:
             item, box, *_ = self._parts()[key]
             img = self._crop(self._frame_image(item), box)
@@ -824,7 +820,9 @@ class Session:
                     batch = todo[s:s + 64]
                     imgs = []
                     for k in batch:
-                        if of == "images":
+                        if of == "images" and self.p.items[keys[k]].get("video"):
+                            imgs.append(self.p.image(keys[k]))
+                        elif of == "images":
                             with Image.open(self.p.items[keys[k]]["path"]) as im:
                                 im.draft("RGB", (448, 448))
                                 imgs.append(im.convert("RGB"))

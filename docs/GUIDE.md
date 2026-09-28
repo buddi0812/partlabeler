@@ -53,7 +53,7 @@ belongs to your account.
 - **Annotating and export**: **Frames per track** (how far T and R track; the annotator also remembers the
   number you type there), **Brush size** for outlines (the annotator remembers the slider too), the **Export
   format** picked first in export dialogs and whether **Confirmed frames only** starts ticked.
-- **New tasks**: the starting **Frame step**, **Image quality**, **Lossless frames** and **Segment size** of
+- **New tasks**: the starting **Frame step**, **Image quality**, **Frame storage** (for new projects) and **Segment size** of
   Create a new task.
 - **Projects folder**: where your projects are kept. Type a full path (or **Browse…**) and click **Use this
   folder**. With **Move everything in the current folder there** ticked, your projects, trash, backups and Teach
@@ -121,7 +121,8 @@ Transfer, the notifications (the bell, or the N key) and the Trash, where moved 
    paste; **Load from classes.txt / data.yaml…** adds the names from a file. Names starting with `left_` /
    `right_` are treated as mirror twins. Classification projects may start with no labels: you name them while
    sorting.
-4. Optional, under **Advanced configuration**: the default way this project's video frames are stored.
+4. Optional, under **Advanced configuration**: how this project keeps its videos' frames: **In the video** (default:
+   no copies, the video's own pixels), **JPEG files** or **Lossless WebP files** (see Frames and disk space).
 5. **Submit & Open** creates it and opens its page; **Submit & Continue** creates it and stays, for the next one.
 
 ## The project page
@@ -149,8 +150,8 @@ On the project page, click **+ Create a new task** (or **Create multi tasks**).
   its own folders; tasks without one go to `default`.
 - The project's labels are used.
 - **Select files**: **Add a video…** or **Add an image folder…** (or type a path and press Enter).
-- **Advanced configuration**: **Image quality** (JPEG quality of a video's stored frames, 95 by default) or
-  **Lossless frames** (exact pixels, about twice the space); **Frame step** (keep every Nth frame); **Start
+- **Advanced configuration**: **Frames** (In the video, JPEG files or Lossless WebP files; the project's choice by
+  default) and **Image quality** (for JPEG files, 95 by default); **Frame step** (keep every Nth frame); **Start
   frame** and **Stop frame**; **Segment size** (frames per job; empty: one job for the task); **Sorting method**
   for an image folder (lexicographical or natural, so `img2` comes before `img10`).
 - **Submit & Open** makes the task and opens its page; **Submit & Continue** stays for the next task.
@@ -158,11 +159,19 @@ On the project page, click **+ Create a new task** (or **Create multi tasks**).
 From the command line: `python -m engine.cli add projects/<name> --video line3.mp4 --subset Train
 --segment-size 200` (see `--help` for the rest). On Colab, list several paths in Step 6's SOURCE.
 
-**Frames and disk space.** A video's frames are stored when the task is made: JPEG (visually lossless at quality
-95) or lossless WebP (exact decoded pixels, about twice the space). Truly lossless images are always larger than
-JPEG, so that is the trade. Exports never copy the stored frames: they link to them (a hard link on the same
-drive), so an export takes almost no extra space and its images are identical to what you labeled. If you edit
+**Frames and disk space.** By default a video task keeps no image files at all: its frames are read straight from
+the video (**In the video**), so they are exactly the video's own pixels, the task is ready in seconds and it takes no
+extra space (the video is hard-linked into the project on the same drive, copied from another drive). A frame loads
+in about 10–50 ms. Stored image files are the other choices: **JPEG files** (visually lossless at quality 95) or
+**Lossless WebP files** (exact pixels); both take many times the video's own size (a video compresses across frames,
+images cannot) and WebP is slow to make. Exports write image files: frames read from the video are saved as JPEG
+quality 95; stored frames are linked (a hard link on the same drive), so they take almost no extra space. If you edit
 exported images in place, edit a copy, since they share the file with the project.
+
+**Switching an older project to its videos**: **Actions → Read frames from the videos** on the project page (it shows
+how much space it frees). The same frames, numbers and labels; the pixels are checked first; open annotators reload
+by themselves. The old image files move to `_old_frames/<project>` in your projects folder: delete that folder when
+you are happy. Command line: `python -m engine.cli frames-to-video projects/<name>`.
 
 ## The task page and its jobs
 

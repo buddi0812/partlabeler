@@ -258,12 +258,13 @@ def trash_project(args):
       "Runs as a job; returns it (wait with wait_s or get_job).", ["project", "sources"], project=PROJECT,
       sources=A("Paths of videos or image folders on this computer", {"type": "string"}),
       name=S("Task name (several sources: may use {{file_name}} and {{index}})"), subset=S("Train, Validation, Test…"),
-      every=I("Keep every Nth video frame (default 5)", minimum=1), lossless=B("Store frames losslessly (WebP)"),
+      every=I("Keep every Nth video frame (default 5)", minimum=1),
+      frames=S("How video frames are kept: video (read from the video, no copies; default) | jpg | webp", enum=["video", "jpg", "webp"]),
       quality=I("JPEG quality 5–100 (default 95)"), start=I("First video frame"), stop=I("Last video frame"),
       segment_size=I("Frames per job (default: one job per task)"), sorting=S("Image folders: lexicographical | natural"),
       wait_s=WAIT)
 def add_tasks(args):
-    body = {k: args[k] for k in ("sources", "name", "subset", "every", "lossless", "quality", "start", "stop",
+    body = {k: args[k] for k in ("sources", "name", "subset", "every", "frames", "quality", "start", "stop",
                                  "segment_size", "sorting") if args.get(k) is not None}
     jid = H.create_tasks(str(args["project"]), body)["job"]
     return _wait(jid, float(args.get("wait_s") or 0))
@@ -309,8 +310,7 @@ def get_frame(args):
     item = _item(p, args)
     img, scale, (ox, oy) = _render(p, item, args.get("overlay", True) is not False, args.get("crop"),
                                    args.get("max_side") or 1280)
-    with Image.open(p.items[item]["path"]) as im:
-        w, h = im.size
+    w, h = p.image_size(item)
     return {**_where(p, item), "width": w, "height": h, "image_scale": round(scale, 4), "image_origin": [ox, oy],
             "note": "image pixel (u, v) = frame pixel (origin + (u, v) / image_scale)",
             "confirmed": p.is_reviewed(item), "status": STATUS[p.statuses()[item]], "parts": _parts(p, item),
@@ -531,6 +531,12 @@ def export(args):
             "reviewed_only": bool(args.get("confirmed_only")), "save_images": args.get("save_images", True) is not False,
             "name": args.get("name")}
     return _wait(H.export_dataset(str(args["project"]), body)["job"], float(args.get("wait_s") or 300))
+
+
+@tool("Read a project's video frames straight from its videos instead of stored image files (same frames and labels, "
+      "a fraction of the space; the old files move to the _old_frames folder).", ["project"], project=PROJECT, wait_s=WAIT)
+def frames_to_video(args):
+    return _wait(H.frames_to_video(str(args["project"]))["job"], float(args.get("wait_s") or 300))
 
 
 @tool("Back up a project, or one task, as a zip with frames, labels and progress (into the _backups folder).",

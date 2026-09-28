@@ -34,11 +34,12 @@ DEFAULTS = {
     "confirmed_only": False,   # export only confirmed frames, ticked by default
     "every": 5,                # new tasks: keep every Nth video frame
     "quality": 95,             # new tasks: JPEG quality
-    "lossless": False,         # new tasks: lossless WebP frames
+    "frames": "video",         # new projects: video frames read from the video (or stored as jpg / webp files)
     "segment_size": 0,         # new tasks: frames per job (0 = one job)
     "projects": "",            # projects folder ("" = the app's default folder)
 }
-CHOICES = {"theme": ("light", "dark", "system"), "accent": ACCENTS, "export_format": EXPORT_FORMATS}
+CHOICES = {"theme": ("light", "dark", "system"), "accent": ACCENTS, "export_format": EXPORT_FORMATS,
+           "frames": ("video", "jpg", "webp")}
 RANGES = {"track_n": (1, 10000), "brush": (1, 120), "every": (1, 1000), "quality": (5, 100), "segment_size": (0, 1000000)}
 USERNAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,31}$")
 MIN_PASSWORD = 8

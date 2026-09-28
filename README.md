@@ -17,7 +17,8 @@ Labeling itself trains nothing. You click, the models outline, track, group and 
 | **Image folder** | The same screen, one image at a time. **Suggest** proposes boxes that look like parts you already labeled (DINOv3 matching). **Find similar** finds more copies of a selected part in the same image (SAM 3). |
 | **Segmentation** | A segmentation project labels exact shapes instead of boxes: every click, box, track, suggestion and Find similar keeps SAM 3's mask, and a brush and eraser fix the edges; the smart brush and smart eraser ask SAM 3 where the part is, so rough strokes stop at its edge. Exports polygons or masks in all five formats; **Outline boxes** turns imported boxes into outlines. |
 | **Classification** | One class per image, on a grid of pictures. **Group by look** puts look-alikes together (DINOv3) so a whole group is named at once, **Suggest classes** proposes classes from a few examples and leaves pictures that look unlike every class alone, and **Check labels** finds labels that disagree with their look-alikes. Exports class folders, Ultralytics classification folders or a CSV. The same grid sorts the parts of an object detection or segmentation project (**Sort parts**): label everything as `part`, then name the groups. |
-| **Projects, tasks, jobs** | Organised like CVAT: a project (type + labels with colours) holds tasks, one video or image folder each, with a subset (Train / Validation / Test), frame step, start/stop frame and image quality or lossless frames; each task shows its resolution, frame rate, length, codec and size, and is split into jobs with a stage and state. The annotator opens one job. Export the project, a task or a job (subsets become folders), upload annotations into a task, and back up or restore a whole project as one zip. |
+| **Projects, tasks, jobs** | Organised like CVAT: a project (type + labels with colours) holds tasks, one video or image folder each, with a subset (Train / Validation / Test), frame step, start/stop frame, and frames read straight from the video (the default: no image copies, the video's own pixels, ready in seconds) or stored as JPEG or lossless files; each task shows its resolution, frame rate, length, codec and size, and is split into jobs with a stage and state. The annotator opens one job. Export the project, a task or a job (subsets become folders), upload annotations into a task, and back up a whole project or one unfinished task as a zip that opens on another computer or joins another project. |
+| **AI apps and scripts** | Every feature is also an API tool (28 of them: projects, tasks, frames with numbered parts, SAM 3 clicks, boxes and text search, tracking, confirming, export, backup). Claude Code, opencode, Gemini CLI or Cursor connect to its MCP endpoint and work in the app with you, live and undoable; scripts call the same tools as JSON. Each program gets its own revocable token. |
 | **Teach & Transfer** | For a video that is already labeled: it learns those labels by training a detector (RF-DETR) on your machine and proves the result on held-out frames. It then labels other similar videos or image folders in the same format, listing frames to check (including label flips and brief misses along tracks). A *quick transfer* skips training and matches the labeled examples instead: a rough first pass (about 70% of parts found on similar frames), not a replacement. Check the results in the annotator. |
 
 The worked example throughout is a car-front lamp dataset. Nothing in the tool is specific to cars.
@@ -58,13 +59,18 @@ Start the app (`run_windows.bat`, `./run.sh` or `python -m engine.cli app`). It 
 the first time, create your account (it stays on this computer and keeps your settings, theme and projects
 folder; teammates sharing the computer add their own). The start screen is where you can:
 
-- **create a project**: name it, pick a video (every Nth frame is kept) or an image folder, and type the
-  class names or load them from `classes.txt` / `data.yaml`. You can also import existing YOLO labels to
-  review or finish, and set a *parent object*, the thing the parts sit on (for example "engine block").
-  Suggestions then search inside it, which helps when the camera or distance changes;
-- **open a project** to annotate;
-- let **AI apps drive it**: Claude Code, opencode, Gemini CLI or Cursor connect to its MCP endpoint
-  (`/mcp`) with a token from Settings → API access, and scripts call `/api/tools/<name>`; every feature is a tool;
+- **create a project**: a name, the type (object detection, segmentation or classification; fixed per project)
+  and its labels with colours (type them, or load `classes.txt` / `data.yaml`). On the project page, **+ Create a
+  new task** adds a video (every Nth frame is kept, JPEG or lossless) or an image folder; **Create multi tasks**
+  adds several at once; **Upload annotations** brings existing YOLO labels into a task to review or finish;
+  **Import task…** continues a task someone backed up elsewhere;
+- **open a task's job** to annotate. In the annotator's Settings you can set a *parent object*, the thing the
+  parts sit on (for example "engine block"): Suggest then searches inside it, which helps when the camera or
+  distance changes;
+- let **AI apps drive it**: create a token in Settings → API access, which also shows the setup line for Claude
+  Code, opencode, Gemini CLI and Cursor (for example `claude mcp add --transport http partlabeler
+  http://127.0.0.1:8765/mcp --header "Authorization: Bearer <token>"`); scripts call `/api/tools/<name>` with the
+  same header (`GET /api/tools` lists every tool). What a program does shows up live in the app and Ctrl+Z undoes it;
 - open **Settings** (the round account button, top right): light, dark or system theme, colour palettes,
   animations, Rivet and pop-ups on or off, default track length, brush size, export format and new-task values,
   and your projects folder (it can move your projects there);
@@ -80,11 +86,13 @@ from [Google AI Studio](https://aistudio.google.com/apikey): set `GEMINI_API_KEY
 typed question, the chat so far and which screen you are on; never images, labels, project or class names. Its
 "Did you know?" tips are fixed text, and without a key Rivet answers from the [user guide](docs/GUIDE.md).
 
-Projects live in `projects/` (change it with `--home`). Everything is saved as you go; the header says
+Projects live in `projects/` next to the app unless you choose otherwise: per computer with `--home <folder>`,
+the PARTLABELER_HOME variable or `{"home": "D:\\labeling"}` in `~/.partlabeler/app.json` (for example to use a
+bigger drive), and per account in Settings → Projects folder. Everything is saved as you go; the header says
 *All changes saved*. The bell (or <kbd>N</kbd>) opens the notification history, shared by the start screen and
 every open project: what was created, confirmed, deleted, tracked, exported or went wrong, with shortcuts such as
 *Go to frame*, *Open folder* or *Restore*. A project's ⋯ menu offers *Show in folder* and *Move to trash*; trashed
-projects stay restorable from the Trash list on the start screen (they are kept in `projects/_trash/`).
+projects stay restorable from the Trash list on the start screen (they are kept in the projects folder's `_trash/`).
 
 ### Annotator keys
 
@@ -128,6 +136,7 @@ python -m engine.cli backup projects/line2                               # one z
 python -m engine.cli backup projects/line2 --task line3                  # one unfinished task; continue it with:
 python -m engine.cli import-task projects/other projects/_backups/task_line2_line3_backup_<time>.zip
 python -m engine.cli account reset ana                                   # forgotten password (also: account list | remove)
+python -m engine.cli account token ana --label "my script"               # an API token for a program (shown once)
 python -m engine.cli teach data/line2_labeled --run projects/_teach/line2_v1 --parent "engine block"
 python -m engine.cli transfer projects/_teach/line2_v1 line3.mp4 line4.mp4 --out projects/_teach/line2_v1/labels
 python -m engine.cli quick data/line2_labeled line3.mp4 --run projects/_teach/quick_line2   # no training, rough preview

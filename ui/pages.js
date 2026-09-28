@@ -366,10 +366,13 @@ export function page(root, args) {
         .sort((a, b) => sort === "name" ? a.name.localeCompare(b.name) : sort === "updated" ? String(b.updated || "").localeCompare(String(a.updated || "")) : sort === "subset" ? (a.subset || "~").localeCompare(b.subset || "~") : a.id - b.id);
       const groups = d.subsets.length ? [...new Set(tasks.map((t) => t.subset || ""))].sort((a, b) => (a || "~").localeCompare(b || "~")) : [null];
       const totals = { done: 0, total: 0 }; d.tasks.forEach((t) => { totals.done += t.done; totals.total += t.total; });
+      const stored = d.tasks.filter((t) => t.kind === "video" && t.format !== "video").reduce((n, t) => n + ((t.info || {}).stored || 0), 0);
       main.innerHTML = `<div class="pg-bar"><a class="pg-back" href="/">‹ Back to projects</a><span class="pg-sp"></span>
           <details class="h-menu" style="position:relative;top:auto;right:auto"><summary style="width:auto;padding:0 12px;border:1px solid var(--line);background:var(--paper)">Actions ▾</summary><div class="h-menu-list">
             <button type="button" data-pa="export">Export dataset</button><button type="button" data-pa="backup">Backup project</button>
-            <button type="button" data-pa="folder">Show in folder</button><button type="button" class="danger" data-pa="trash">Move to trash…</button></div></details></div>
+            <button type="button" data-pa="folder">Show in folder</button>
+            ${stored ? `<button type="button" data-pa="to-video">Read frames from the videos (frees ${esc(size(stored))})…</button>` : ""}
+            <button type="button" class="danger" data-pa="trash">Move to trash…</button></div></details></div>
         <div><div class="pg-title"><h1 translate="no">${esc(d.name)}</h1><span class="h-chip">${esc(TASKS[d.task] || d.task)}</span></div>
           <p class="pg-meta">Created ${esc(when(d.created))} · ${d.tasks.length} task${d.tasks.length === 1 ? "" : "s"} · ${d.items} frames or images · ${totals.done} of ${totals.total} jobs done</p></div>
         <section class="pg-section h-panel"><h2>Labels <small>${d.labels.length}</small></h2>
@@ -419,6 +422,19 @@ export function page(root, args) {
             pollNotes(); };
           wait();
         } catch (err) { toast({ level: "error", title: "Could not add the task", detail: err.message }); }
+      } else if (a === "to-video") {
+        if (!(await ask("Read the frames from the videos?", "The same frames, pixels and labels, read straight from each task's video "
+          + "instead of stored image files. The old files move to the _old_frames folder in your projects folder; delete it "
+          + "when you are happy. Open annotators reload by themselves.", "Switch"))) return;
+        try {
+          const { job } = await api(`/api/projects/${enc(name)}/frames-to-video`, {});
+          toast({ title: "Switching to the videos…", detail: "A notification says how much space you can free when it is done." });
+          const wait = async () => { const j = await api(`/api/jobs/${job}`).catch(() => null);
+            if (j && !j.finished) return setTimeout(wait, 1000);
+            if (j?.error) toast({ level: "error", title: "Could not switch", detail: j.error }); else await reload();
+            pollNotes(); };
+          wait();
+        } catch (err) { toast({ level: "error", title: "Could not switch", detail: err.message }); }
       } else if (a === "edit-labels") { editing = true; render(); }
       else if (a === "cancel-labels") { editing = null; render(); }
       else if (a === "save-labels") {
@@ -453,8 +469,10 @@ export function page(root, args) {
             <input type="text" class="pg-path" placeholder="or type a path and press Enter" aria-label="Path of a video or image folder"></div>
           <small>${multi ? "Add several: each becomes a task." : "One video or one image folder."}</small></div></section>
         <details class="h-panel h-more"><summary>Advanced configuration</summary><div class="pg-two" style="margin-top:14px">
-          <label class="h-field"><span>Image quality</span><input type="number" name="quality" min="5" max="100" value="${prefs().quality || 95}"><small>JPEG quality of a video's frames, 5–100.</small></label>
-          <label class="h-check-row" style="align-self:center"><input type="checkbox" name="lossless" ${d.frame_format === "webp" || prefs().lossless ? "checked" : ""}> Lossless frames<small>Exact pixels, about twice the space.</small></label>
+          <label class="h-field"><span>Frames</span><select name="frames">${[["video", "In the video (no copies)"], ["jpg", "JPEG files"], ["webp", "Lossless WebP files"]]
+            .map(([v, t]) => `<option value="${v}"${v === (d.frame_format || "video") ? " selected" : ""}>${t}</option>`).join("")}</select>
+            <small>How a video's frames are kept. In the video: the video's own pixels, no extra space, ready in seconds.</small></label>
+          <label class="h-field"><span>Image quality</span><input type="number" name="quality" min="5" max="100" value="${prefs().quality || 95}"><small>JPEG files only: quality 5–100.</small></label>
           <label class="h-field"><span>Frame step</span><input type="number" name="every" min="1" value="${prefs().every || 5}"><small>Keep every Nth frame of a video.</small></label>
           <label class="h-field"><span>Start frame</span><input type="number" name="start" min="0" placeholder="first"></label>
           <label class="h-field"><span>Stop frame</span><input type="number" name="stop" min="0" placeholder="last"></label>
@@ -484,7 +502,7 @@ export function page(root, args) {
       f.querySelectorAll("button[type=submit]").forEach((x) => (x.disabled = true));
       try {
         const { job } = await api(`/api/projects/${enc(name)}/tasks`, { sources: files, name: f.name.value.trim(), subset: f.subset.value.trim(),
-          quality: f.quality.value, lossless: f.lossless.checked, every: f.every.value, start: f.start.value, stop: f.stop.value,
+          quality: f.quality.value, frames: f.frames.value, every: f.every.value, start: f.start.value, stop: f.stop.value,
           segment_size: f.segment.value, sorting: f.sorting.value });
         followJob(job, main.querySelector(".pg-job"), {
           onDone: (res) => {
@@ -508,7 +526,7 @@ export function page(root, args) {
         ["Duration", d ? `${Math.floor(d / 60)}:${String(Math.floor(d % 60)).padStart(2, "0")}` : "?"], ["Codec", i.codec ? i.codec.toUpperCase() : "?"],
         ["File size", mb(i.size) || "?"], ["Frames in the video", i.frames ?? "?"], ["Frame step", `every ${t.every}`],
         ["Start / stop frame", `${t.start ?? "first"} / ${t.stop ?? "last"}`], ["Frames kept", t.frames],
-        ["Stored as", t.format === "webp" ? `lossless WebP, ${mb(i.stored)}` : `JPEG quality ${t.quality}, ${mb(i.stored)}`]]
+        ["Stored as", t.format === "video" ? `read from the video (${mb(i.stored)}, no image files)` : t.format === "webp" ? `lossless WebP, ${mb(i.stored)}` : `JPEG quality ${t.quality}, ${mb(i.stored)}`]]
         : [["Source", t.source], ["Resolution", i.width ? `${i.width} × ${i.height}${i.mixed_sizes ? " (mixed sizes)" : ""}` : "?"], ["Images", t.frames],
            ["Size", mb(i.size) || "?"], ["Sorting method", t.sorting || "lexicographical"]];
       main.innerHTML = `<div class="pg-bar"><a class="pg-back" href="/projects/${enc(name)}">‹ Back to project</a><span class="pg-sp"></span>
@@ -602,7 +620,8 @@ export function page(root, args) {
       <section class="h-panel st-sec" id="tasks"><h2>New tasks</h2><p class="h-sub">The starting values of Create a new task; each task can still change them.</p>
         ${num("every", "Frame step", "Keep every Nth frame of a video.", 1, 1000)}
         ${num("quality", "Image quality", "JPEG quality of a video's stored frames, 5 to 100.", 5, 100)}
-        ${sw("lossless", "Lossless frames", "Exact pixels as WebP, about twice the disk space.")}
+        <label class="st-row"><span><b>Frame storage (new projects)</b><small>In the video: no copies, the video's own pixels. JPEG or lossless WebP files take 10–20x the video's space.</small></span>
+          <select data-pref="frames">${[["video", "In the video"], ["jpg", "JPEG files"], ["webp", "Lossless WebP files"]].map(([v, t]) => `<option value="${v}"${v === P.frames ? " selected" : ""}>${t}</option>`).join("")}</select></label>
         ${num("segment_size", "Segment size", "Frames per job; 0 makes one job per task.", 0, 1000000)}</section>
 
       <section class="h-panel st-sec" id="storage"><h2>Projects folder</h2>
