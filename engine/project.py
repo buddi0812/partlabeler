@@ -678,10 +678,20 @@ class Project:
             self.db.execute("DELETE FROM boxes WHERE item=? AND obj=?", (item, obj))
             self._touch([item])
 
-    def set_class(self, obj: int, cls: int) -> None:
+    def set_class(self, obj: int, cls: int, item: int | None = None) -> None:
+        """A part's class on every item, or on one item only (a part that changes look: its state there)."""
         with self.db:
-            self.db.execute("UPDATE boxes SET cls=? WHERE obj=?", (cls, obj))
-            self._touch(self.items_with(obj))
+            if item is None:
+                self.db.execute("UPDATE boxes SET cls=? WHERE obj=?", (cls, obj))
+                self._touch(self.items_with(obj))
+            else:
+                self.db.execute("UPDATE boxes SET cls=? WHERE obj=? AND item=?", (cls, obj, item))
+                self._touch([item])
+
+    def same_part(self, a: int, b: int) -> bool:
+        """Classes a and b are states of one part (project "states")."""
+        names = {self.classes[a], self.classes[b]}
+        return a != b and any(names <= set(g) for g in self.meta.get("states") or [])
 
     def set_reviewed(self, item: int, value: bool = True) -> None:
         with self.db:
@@ -1223,6 +1233,8 @@ class VideoFrames:
 
     def frame(self, pts: int) -> Image.Image:
         with self.lock:
+            if getattr(self, "held", (None,))[0] == pts:          # the frame just read, asked for again
+                return self.held[1].copy()
             for fresh in (False, True):
                 if self.c is None or fresh:
                     if self.c is not None:
@@ -1237,7 +1249,8 @@ class VideoFrames:
                 for fr in self.frames:
                     self.last = fr.pts
                     if fr.pts == pts:
-                        return fr.to_image()
+                        self.held = (pts, fr.to_image())
+                        return self.held[1].copy()
                     if fr.pts is not None and fr.pts > pts:
                         break
                 self.frames = None

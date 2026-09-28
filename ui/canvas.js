@@ -39,9 +39,10 @@ const CSS = `
 .pl button.primary:hover:not(:disabled) { background:var(--accent-ink); }
 .pl button.icon { padding:5px 8px; }
 .pl :focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
-.pl select, .pl input[type=number], .pl input[type=text], .pl input[type=search] { font:inherit; font-size:13.5px; border:1px solid var(--line);
+.pl select, .pl input[type=number], .pl input[type=text], .pl input[type=search], .pl .pl-states { font:inherit; font-size:13.5px; border:1px solid var(--line);
   border-radius:7px; padding:4px 7px; background:var(--panel); color:var(--ink); }
 .pl input[type=number] { width:64px; font-variant-numeric:tabular-nums; }
+.pl .pl-states { resize:vertical; min-height:44px; }
 .pl-main { display:grid; grid-template-columns:minmax(0,1fr) 300px; gap:10px; min-height:0; }
 .pl-stage { position:relative; background:#0d1217; border-radius:10px; overflow:hidden; display:flex; align-items:center; justify-content:center; min-height:320px; }
 .pl-stage canvas { max-width:100%; max-height:calc(100vh - 250px); display:block; cursor:crosshair; transform-origin:0 0; }
@@ -830,6 +831,10 @@ function render({ model, el }) {
             <input type="text" class="pl-parent" name="parent-object" autocomplete="off" placeholder="Optional, e.g. engine block…"></label>
           <span class="pl-src pl-parentf">What the parts sit on. Suggestions then search inside it, which helps when the camera or distance changes.
             Leave empty to search the whole image.</span>
+          <label class="pl-field pl-parentf">Parts that change look
+            <textarea class="pl-states" name="part-states" rows="2" autocomplete="off" spellcheck="false" placeholder="e.g. bright, dim"></textarea></label>
+          <span class="pl-src pl-parentf">Classes that are states of one part, one part per line (e.g. a lamp that is bright or dim).
+            Tracking then gives each frame the state its confirmed examples match. With left_/right_ classes, the shared name covers both sides.</span>
           <div class="pl-tools" style="margin-top:8px"><button type="button" data-b="saveSettings">Save settings</button></div>
           <p class="pl-src pl-device"></p><p class="pl-src pl-version"></p></details>
       </aside>
@@ -1116,6 +1121,7 @@ function render({ model, el }) {
     if (keep) fmt.value = keep;
     else if ((S.project.formats || []).includes(PREFS.export_format)) fmt.value = PREFS.export_format;
     $(".pl-parent").value = S.project.parent || "";
+    $(".pl-states").value = S.project.states || "";
     $(".pl-typeline").textContent = `Project type: ${TASK_NAMES[S.project.task] || "Object detection"} (chosen when the project was made; its exports follow it).`;
     $(".pl-type").textContent = TASK_NAMES[S.project.task] || "Object detection";
     $(".pl-revonly").closest("label").hidden = classify();              // suggested classes are never exported
@@ -1241,7 +1247,7 @@ function render({ model, el }) {
              ...(scope === "job" && j ? { jobs: [j.id] } : scope === "task" && j ? { tasks: [j.task] } : {}) });
     },
     exportJump: () => { flash($(".pl-export")); $(".pl-fmt").focus(); },   // the controls sit below a possibly long class list
-    saveSettings: () => send({ type: "settings", parent: $(".pl-parent").value }),
+    saveSettings: () => send({ type: "settings", parent: $(".pl-parent").value, states: $(".pl-states").value }),
     sortParts: () => openGrid("parts"),
     finishJob: () => { const j = curJob(); if (j) { send({ type: "job_state", job: j.id, stage: "acceptance", state: "completed" }); $(".pl-jobmenu").open = false; } },
     prevJob: () => { const k = jobs().indexOf(curJob()); if (k > 0) openJob(jobs()[k - 1].id); },

@@ -6,6 +6,12 @@
 - Core principle: the output is the annotated dataset. Interactive annotation must work with no model training; the in-tool detector ("Boost") is opt-in, off by default, never auto-started. Ask before any training run outside Teach & Transfer.
 - Key constraints from research:
   - Use SAM 3 via Hugging Face `transformers` (`Sam3TrackerVideoModel`, `Sam3Model`), not Meta's repo (Windows/T4 problems). SAM 3 exemplar boxes only work on the frame they're drawn on — cross-frame discovery is DINOv3-based.
+  - SAM 3.1 Object Multiplex (`Tracker31`) is an opt-in tracker ("tracker": "sam3.1" in app.json) through
+    `engine/vendor/muggled_sam` (Apache-2.0, pinned, unmodified; weights `sam3.1_multiplex.pt` from a hash-pinned
+    mirror, `torch.load(weights_only=True)`): 1.7x faster at 4 parts, but an outline ballooned in S19-S22 where SAM 3
+    held, so SAM 3 HF `Tracker` stays the default (`make_tracker`).
+  - Parts that change look (project.json `states`, `engine/states.py`, S16): tracking picks each frame's state class
+    from person-vouched examples in the task; a class change between states touches one frame only.
   - No Gradio: Colab free tier forbids web-UI-first use. UI = one `ui/canvas.js` served by FastAPI locally and by anywidget in notebooks.
   - Laya / Laya Vision / openjev were measured as box checkers and are not used (S4b, S4c in `spikes/REPORT.md`); review flags come from `Project.flags` (area vs the person's box, jumps, lost parts). PyPI `laya` and the laya-vision fork share a package name: never install both.
   - Chunk video sessions (~180 frames), offload state to CPU, fully tear down sessions (VRAM leak, sam3 issue #305).

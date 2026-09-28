@@ -13,7 +13,7 @@ Labeling itself trains nothing. You click, the models outline, track, group and 
 
 | Mode | What it does |
 |---|---|
-| **Video** | Click or box each part on one frame. The boxes are tracked ahead or back (SAM 3) in the style you drew them. Frames where a box jumped, changed size or went missing are marked *to check*. You fix and confirm, then export. |
+| **Video** | Click or box each part on one frame. The boxes are tracked ahead or back (SAM 3) in the style you drew them. Parts that change look (a lamp bright or dim) get the right state class on every frame. Frames where a box jumped, changed size or went missing are marked *to check*. You fix and confirm, then export. |
 | **Image folder** | The same screen, one image at a time. **Suggest** proposes boxes that look like parts you already labeled (DINOv3 matching). **Find similar** finds more copies of a selected part in the same image (SAM 3). |
 | **Segmentation** | A segmentation project labels exact shapes instead of boxes: every click, box, track, suggestion and Find similar keeps SAM 3's mask, and a brush and eraser fix the edges; the smart brush and smart eraser ask SAM 3 where the part is, so rough strokes stop at its edge. Exports polygons or masks in all five formats; **Outline boxes** turns imported boxes into outlines. |
 | **Classification** | One class per image, on a grid of pictures. **Group by look** puts look-alikes together (DINOv3) so a whole group is named at once, **Suggest classes** proposes classes from a few examples and leaves pictures that look unlike every class alone, and **Check labels** finds labels that disagree with their look-alikes. Exports class folders, Ultralytics classification folders or a CSV. The same grid sorts the parts of an object detection or segmentation project (**Sort parts**): label everything as `part`, then name the groups. |
@@ -213,7 +213,9 @@ Colab's free tier disallows "bypassing the notebook UI to interact primarily via
 | CPU only | fp32 | runs, but expect it to be slow (not benchmarked yet) |
 
 Set `PARTLABELER_DEVICE` (`cuda` / `cpu`) or `PARTLABELER_DTYPE` (`bf16` / `fp16` / `fp32`) to override.
-If the GPU runs out of memory while tracking, the chunk size is halved automatically.
+If the GPU runs out of memory while tracking, the chunk size is halved automatically. `"tracker": "sam3.1"` in
+`~/.partlabeler/app.json` (or `PARTLABELER_TRACKER=sam3.1`) tries SAM 3.1, which tracks all parts in one pass
+(about 1.7x as fast with 4 parts, half the memory) but lost a part in one test where SAM 3 did not.
 
 ## Tests
 

@@ -249,10 +249,16 @@ Press **C** to go back to click-to-outline. Hand-drawn boxes are useful for part
 Label every part on one frame, then press **T** (or **Ahead ▶**) to track those boxes ahead by the number of
 frames in the box next to it (20 by default); **Shift+T** tracks to the end. **R** / **◀ Back** tracks
 backwards and **Shift+R** tracks to the start. **X** or **Stop** stops a running job. Tracking uses SAM 3 and
-keeps the style of the boxes you drew. In a segmentation project tracking starts from each part's outline, so
-what you fixed by hand (a notch erased, an edge brushed) is what SAM 3 follows into the next frames; after
-fixing an outline, track again from that frame to redo the frames after it. Long videos are tracked in chunks, and if the GPU runs out of memory
-the chunk size is halved automatically.
+keeps the style of the boxes you drew. In a segmentation project tracking starts from each part's outline, so what
+you fixed by hand (a notch erased, an edge brushed) is what the tracker follows into the next frames; after fixing
+an outline, track again from that frame to redo the frames after it. Long videos are tracked in chunks, and if the
+GPU runs out of memory the chunk size is halved automatically. The done notice names the tracker used.
+
+*Faster tracking (optional):* SAM 3.1 follows all parts of a frame in one pass, so it barely slows down with more
+parts (about 1.7 times as fast as SAM 3 with 4 parts on an RTX 3060, using half the GPU memory; it downloads 3.5 GB
+the first time). In tests it sometimes lost a part where SAM 3 held on (the outline spread over the background; such
+frames are marked *to check*), so it is off by default. To try it, put `"tracker": "sam3.1"` in
+`~/.partlabeler/app.json` (or set `PARTLABELER_TRACKER=sam3.1`) and restart the app.
 
 **What tracking carries.** Tracking follows the parts on the frame you start from, and only those: a class that is
 not on that frame is not added further on (useful when parts come and go, such as lamps switching on and off: a
@@ -260,6 +266,18 @@ lamp that is off is not labeled as lit). Each part is steered by the nearest ear
 for it, that is drew it or confirmed the frame. Frames you confirmed are never changed by tracking. When a part
 appears later (a lamp lights up), label it on the first frame where it shows, or press **S** (Suggest) there to
 find it from your earlier examples, then track from that frame.
+
+**Parts that change look.** One part can have classes for its states: a lamp that is bright or dim, low or high
+beam, a light that is on or off. Tell the project in **Settings → Parts that change look**, one part per line with
+its states (for example `lamp_bright, lamp_dim` and on the next line `beam_low, beam_high`; any number of states;
+with left_/right_ classes the shared name covers both sides). Tracking then follows the part and gives every frame
+the state whose examples look nearest (brightness and colour inside the outline or box, and the glow around it),
+learning from the frames you drew or confirmed in the same task. So once each state has been labeled at least once
+in a task, a lamp that dims and brightens again switches class by itself (in tests on checked lamp outlines: 920 of
+922 frames and every switch right). Until a state has an example in the task, the part keeps its class: label it on
+the first frame where it shows, then re-track (**U**) from there. Right after a switch the outline can keep the old
+state's shape for a few frames: check the frames around a switch. Changing a part's class to another state of it (the class list, with the part selected) changes this
+frame only; any other class change applies to the part on every frame.
 
 **Re-track after a fix.** Fixed or relabeled a part, or deleted one, on a frame after tracking past it? Open **After
 this frame ▾** in the toolbar and choose **Re-track** (the next N frames, or to the end of the task), or press **U** /
@@ -375,8 +393,9 @@ nothing is overwritten. From the command line: `python -m engine.cli export proj
 In the annotator, open **Settings** at the bottom of the side panel (these belong to the project; your own
 preferences are on the Settings page of the account menu). The **parent object** is the thing the
 parts sit on (for example "engine block" or "circuit board"). When it is set, Suggest searches only inside
-it, which helps when the camera or distance changes. Leave it empty to search the whole image. The Settings
-section also shows the device (GPU or CPU) and GPU memory in use.
+it, which helps when the camera or distance changes. Leave it empty to search the whole image. **Parts that
+change look** lists classes that are states of one part (see *Track through a video*). The Settings section also
+shows the device (GPU or CPU) and GPU memory in use.
 
 ## Teach & Transfer: how it works
 

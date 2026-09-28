@@ -71,3 +71,19 @@ def test_confirmed_frames_steer_tracking_and_suggest_sees_every_class(tmp_path, 
         s.call({"type": "review", "item": k})
     refs = Suggester._refs(p, 1, max_refs=4)                                 # few refs: every class still in
     assert 7 in refs and len(refs) == 4
+
+
+def test_tracker_choice_and_fallback(tmp_path, monkeypatch):
+    from engine import tracker as T
+    monkeypatch.setenv("PARTLABELER_CONFIG", str(tmp_path))                  # no app.json: the default
+    monkeypatch.delenv("PARTLABELER_TRACKER", raising=False)
+    monkeypatch.setattr(T, "Tracker", lambda: "sam3")
+    monkeypatch.setattr(T, "Tracker31", lambda: "sam3.1")
+    assert T.make_tracker() == "sam3"
+    (tmp_path / "app.json").write_text('{"tracker": "sam3.1"}')
+    assert T.make_tracker() == "sam3.1"
+
+    def offline():
+        raise OSError("no internet for the first download")
+    monkeypatch.setattr(T, "Tracker31", offline)
+    assert T.make_tracker() == "sam3"

@@ -47,6 +47,7 @@ import numpy as np
 from PIL import Image
 
 from engine import masks as M
+from engine import states
 from engine.notify import Notifications
 
 MASK_RGBA = (10, 124, 120, 110)
@@ -78,8 +79,8 @@ def model(name: str, announce=None):
                 from engine.segmenter import Segmenter
                 _MODELS[name] = Segmenter()
             elif name == "track":
-                from engine.tracker import Tracker
-                _MODELS[name] = Tracker()
+                from engine.tracker import make_tracker
+                _MODELS[name] = make_tracker()
             elif name == "concept":
                 from engine.parent import ConceptFinder
                 _MODELS[name] = ConceptFinder()
@@ -183,6 +184,7 @@ class Session:
         return {"type": "project", "name": self.p.meta["name"], "kind": self.p.meta["kind"], "task": self.p.task,
                 "classes": self.p.classes, "count": len(self.p.items),
                 "names": [it["name"] for it in self.p.items], "parent": self.p.meta.get("parent") or "",
+                "states": states.text(self.p.meta.get("states") or [], self.p.classes),
                 "device": hw.describe(), "formats": list(self.p.formats), "task": self.p.task, "version": version,
                 "tasks": self.tasks_msg(), "frame_format": self.p.meta.get("frame_format", "jpg"),
                 "colors": [c or None for c in (self.p.meta.get("colors") or [])],
@@ -487,10 +489,14 @@ class Session:
         self.refresh(msg["item"])
 
     def on_set_class(self, msg):
-        self._remember(self.p.items_with(msg["obj"]), "class change")
-        self.p.set_class(msg["obj"], msg["cls"])
-        if "item" in msg:
-            self.refresh(msg["item"])
+        """A part's class, on all its items; between states of one part (project "states"), on this item only."""
+        item = msg.get("item")
+        now = next((b["cls"] for b in self.p.boxes(item) if b["obj"] == msg["obj"]), None) if item is not None else None
+        here = now is not None and self.p.same_part(now, msg["cls"])
+        self._remember([item] if here else self.p.items_with(msg["obj"]), "class change")
+        self.p.set_class(msg["obj"], msg["cls"], item if here else None)
+        if item is not None:
+            self.refresh(item)
 
     def on_review(self, msg):
         self._remember([msg["item"]], "confirm")
@@ -575,12 +581,19 @@ class Session:
             self.on_tag({"of": msg.get("of", "images"), "keys": msg["keys"], "cls": self.p.classes.index(name)})
 
     def on_settings(self, msg):
-        """Project settings (the parent object). The project type is chosen once, when the project is made."""
+        """Project settings (the parent object, parts that change look). The project type is chosen once, when the
+        project is made."""
         parent = (msg.get("parent") or "").strip() or None
-        self.p.set_meta(parent=parent)
+        try:
+            groups = states.parse(msg.get("states") or "", self.p.classes) if "states" in msg else self.p.meta.get("states") or []
+        except ValueError as e:
+            self.notify("error", "Settings not saved", f"Parts that change look: {e}")
+            return
+        self.p.set_meta(parent=parent, states=groups)
         self.send(self.project_msg())
         self.notify("success", "Settings saved",
-                    f"Parent object: {parent}" if parent else "Parent object: none (suggestions search the whole image)")
+                    (f"Parent object: {parent}" if parent else "Parent object: none (suggestions search the whole image)")
+                    + (f". {len(groups)} part{'s' if len(groups) != 1 else ''} that change look" if groups else ""))
 
     # ---- background jobs -----------------------------------------------------------------
     def _run(self, name, fn):
@@ -631,10 +644,11 @@ class Session:
 
         def job():
             t0, last_push = time.perf_counter(), 0.0
+            guide = states.Guide(self.p, start)                      # parts that change look get their state per frame
 
             def on_item(item, res):
                 nonlocal last_push
-                self.p.put_tracked(item, res, replace=redo)
+                self.p.put_tracked(item, guide.apply(item, res) if guide.examples else res, replace=redo)
                 done = abs(item - start)
                 if time.perf_counter() - last_push > 1.0 or done == total:
                     last_push = time.perf_counter()
@@ -646,7 +660,8 @@ class Session:
                 n = self._model("track").track(self.p, start, count, on_item, lambda: self.stop_flag, direction,
                                                masks=self.outlines_on)
             self.notify("success", f"{'Re-tracked' if redo else 'Tracked'} {n} frames {'back' if direction < 0 else 'ahead'}",
-                        f"From {self._frame(start)} in {time.perf_counter() - t0:.0f} s. Frames marked 'to check' may need a look.",
+                        f"From {self._frame(start)} in {time.perf_counter() - t0:.0f} s with {getattr(self._model('track'), 'name', 'SAM 3')}. "
+                        "Frames marked 'to check' may need a look.",
                         self._goto(start))
             self.send({"type": "item_changed", "items": list(span)})
 

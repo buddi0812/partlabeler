@@ -50,15 +50,18 @@ def config_dir() -> Path:
     return Path(os.environ.get("PARTLABELER_CONFIG") or Path.home() / ".partlabeler")
 
 
+def app_config() -> dict:
+    """This computer's settings in ~/.partlabeler/app.json, e.g. {"home": "D:\\labeling", "tracker": "sam3"}."""
+    try:
+        return json.loads((config_dir() / "app.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
 def default_home() -> Path:
     """The app's projects folder when none is given: PARTLABELER_HOME, else "home" in ~/.partlabeler/app.json
     (this computer's choice, e.g. a bigger drive), else projects/ next to the app."""
-    if os.environ.get("PARTLABELER_HOME"):
-        return Path(os.environ["PARTLABELER_HOME"])
-    try:
-        return Path(json.loads((config_dir() / "app.json").read_text(encoding="utf-8"))["home"])
-    except (OSError, ValueError, KeyError, TypeError):
-        return Path("projects")
+    return Path(os.environ.get("PARTLABELER_HOME") or app_config().get("home") or "projects")
 
 
 def _hash(password: str, salt: bytes) -> str:

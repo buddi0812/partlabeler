@@ -4,6 +4,10 @@ SAM 3 is loaded from jetjodh/sam3, an ungated mirror of the gated facebook/sam3.
 2026-09-25 every file in it was confirmed identical to Meta's repo (git blob ids and LFS
 SHA-256). The weights hash is re-checked after download, so a changed mirror never loads
 silently. DINOv3 comes from the timm organisation (Hugging Face), licence included.
+SAM 3.1 (the tracker, engine/tracker.py Tracker31) comes from jetjodh/sam3.1, an ungated mirror of the gated
+facebook/sam3.1: the file has the official size (3,502,755,717 bytes) and the same SHA-256 as two other independent
+mirrors. Meta publishes it only as a PyTorch .pt, so it is loaded with torch.load(weights_only=True), which runs
+no code from the file.
 
     python -m engine.models        # download + verify everything
 """
@@ -19,19 +23,29 @@ SAM3 = {
     # SHA-256 of facebook/sam3 model.safetensors, as published by Meta's repo.
     "sha256": {"model.safetensors": "6d06f0a5f84e435071fe6603e61d0b4cc7b40e0d39d487cfd4d67d8cc11cc14a"},
 }
+SAM31 = {
+    "repo_id": "jetjodh/sam3.1",
+    "revision": "d094d562d62ccbf550215d6697d5eb6193bfab83",
+    "sha256": {"sam3.1_multiplex.pt": "0567debeec80ba4ac6369540c6c248025283cb3ff2b92827509e57e2b3541cb6"},
+    "allow": ["sam3.1_multiplex.pt", "*.md", "LICENSE*"],
+}
 DINOV3 = {
     "small": {"repo_id": "timm/vit_small_patch16_dinov3.lvd1689m", "revision": "3bf4720a82ec2066db88137180ff1f83a675cef0"},
     "base": {"repo_id": "timm/vit_base_patch16_dinov3.lvd1689m", "revision": "c6a5fb7d12bbd3cf3b0079253141c3332aaed7da"},
 }
 
-# Weights only as safetensors (no pickle files such as sam3.pt / pytorch_model.bin).
+# Weights only as safetensors (no pickle files such as sam3.pt / pytorch_model.bin); SAM31 is the one exception (above).
 _ALLOW = ["*.json", "*.txt", "*.md", "LICENSE*", "*.safetensors"]
 _VERIFIED = Path.home() / ".cache" / "partlabeler" / "verified.json"
 
 
 def fetch(spec: dict) -> Path:
     """Download (or reuse from cache) a pinned snapshot and verify its checksums."""
-    path = Path(snapshot_download(spec["repo_id"], revision=spec["revision"], allow_patterns=_ALLOW))
+    args = dict(revision=spec["revision"], allow_patterns=spec.get("allow", _ALLOW))
+    try:                                          # a pinned revision never changes: a complete cached copy needs no network
+        path = Path(snapshot_download(spec["repo_id"], local_files_only=True, **args))
+    except Exception:
+        path = Path(snapshot_download(spec["repo_id"], **args))
     for name, expected in spec.get("sha256", {}).items():
         _verify(path / name, expected)
     return path
@@ -55,6 +69,6 @@ def _verify(f: Path, expected: str) -> None:
 
 
 if __name__ == "__main__":
-    for spec in (SAM3, *DINOV3.values()):
+    for spec in (SAM3, *DINOV3.values()):          # SAM31 (opt-in tracker) downloads when first used
         print(spec["repo_id"], "->", fetch(spec))
     print("all models downloaded and verified")

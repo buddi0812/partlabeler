@@ -304,3 +304,36 @@ On a copy of the reported project (1920x1080, tracking 3 frames ahead from a han
 
 The erased notch stays out of the tracked outlines (it was filled before). With a part labeled on two frames
 far apart, tracking from the later one now lands 6 px from that label (57 px before).
+
+## S14, S17, S19–S22 — SAM 3.1 Object Multiplex as the tracker (measured; opt-in, not the default)
+SAM 3.1 (muggled_sam port, vendored in engine/vendor; weights from a hash-pinned mirror) tracks all parts in one
+pass. On the user's footage (1920x1080, RTX 3060, bf16), numbers only:
+
+| | SAM 3 (HF, default) | SAM 3.1 multiplex |
+|---|---|---|
+| speed, frames preloaded (S14): 2 / 6 / 10 parts | 1.66 / 0.95 / 0.68 fps | 3.61 / 3.28 / 3.38 fps |
+| speed in the app, 4 parts, 72 confirmed frames (S17) | 1.14 fps, peak 5.6 GB | 1.97 fps, peak 2.5 GB |
+| IoU with the confirmed outlines (made with SAM 3, then checked) | 0.963 | 0.920 |
+| same, ignoring a 3 px band at the outline's edge | 1.000 | 0.998 |
+| area vs the confirmed outlines | x0.972 | x0.951 |
+| 4 lamps tracked 12 frames through a bright/dim switch (S19) | all held (IoU 0.75–0.98) | one lamp's outline ballooned onto the background |
+
+S20–S22 on the failing case: the same failure with the original image preparation or muggled_sam's own, without the
+reference frame, with 3 or 12 memory frames, and in fp32 or fp16. So it is not a setting of ours; SAM 3 stays the
+default and SAM 3.1 is opt-in ("tracker": "sam3.1").
+
+## S16 — telling a part's states apart (parts that change look; measured, adopted)
+One lamp labeled as two classes by state (bright, dim), person-checked outlines, each classified by its nearest
+earlier examples in the same video (20 per state), features scaled by the examples' spread:
+
+| Features | bright | dim | frames where the state changed |
+|---|---|---|---|
+| brightness inside + glow around + size (1,904 outlines) | 1,493 / 1,498 | 350 / 350 | 15 / 18 |
+| size alone | 1,496 / 1,498 | 350 / 350 | 16 / 18 |
+| brightness inside + glow around, no size (978 outlines, after the user relabeled) | 780 / 782 | 140 / 140 | 4 / 4 |
+| same with size | 780 / 782 | 140 / 140 | 4 / 4 |
+
+Size is left out: right after a switch the tracked outline keeps the old state's shape for a few frames (S19:
+IoU 0.75–0.85 with the new state's outline), so size points to the old state. Tracking through the switch with
+the frames hidden (S19, SAM 3): every frame's state right on both lamps, bright to dim (forward) and dim to bright
+(backward); tracking alone kept the start state throughout.
