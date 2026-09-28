@@ -89,6 +89,27 @@ def test_swap_classes(tmp_path, video, monkeypatch):
     assert classes(p, 3) == [0, 1] and classes(p, 4) == [1, 2]
 
 
+def test_part_ids_stay_unique_while_threads_add_parts(tmp_path, video):
+    """A job reserving ids while a person draws: every id is handed out once (they collided before)."""
+    import threading
+    p = Project.create(tmp_path / "proj", CLASSES, video=video, every=2)
+    got, lock = [], threading.Lock()
+
+    def take(n):
+        for _ in range(n):
+            o = p.new_obj()                                     # like a person drawing: take an id, then save
+            with lock:
+                got.append(o)
+            p.put(0, o, 0, [1, 1, 5, 5])
+    first = p.new_obj(10)                                       # a job reserving a block
+    threads = [threading.Thread(target=take, args=(50,)) for _ in range(3)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert len(set(got)) == 150 and not set(got) & set(range(first, first + 10))
+
+
 def test_tracker_choice_and_fallback(tmp_path, monkeypatch):
     from engine import tracker as T
     monkeypatch.setenv("PARTLABELER_CONFIG", str(tmp_path))                  # no app.json: the default

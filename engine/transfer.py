@@ -214,7 +214,7 @@ def label_project(project, run_dir, task_ids, outline=None, parent_every: int = 
         finder = ParentFinder(s["parent"])
     total = sum(b - a for a, b in (project.ranges[t] for t in task_ids))
     done = frames = parts = skipped = 0
-    per_class, obj, stopped = Counter(), project.new_obj(), False
+    per_class, stopped = Counter(), False
     try:
         for tid in task_ids:
             a, b = project.ranges[tid]
@@ -250,8 +250,8 @@ def label_project(project, run_dir, task_ids, outline=None, parent_every: int = 
                     for (c, bx, p), m in zip(dets, masks):
                         match = max((q for q in prev if q[1] == c and q[0] not in used and _iou(q[2], bx) >= 0.3),
                                     key=lambda q: _iou(q[2], bx), default=None)
-                        o = match[0] if match else obj
-                        obj += match is None
+                        # a fresh id comes from the project: a person may be drawing parts meanwhile
+                        o = match[0] if match else project.new_obj()
                         used.add(o)
                         project.put(k, o, c, bx, "imported", p, mask=m if m is not None and m.any() else None)
                         now.append((o, c, bx))

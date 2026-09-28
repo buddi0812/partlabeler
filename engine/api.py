@@ -752,7 +752,7 @@ class Session:
             for b in self.p.boxes(item):
                 if b["source"] == "suggested":
                     self.p.delete(item, b["obj"])
-            obj = self.p.new_obj()
+            obj = self.p.new_obj(len(found))
             masks = self._outline_boxes(item, [box for _, box, _ in found]) if self.outlines_on else [None] * len(found)
             for k, ((cls, box, score), mask) in enumerate(zip(found, masks)):
                 self.p.put(item, obj + k, cls, box, "suggested", score, mask=mask if mask is not None and mask.any() else None)
@@ -803,7 +803,7 @@ class Session:
         have = [b["box"] for b in self.p.boxes(item)]
         new = [(box, sc) for box, sc in hits if all(overlap(box, h) < 0.5 for h in have)]
         self._remember([item], label)
-        obj0 = self.p.new_obj()
+        obj0 = self.p.new_obj(len(new))
         masks = self._outline_boxes(item, [box for box, _ in new]) if self.outlines_on else [None] * len(new)
         for k, ((box, sc), mask) in enumerate(zip(new, masks)):
             self.p.put(item, obj0 + k, self._side(cls, box), box, "suggested", sc,

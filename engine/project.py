@@ -339,7 +339,8 @@ class Project:
                 cmap[i] = classes.index(name)
             tasks, names = [dict(t) for t in self.sources], []
             tid = max((t["id"] for t in tasks), default=0) + 1
-            nxt, base, obj0, count = int(self.meta.get("next_job", 1)), len(self.items), self.new_obj(), 0
+            nxt, base, count = int(self.meta.get("next_job", 1)), len(self.items), 0
+            obj0 = self.new_obj((src.db.execute("SELECT MAX(obj) FROM boxes").fetchone()[0] or 0) + 1)
             rows = {table: [] for table in TABLES}
             cols = {table: [r[1] for r in src.db.execute(f"PRAGMA table_info({table})")] for table in TABLES}
             for t in src.sources:
@@ -724,8 +725,14 @@ class Project:
             (obj,))]
 
     # ---- writing --------------------------------------------------------------------------
-    def new_obj(self) -> int:
-        return (self.db.execute("SELECT MAX(obj) FROM boxes").fetchone()[0] or 0) + 1
+    def new_obj(self, count: int = 1) -> int:
+        """A fresh part id, or the first of `count` in a row. An id is never handed out twice, also while several
+        threads add parts (a person drawing while a job labels other frames): the ids given out are remembered
+        under the database lock, not only those already saved."""
+        with self.db:
+            first = max((self.db.execute("SELECT MAX(obj) FROM boxes").fetchone()[0] or 0) + 1, getattr(self, "_next_obj", 0))
+            self._next_obj = first + max(1, count)
+        return first
 
     def put(self, item: int, obj: int, cls: int, box, source: str = "manual", score=None, mask=None) -> None:
         """With a mask (outline projects), the box is the mask's box. Without one, any old mask is dropped."""
@@ -882,7 +889,6 @@ class Project:
                     self.db.execute("DELETE FROM boxes WHERE item=?", (k,))
                     self.db.execute("DELETE FROM reviewed WHERE item=?", (k,))
         matched = unmatched = boxes = 0
-        obj = self.new_obj()
         for f in sorted(Path(labels_dir).glob("*.txt")):
             item = self._match(f.stem, scope)
             if item is None:
@@ -900,8 +906,8 @@ class Project:
                 else:
                     cx, cy, w, h = float(v[1]) * W, float(v[2]) * H, float(v[3]) * W, float(v[4]) * H
                     box, mask = (cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2), None
-                self.put(item, obj, int(v[0]), box, source, mask=mask)
-                obj += 1; boxes += 1
+                self.put(item, self.new_obj(), int(v[0]), box, source, mask=mask)
+                boxes += 1
             matched += 1
         return {"files_matched": matched, "files_unmatched": unmatched, "boxes": boxes}
 
