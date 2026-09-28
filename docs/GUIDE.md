@@ -83,7 +83,9 @@ The tools: list_projects, get_project, create_project, set_labels, trash_project
 set_job, get_job; get_frame (the image with every part numbered, plus the parts as JSON; crop zooms in),
 get_annotations; add_part (click points and/or a box; SAM 3 outlines it), edit_part, delete_parts, find_parts (words,
 SAM 3 text search), find_similar, suggest, accept_suggestions; track; confirm_frames; set_image_class; undo; stop;
-status (progress and frames to check); clear_parts; frames_to_video; export, backup, import_backup. Coordinates are pixels of the full-size frame.
+status (progress and frames to check); clear_parts, swap_classes; frames_to_video; export, backup, import_backup;
+teach (train a detector on one task's confirmed frames), list_runs, label_tasks (label other tasks with it, as parts
+to check). Coordinates are pixels of the full-size frame.
 
 Everything a program does appears live in open annotator tabs, and Ctrl+Z (or the undo tool) reverts it. Tell the AI
 to confirm frames only after you checked them. **Revoke** a token in Settings to cut a program off; command line:
@@ -428,6 +430,13 @@ It is optional and is the only part of PartLabeler that trains a model.
    vanishes for a frame or two, or a box shows up on one frame only. Labels are never changed automatically.
 4. **Review**: click **Review in annotator** next to an output. It opens as a normal project with the boxes
    imported, so you can check them, fix them, confirm and export.
+
+**Teach from a task, label the other tasks.** When one task of a project is finished, a program connected over
+the API (see *AI apps and scripts*) can run `teach` on it: its confirmed frames become the training set (frames
+confirmed empty teach the model when to label nothing), then `label_tasks` labels other tasks of the same project
+with the run. The model's parts (outlined by SAM 3 in segmentation projects) land on every frame nobody labeled or
+confirmed, shown dashed like tracked parts with the model's confidence; parts that jump or go missing are marked
+*to check*. Check them, fix, confirm; Ctrl+Z removes a whole labeling run.
 
 **Quick transfer (no training)**: in the Transfer form, set **Label with** to *No training: match a labeled
 dataset (quick preview)*, pick the labeled dataset folder, add the videos or folders and click **Start

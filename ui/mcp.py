@@ -495,6 +495,43 @@ def swap_classes(args):
     return {**_where(p, item), "messages": said}
 
 
+@tool("Teach: train a detector (RF-DETR, on this computer's GPU) on the confirmed frames of one task, then prove it "
+      "on held-out frames. Takes a while (tens of minutes); check with get_job or list_runs. Only when the user asked "
+      "for it. Then label_tasks labels other tasks with it.", ["project", "task"], project=PROJECT, task=TASK,
+      run=S("Name for the run (default: run_<date>)"), parent=S("Object the parts sit on, to crop to (e.g. 'car')"),
+      size=S("nano | small (default) | medium", enum=["nano", "small", "medium"]), epochs=I("Training epochs (default 30)", minimum=1),
+      wait_s=WAIT)
+def teach(args):
+    body = {"project": args["project"], "task": args["task"], "name": args.get("run"), "parent": args.get("parent"),
+            "size": args.get("size"), "epochs": args.get("epochs")}
+    res = H.teach(body)
+    return {"run": res["run"], **_wait(res["job"], float(args.get("wait_s") or 0))}
+
+
+@tool("Teach runs: name, whether finished, and the proof (held-out mAP50, recall, per-label recall, threshold).")
+def list_runs(args):
+    out = []
+    for r in H.list_runs():
+        rep = r.get("report") or {}
+        ho = rep.get("held_out") or {}
+        out.append({"run": r["name"], "ready": r["ready"], "passed": rep.get("passed"), "mAP50": ho.get("mAP50"),
+                    "recall": ho.get("recall"), "threshold": ho.get("threshold"), "warnings": rep.get("warnings"),
+                    "per_label_recall": {n: pc.get("recall") for n, pc in (ho.get("per_class") or {}).items()}})
+    return {"runs": out}
+
+
+@tool("Label tasks with a finished Teach run: the model's parts (outlines in segmentation projects) on every frame "
+      "nobody labeled or confirmed, as parts to check (source 'imported', score = confidence). Undoable.",
+      ["project", "run", "tasks"], project=PROJECT, run=S("Teach run name (list_runs)"),
+      tasks=A("Task ids to label", {"type": "integer"}), wait_s=WAIT)
+def label_tasks(args):
+    sess = _sess(args)
+    run = H.runs_dir() / str(args["run"])
+    said = _run(sess, {"type": "label_tasks", "run": str(run), "tasks": [int(t) for t in args["tasks"]]},
+                args.get("wait_s", 120))
+    return {"finished": not sess.running, "messages": said}
+
+
 @tool("Mark frames as confirmed (checked by a person) or not. Confirm only when the user asked you to.",
       ["project", "items"], project=PROJECT, items=A("Frame numbers", {"type": "integer"}),
       confirmed=B("true (default) or false"))

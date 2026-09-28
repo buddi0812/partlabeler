@@ -695,7 +695,7 @@ class Project:
                 anchors.setdefault(obj, []).append((item, (x2 - x1) * (y2 - y1)))
         flagged, prev = set(), None
         for obj, item, x1, y1, x2, y2, source in rows:
-            if source == "tracked":
+            if source in ("tracked", "imported"):
                 a = (x2 - x1) * (y2 - y1)
                 if obj in anchors:
                     ref = min(anchors[obj], key=lambda ia: abs(ia[0] - item))[1]

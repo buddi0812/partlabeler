@@ -56,6 +56,34 @@ def source_items(dataset_dir) -> list[dict]:
     return sorted(items, key=lambda it: it["key"])
 
 
+def task_dataset(project, task_id: int, out, progress=None, should_stop=None) -> dict | None:
+    """A project task's confirmed frames as a YOLO box dataset for teach(): images/, labels/ (one box per part;
+    outlines give their boxes; a confirmed frame without parts is an empty file, a frame the model must leave
+    empty), classes.txt. Names are <task>_f<frame> so the frame step and the time order are known. Returns
+    {"frames", "boxes", "empty"}, or None when stopped."""
+    out = Path(out)
+    (out / "images").mkdir(parents=True, exist_ok=True)
+    (out / "labels").mkdir(parents=True, exist_ok=True)
+    (out / "classes.txt").write_text("\n".join(project.classes) + "\n", encoding="utf-8")
+    a, b = project.ranges[task_id]
+    todo = [k for k in range(a, b) if project.is_reviewed(k)]
+    boxes = empty = 0
+    for n, k in enumerate(todo):
+        if should_stop and should_stop():
+            return None
+        it = project.items[k]
+        name = f"{project.task_of(k)['name']}_f{(it['frame'] if it.get('frame') is not None else k - a):06d}"
+        W, H = project.image_size(k)
+        lines = [l for l in (yolo_line(p["cls"], *p["box"], W, H) for p in project.boxes(k) if p["source"] != "suggested") if l]
+        if not (out / "images" / f"{name}.jpg").exists():
+            project.place(k, out / "images" / f"{name}.jpg")
+        (out / "labels" / f"{name}.txt").write_text("\n".join(lines) + ("\n" if lines else ""))
+        boxes, empty = boxes + len(lines), empty + (not lines)
+        if progress and n % 20 == 0:
+            progress(n + 1, len(todo), f"Writing the confirmed frames of task {project.task_of(k)['name']}")
+    return {"frames": len(todo), "boxes": boxes, "empty": empty}
+
+
 def parse_row(line: str):
     """(class, cx, cy, w, h) of one YOLO line; None if malformed."""
     parts = line.split()

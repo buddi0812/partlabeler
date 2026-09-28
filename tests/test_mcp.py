@@ -61,7 +61,7 @@ def test_mcp_handshake_and_tool_list(agent):
     assert init["protocolVersion"] == "2025-06-18" and "tools" in init["capabilities"] and "task + frame" in init["instructions"]
     assert c.post("/mcp", json={"jsonrpc": "2.0", "method": "notifications/initialized"}).status_code == 202
     names = [t["name"] for t in rpc(c, "tools/list")["tools"]]
-    assert len(names) == 31 and {"get_frame", "add_part", "track", "export", "frames_to_video", "clear_parts", "swap_classes"} <= set(names)
+    assert len(names) == 34 and {"get_frame", "add_part", "track", "export", "frames_to_video", "clear_parts", "swap_classes"} <= set(names)
     assert c.post("/mcp", json={"jsonrpc": "2.0", "id": 2, "method": "nope"}).json()["error"]["code"] == -32601
 
 
@@ -116,4 +116,4 @@ def test_an_agent_annotates_a_video_end_to_end(agent, tmp_path, video, monkeypat
     assert rest["image"].startswith("data:image/jpeg;base64,") and len(rest["parts"]) == 1
     assert c.post("/api/tools/get_frame", json={"project": "line"}).status_code == 400
     assert c.post("/api/tools/nope", json={}).status_code == 404
-    assert len(c.get("/api/tools").json()["tools"]) == 31
+    assert len(c.get("/api/tools").json()["tools"]) == 34

@@ -188,6 +188,80 @@ def _label_source(src: Path, kind: str, out: Path, model, finder, s: dict, every
     return summary
 
 
+def _iou(a, b) -> float:
+    ix = max(0.0, min(a[2], b[2]) - max(a[0], b[0]))
+    iy = max(0.0, min(a[3], b[3]) - max(a[1], b[1]))
+    u = (a[2] - a[0]) * (a[3] - a[1]) + (b[2] - b[0]) * (b[3] - b[1]) - ix * iy
+    return ix * iy / u if u > 0 else 0.0
+
+
+def label_project(project, run_dir, task_ids, outline=None, parent_every: int = 4, progress=None,
+                  should_stop=None) -> dict:
+    """Label the frames of these tasks of a project with a Teach run's model, as parts to check (source
+    "imported", score = the model's confidence). A part keeps its id from frame to frame while its box overlaps
+    the one before (IoU >= 0.3, same class), so jumps and gaps get the usual 'to check' marks. Frames a person
+    labeled (drawn or tracked parts) or confirmed are left alone; the model's earlier labels are replaced.
+    outline(item, boxes) -> masks turns the boxes into outlines (segmentation projects)."""
+    from engine import detector, hw
+    run_dir = Path(run_dir)
+    s = json.loads((run_dir / "settings.json").read_text(encoding="utf-8"))
+    to_project = {i: project.classes.index(c) for i, c in enumerate(s["classes"]) if c in project.classes}
+    model = detector.load(run_dir / s["checkpoint"], s["size"], s["resolution"])
+    finder = crop_box = None
+    if s.get("parent"):
+        from engine.parent import ParentFinder, crop_box
+        finder = ParentFinder(s["parent"])
+    total = sum(b - a for a, b in (project.ranges[t] for t in task_ids))
+    done = frames = parts = skipped = 0
+    per_class, obj, stopped = Counter(), project.new_obj(), False
+    try:
+        for tid in task_ids:
+            a, b = project.ranges[tid]
+            prev, box = [], None
+            for n, k in enumerate(range(a, b)):
+                if should_stop and should_stop():
+                    stopped = True
+                    break
+                done += 1
+                if project.is_reviewed(k) or any(p["source"] in ("manual", "tracked") for p in project.boxes(k)):
+                    skipped, prev = skipped + 1, []
+                    continue
+                img = project.image(k)
+                W, H = img.size
+                if finder and n % parent_every == 0:
+                    hit = finder.find(img)
+                    box = crop_box(hit, W, H, s.get("parent_margin", 0.12)) if hit else None
+                crop = box or (0, 0, W, H)
+                det = detector.predict(model, img.crop(crop) if box else img, float(s["threshold"]))
+                dets = sorted(((to_project[int(c)], [float(x1 + crop[0]), float(y1 + crop[1]), float(x2 + crop[0]),
+                                                     float(y2 + crop[1])], float(p))
+                               for (x1, y1, x2, y2), c, p in zip(det.xyxy, det.class_id, det.confidence)
+                               if int(c) in to_project), key=lambda d: -d[2])
+                masks = outline(k, [d[1] for d in dets]) if outline and dets else [None] * len(dets)
+                with project.db:
+                    project.db.execute("DELETE FROM boxes WHERE item=? AND source='imported'", (k,))
+                    now, used = [], set()
+                    for (c, bx, p), m in zip(dets, masks):
+                        match = max((q for q in prev if q[1] == c and q[0] not in used and _iou(q[2], bx) >= 0.3),
+                                    key=lambda q: _iou(q[2], bx), default=None)
+                        o = match[0] if match else obj
+                        obj += match is None
+                        used.add(o)
+                        project.put(k, o, c, bx, "imported", p, mask=m if m is not None and m.any() else None)
+                        now.append((o, c, bx))
+                        per_class[project.classes[c]] += 1
+                prev, frames, parts = now, frames + 1, parts + len(dets)
+                if progress:
+                    progress(done, total, f"Labeling task {project.task_of(k)['name']}")
+            if stopped:
+                break
+    finally:
+        del model, finder
+        hw.free_gpu_memory()
+    return {"run": run_dir.name, "tasks": list(task_ids), "frames": frames, "parts": parts, "skipped": skipped,
+            "stopped": stopped, "per_class": dict(per_class), "threshold": s["threshold"], "parent": s.get("parent")}
+
+
 def transfer(run_dir, sources, out_dir, every: int | None = None, threshold: float | None = None,
              parent: str | None = None, preview: bool = True, max_frames: int | None = None, parent_every: int = 4,
              tracks: bool = True, progress=None, should_stop=None) -> dict:

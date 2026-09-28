@@ -60,11 +60,12 @@ UNDO_WORDS = {"box": "drawing a box", "outline": "outlining a part", "delete": "
               "tracking": "tracking", "suggestions": "suggestions", "find similar": "find similar",
               "paint": "painting an outline", "outline boxes": "outlining boxes", "classes": "a class change",
               "smart brush": "a smart brush stroke", "find text": "find by text", "clear": "clearing parts",
-              "class swap": "a class swap"}
+              "class swap": "a class swap", "model labels": "labeling with a model"}
 FORMAT_NAMES = {"yolo": "YOLO", "coco": "COCO", "cvat": "CVAT", "voc": "Pascal VOC", "labelstudio": "Label Studio",
                 "folders": "class folders", "csv": "CSV"}
 THUMB = 224                                               # px, longest side of grid thumbnails
-JOBS = {"track", "suggest", "find_all", "find_text", "outline", "sort", "suggest_tags", "odd", "export", "add_task"}
+JOBS = {"track", "suggest", "find_all", "find_text", "outline", "sort", "suggest_tags", "odd", "export", "add_task",
+        "label_tasks"}
 
 _MODELS: dict = {}
 _LOCKS = {k: threading.Lock() for k in ("seg", "track", "suggest", "concept", "embed", "load")}
@@ -689,6 +690,40 @@ class Session:
                     self._goto(item))
         self.send({"type": "item_changed", "items": changed})
         self.send(self.status_msg())
+
+    def on_label_tasks(self, msg):
+        """Label these tasks with a Teach run's model (msg: run = its folder, tasks = task ids): parts to check on
+        every frame nobody labeled or confirmed. One undo step."""
+        from engine.transfer import label_project
+        run, tasks = Path(msg["run"]), [int(t) for t in msg["tasks"]]
+        bad = [t for t in tasks if t not in self.p.ranges]
+        if bad or not (run / "settings.json").exists():
+            self.notify("error", "Nothing labeled", f"No task {bad[0]}" if bad else f"{run.name} is not a finished Teach run")
+            return
+        items = [k for t in tasks for k in range(*self.p.ranges[t])]
+        self._remember(items, "model labels")
+
+        def job():
+            t0, last = time.perf_counter(), 0.0
+
+            def progress(done, total, text=""):
+                nonlocal last
+                if time.perf_counter() - last > 1.0 or done == total:
+                    last = time.perf_counter()
+                    self.send({"type": "progress", "task": "Labeling", "done": done, "total": total,
+                               "rate": round(done / (time.perf_counter() - t0), 2)})
+                    self.send(self.status_msg())
+            res = label_project(self.p, run, tasks, outline=self._outline_boxes if self.outlines_on else None,
+                                progress=progress, should_stop=lambda: self.stop_flag)
+            self.notify("success" if not res["stopped"] else "warning",
+                        f"{'Stopped labeling' if res['stopped'] else 'Labeled'} {res['frames']} frames with {run.name}",
+                        f"{res['parts']} parts to check in {len(tasks)} task{'s' if len(tasks) != 1 else ''}"
+                        f" ({res['skipped']} frames already labeled or confirmed were left alone), in "
+                        f"{time.perf_counter() - t0:.0f} s. Frames marked 'to check' need a look first.")
+            self.send({"type": "item_changed", "items": items})
+            self.send(self.status_msg())
+
+        self._run("Labeling", job)
 
     def on_clear(self, msg):
         """Remove the parts of some classes (classes: indices; none given = all) from the frames after (or before)

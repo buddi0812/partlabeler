@@ -1106,13 +1106,25 @@ def list_runs() -> list:
 def teach(body: dict = Body(...)) -> dict:
     from engine.teach import teach as run_teach
     name = safe_name(body.get("name") or f"run_{time.strftime('%Y%m%d_%H%M')}")
-    dataset = Path(body.get("dataset", ""))
-    if not dataset.is_dir():
-        raise HTTPException(400, "Pick the labeled dataset folder (with images/ and labels/)")
+    task = None
+    if body.get("project"):                                  # learn a task of a project: its confirmed frames
+        p = session(str(body["project"])).p
+        task = int(body.get("task") if body.get("task") is not None else -1)
+        if task not in p.ranges:
+            raise HTTPException(400, f"No task {body.get('task')} in {body['project']}")
+        dataset = runs_dir() / name / "source"
+    else:
+        dataset = Path(body.get("dataset", ""))
+        if not dataset.is_dir():
+            raise HTTPException(400, "Pick the labeled dataset folder (with images/ and labels/)")
     kw = {k: body[k] for k in ("size", "epochs", "resolution") if body.get(k)}
     parent = (body.get("parent") or "").strip() or None
 
     def job(progress, should_stop):
+        if task is not None:
+            from engine.teach import task_dataset
+            if task_dataset(p, task, dataset, progress, should_stop) is None:
+                return {"status": "stopped", "step": "source"}
         return run_teach(dataset, runs_dir() / name, parent=parent, progress=progress, should_stop=should_stop,
                          **{k: (int(v) if k != "size" else v) for k, v in kw.items()})
 

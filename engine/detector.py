@@ -1,7 +1,8 @@
 """RF-DETR detector: fine-tune on a YOLO dataset, load a checkpoint, predict boxes.
 
 Used by Teach & Transfer (and later by Boost). Augmentation is colour-heavy so a model taught on one
-colour of a product still finds the parts on other colours. Horizontal flip is added only when the
+colour of a product still finds the parts on other colours, with small rotation and shear for a camera that
+sits a little differently. Horizontal flip is added only when the
 class names have no left_/right_ pairs: a mirror would swap their meaning.
 """
 import sys
@@ -22,7 +23,7 @@ STRONG = {
     "ToGray": {"p": 0.1},
     "GaussianBlur": {"blur_limit": 3, "p": 0.2},
     "GaussNoise": {"std_range": (0.01, 0.05), "p": 0.2},
-    "Affine": {"scale": (0.85, 1.15), "translate_percent": (-0.05, 0.05), "p": 0.4},
+    "Affine": {"scale": (0.85, 1.15), "translate_percent": (-0.05, 0.05), "rotate": (-7, 7), "shear": (-5, 5), "p": 0.5},
 }
 MEDIUM = {
     "HueSaturationValue": {"hue_shift_limit": 30, "sat_shift_limit": 30, "val_shift_limit": 30, "p": 0.5},
