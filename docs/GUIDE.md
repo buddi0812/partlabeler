@@ -299,6 +299,13 @@ and right side the wrong way round (swap `left_drl` and `right_drl`, then the ne
 After tracking, frames where a box jumped, changed size a lot or went missing get an amber *To check* mark.
 **Next to check** (Shift+→) jumps to the next flagged or unconfirmed frame. Fix what is wrong, then confirm.
 
+**Play** (K, or Space when not zoomed in) shows the frames one after another like a video, with the labels on:
+a quick way to check a finished stretch for parts that jump, flicker or take the wrong class. Pick the speed next
+to it: 1× is the video's own speed (for a task that keeps every 5th frame of a 25 fps video, 5 frames a second),
+from 0.25× to 4×; image folders play at 5 frames a second. On a slow computer it plays slower rather than skip
+frames. It stops at the end of the job, and when you press K or Space again, step to another frame, or click the
+image to fix something.
+
 ## Confirm frames
 
 **Confirm frame** (Enter) marks the frame as checked and moves to the next one. Confirmed frames turn green
@@ -471,7 +478,7 @@ the projects. If a project with the same name exists, the restored one gets `_2`
 
 Click: new part · M: next larger outline · Shift/Alt+click: grow/shrink the selected part · Ctrl+click:
 select · B: draw box · C: click mode · 1–9, 0, [ ]: class · Del: delete · Esc: deselect · Ctrl+Z: undo ·
-← → (A / D): previous / next frame · Shift+→: next to check · Enter: confirm · T / Shift+T: track ahead /
+← → (A / D): previous / next frame · Shift+→: next to check · K or Space: play / pause · Enter: confirm · T / Shift+T: track ahead /
 to the end · R / Shift+R: track back / to the start · U / Shift+U: re-track ahead / to the end · X: stop · S: suggest · F: find similar · Y: accept all ·
 N: notifications · ?: all shortcuts. Ctrl+wheel / + / −: zoom · Z: whole frame · Space+drag or wheel: move when zoomed. Outlines: P brush · E eraser ·
 Shift+P smart brush · Shift+E smart eraser · , and . brush size. G: sort parts (grid: group

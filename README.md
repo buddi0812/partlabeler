@@ -109,6 +109,7 @@ projects stay restorable from the Trash list on the start screen (they are kept 
 | X | stop the running job |
 | S · F · Y | suggest · find similar to the selected box · accept all suggestions |
 | ← → (A / D) · Shift+→ | previous / next frame · next frame to check |
+| K or Space | play / pause the frames like a video, labels on (speed 0.25× to 4× next to the Play button) |
 | Enter | confirm the frame and go on |
 | Ctrl+Z | undo (last 50 steps) |
 | Export (top bar) | jumps to the export controls: pick YOLO, COCO, CVAT, Pascal VOC or Label Studio, then Export |

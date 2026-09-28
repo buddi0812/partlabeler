@@ -748,6 +748,10 @@ function render({ model, el }) {
         <button type="button" class="icon" data-a="prev" aria-label="Previous frame" title="Previous frame (←)">◀</button>
         <button type="button" class="icon" data-a="next" aria-label="Next frame" title="Next frame (→)">▶</button>
         <button type="button" data-a="nextTodo" title="Next frame that is flagged or not confirmed (Shift+→)">Next to check</button>
+        <button type="button" class="pl-play" data-a="play" aria-pressed="false" title="Play the frames like a video, labels on (K or Space); stops at the end, or when you step or click">▷ Play</button>
+        <select class="pl-speed" name="play-speed" aria-label="Play speed" title="Play speed: 1× is the video's own speed (the frames kept per second)">
+          <option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="1" selected>1×</option>
+          <option value="2">2×</option><option value="4">4×</option></select>
       </span>
       <span class="pl-group pl-video">
         <span class="pl-group-label" id="pl-track-label">Track</span>
@@ -869,6 +873,7 @@ function render({ model, el }) {
         <h3>Frames</h3>
         <div><span>Previous / next frame</span><span><kbd>←</kbd> <kbd>→</kbd></span></div>
         <div><span>Next frame to check</span><span><kbd>Shift</kbd> + <kbd>→</kbd></span></div>
+        <div><span>Play / pause the frames</span><span><kbd>K</kbd> / <kbd>Space</kbd></span></div>
         <div><span>Confirm frame and go on</span><kbd>Enter</kbd></div>
         <div><span>Track ahead / to the end</span><span><kbd>T</kbd> / <kbd>Shift</kbd>+<kbd>T</kbd></span></div>
         <div><span>Track back / to the start</span><span><kbd>R</kbd> / <kbd>Shift</kbd>+<kbd>R</kbd></span></div>
@@ -1178,13 +1183,41 @@ function render({ model, el }) {
     return j ? { start: j.start, end: j.end, kind: t.kind, name: t.name, job: j, task: t } : { ...t, task: t };
   };
   const curTask = view;
-  const goto = (i, within = true) => {
+  const goto = (i, within = true, playing = false) => {
     if (!S.project) return;
+    if (!playing) stopPlay();
     const t = view();
     i = within ? Math.max(t.start, Math.min(t.end - 1, i)) : Math.max(0, Math.min(S.project.count - 1, i));
     if (i === S.target && i === S.item) return;
     S.target = i; S.sel = null; send({ type: "goto", item: i });
   };
+  // ---- play: the frames one after another like a video; the next is asked for once this one is shown, so a slow
+  // computer plays slower instead of skipping frames. 1x = the video's own speed (fps / every); images: 5 frames/s.
+  const fpsOf = () => { const t = view().task; return t?.info?.fps ? t.info.fps / (t.every || 1) : 5; };
+  function renderPlay() {
+    const b = $(".pl-play");
+    b.textContent = S.playing ? "❚❚ Pause" : "▷ Play"; b.setAttribute("aria-pressed", String(!!S.playing));
+  }
+  function stopPlay() {
+    if (!S.playing) return;
+    S.playing = false; clearTimeout(S.playT); renderPlay();
+  }
+  function playNext() {                                     // called when a frame has been drawn
+    if (!S.playing) return;
+    const wait = 1000 / (fpsOf() * +$(".pl-speed").value) - (performance.now() - S.playAt);
+    clearTimeout(S.playT);                                  // a frame redrawn meanwhile (e.g. saved) steps once
+    S.playT = setTimeout(() => {
+      if (!S.playing) return;
+      if (S.target >= view().end - 1) { stopPlay(); return; }
+      S.playAt = performance.now(); goto(S.target + 1, true, true);
+    }, Math.max(0, wait));
+  }
+  function togglePlay() {
+    if (S.playing) { stopPlay(); return; }
+    if (!S.project || S.grid) return;
+    if (S.target >= view().end - 1) goto(view().start);       // at the end: from the start again
+    S.playing = true; S.playAt = performance.now(); renderPlay(); playNext();
+  }
   const jobUrl = (j) => `${model.homeUrl}projects/${encodeURIComponent(S.project.name)}/tasks/${j.task}/jobs/${j.id}`;
   function openJob(id, item) {
     const j = jobs().find((x) => x.id === id); if (!j) return;
@@ -1229,7 +1262,7 @@ function render({ model, el }) {
   const video = () => view().kind === "video";
   const track = (count, direction) => { if (video()) send({ type: "track", item: S.item, count, direction }); };
   const actions = {
-    prev: () => goto(S.target - 1), next: () => goto(S.target + 1), nextTodo,
+    prev: () => goto(S.target - 1), next: () => goto(S.target + 1), nextTodo, play: () => togglePlay(),
     track: () => track(trackN(), 1), trackAll: () => track(-1, 1),
     trackBack: () => track(trackN(), -1), trackBackAll: () => track(-1, -1),
     retrack: () => { if (video()) send({ type: "track", item: S.item, count: trackN(), direction: 1, redo: true }); $(".pl-after").open = false; },
@@ -1663,6 +1696,7 @@ function render({ model, el }) {
   cv.addEventListener("mouseleave", () => { if (S.hover) { S.hover = null; draw(); } });
   cv.addEventListener("mousedown", (e) => {
     if (!S.img) return;
+    stopPlay();
     if (e.button === 1 || (S.space && e.button === 0)) {             // pan: middle button, or Space + drag
       e.preventDefault();
       if (S.zoom > 1) { S.panning = { x: e.clientX, y: e.clientY, pan: [...S.pan] }; $(".pl-stage").classList.add("panning"); }
@@ -1721,7 +1755,8 @@ function render({ model, el }) {
     else if (k === "+" || k === "=") zoomAt(1.5);
     else if (k === "-" || k === "_") zoomAt(1 / 1.5);
     else if (k === "z") zoomAt(0);
-    else if (k === " ") { if (S.zoom > 1) { S.space = true; $(".pl-stage").classList.add("can-pan"); } }
+    else if (k === " ") { if (S.zoom > 1) { S.space = true; $(".pl-stage").classList.add("can-pan"); } else if (!e.repeat) togglePlay(); }
+    else if (k === "k") togglePlay();
     else if ((k === "," || k === ".") && seg()) { S.brush = Math.max(1, Math.min(120, Math.round(S.brush * (k === "." ? 1.25 : 0.8)))); $(".pl-bsize").value = S.brush; renderSide(); draw(); }
     else if (k === "g" && !classify()) actions.sortParts();
     else if (k === "m") { if (S.sel != null) send({ type: "cycle", item: S.item, obj: S.sel }); }
@@ -1778,7 +1813,9 @@ function render({ model, el }) {
         if (S.pendingSel != null) { if (m.boxes.some((b) => b.obj === S.pendingSel)) S.sel = S.pendingSel; S.pendingSel = null; }
         if (S.grid?.peek === m.item && $(".pl-peek").open && !web) $(".pl-peek-img").src = m.src;
         draw(); renderSide(); renderTop(); drawStrip();
+        playNext();
       };
+      img.onerror = () => stopPlay();
       img.src = m.src;
     }
     else if (m.type === "mask") { const img = new Image(); img.onload = () => { S.mask = img; S.maskItem = m.item; S.sel = m.obj; draw(); renderSide(); }; img.src = m.src; }
