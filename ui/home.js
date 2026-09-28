@@ -370,7 +370,9 @@ export function fileBrowser() {
 }
 
 // Show a server job's progress in `el` until it ends; onDone(result) on success.
+const FOLLOWED = new Set();                                       // jobs a panel on this page already shows
 export function followJob(jid, el, { onDone, onEnd } = {}) {
+  FOLLOWED.add(jid);
   el.innerHTML = `<div class="h-job" role="status"><div class="h-row"><b class="j-text">Starting…</b><span style="flex:1"></span><button type="button" class="j-stop">Stop</button></div>
     <span class="h-bar"><i></i></span><pre class="j-log"></pre></div>`;
   el.querySelector(".j-stop").onclick = () => api(`/api/jobs/${jid}/stop`, {});
@@ -528,6 +530,10 @@ export default function home(root) {
       </div>
       <div class="h-stage h-in" style="--d:2">${DEMO}</div>
     </section>
+
+    <section class="h-panel h-running" aria-labelledby="h-run-h" hidden>
+      <div class="h-sec-head"><h2 id="h-run-h">Running now</h2><span class="h-sub">jobs started anywhere: this page, another tab, the API</span></div>
+      <div class="h-runlist"></div></section>
 
     <div class="h-grid">
       <section aria-labelledby="h-projects-h">
@@ -745,6 +751,26 @@ export default function home(root) {
   }
   pollNotes();
   setInterval(() => { if (!document.hidden) pollNotes(); }, 3000);
+
+  // Running now: background jobs of this account that no panel here follows yet (Teach started over the API, an
+  // export from another tab…), each with its progress, log and Stop; a finished one stays a little, then goes.
+  const KINDS = { teach: "Teach", transfer: "Transfer", quick: "Quick transfer", export: "Export", backup: "Backup",
+                  review: "Review project", restore: "Restore", create: "Creating", import: "Import", move: "Moving projects",
+                  update: "Update" };
+  async function watchJobs() {
+    const jobs = await api("/api/jobs").catch(() => null);
+    const list = $(".h-runlist");
+    for (const j of jobs || []) {
+      if (j.finished || FOLLOWED.has(j.id) || Date.now() / 1000 - j.started < 3) continue;   // a form here is picking it up
+      const item = document.createElement("div");
+      item.innerHTML = `<h3 class="h-sub" style="margin:6px 0">${esc(KINDS[j.kind] || j.kind)}</h3><div></div>`;
+      list.append(item);
+      followJob(j.id, item.lastElementChild, { onEnd: () => { pollNotes(); setTimeout(() => { item.remove(); $(".h-running").hidden = !list.children.length; }, 15000); } });
+    }
+    $(".h-running").hidden = !list.children.length;
+  }
+  watchJobs();
+  setInterval(() => { if (!document.hidden) watchJobs(); }, 5000);
 
   // ---- Rivet, the helper ---------------------------------------------------------------------
   const helper = assistant({
