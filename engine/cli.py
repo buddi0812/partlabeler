@@ -291,11 +291,13 @@ def teach(dataset: Path = typer.Argument(..., exists=True, file_okay=False,
           epochs: int = typer.Option(30, min=1),
           resolution: int = typer.Option(640, help="Model input size, a multiple of 32."),
           held_out: float = typer.Option(0.2, min=0.05, max=0.5, help="Share of frames held out (time blocks)."),
-          aug: str = typer.Option("strong", click_type=click.Choice(("strong", "medium", "off")))):
+          aug: str = typer.Option("strong", click_type=click.Choice(("strong", "medium", "off"))),
+          recolor: float = typer.Option(0.0, min=0.0, max=1.0, help="Share of training frames that also get a copy "
+                                        "with the object in another colour (parts untouched).")):
     """Learn a labeled source and prove on held-out frames that the model reproduces its labels."""
     from engine.teach import teach as run_teach
     with _bar() as progress:
-        r = run_teach(dataset, run, parent, size, epochs, resolution, held_out, aug, progress=progress)
+        r = run_teach(dataset, run, parent, size, epochs, resolution, held_out, aug, progress=progress, recolor=recolor)
     if r["status"] != "done":
         typer.echo(f"stopped during {r['step']}; run the same command again to resume")
         raise typer.Exit(1)

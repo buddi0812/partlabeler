@@ -504,10 +504,12 @@ def swap_classes(args):
       tasks=A("Several task ids, learned together (instead of task)", {"type": "integer"}),
       run=S("Name for the run (default: run_<date>)"), parent=S("Object the parts sit on, to crop to (e.g. 'car')"),
       size=S("nano | small (default) | medium", enum=["nano", "small", "medium"]), epochs=I("Training epochs (default 30)", minimum=1),
+      recolor={"type": "number", "description": "Share of training frames (0-1) that also get a copy with the object "
+               "in another colour (parts untouched): for objects of colours not seen yet. Default 0"},
       wait_s=WAIT)
 def teach(args):
     body = {"project": args["project"], "task": args.get("task"), "tasks": args.get("tasks"), "name": args.get("run"),
-            "parent": args.get("parent"),
+            "parent": args.get("parent"), "recolor": args.get("recolor"),
             "size": args.get("size"), "epochs": args.get("epochs")}
     res = H.teach(body)
     return {"run": res["run"], **_wait(res["job"], float(args.get("wait_s") or 0))}

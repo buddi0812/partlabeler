@@ -93,6 +93,30 @@ def test_parent_search_reuses_the_crop_along_a_video(tmp_path, monkeypatch):
     assert len(calls) == 3 and rec["boxes"]["parent_searches"] == 3
 
 
+def test_recolor_keeps_the_parts_and_repaints_around_them():
+    import numpy as np
+    from PIL import Image
+    from engine.teach import PALETTE, recolor_outside
+    a = np.zeros((120, 160, 3), np.uint8)
+    a[:] = (180, 30, 30)                                   # a red object
+    a[50:70, 60:100] = (255, 170, 0)                         # an amber lamp
+    a[100:, :40] = (10, 10, 10)                              # a tyre
+    out = np.asarray(recolor_outside(Image.fromarray(a), [(60, 50, 100, 70)], PALETTE["white"])).astype(int)
+    assert (abs(out[55:65, 70:90] - a[55:65, 70:90].astype(int)) <= 2).all()       # the lamp untouched
+    assert out[10, 10].min() > 200 and np.ptp(out[10, 10]) < 30                    # the body now white
+    assert out[110, 10].max() < 40                                                  # the tyre still dark
+    region = np.zeros((120, 160), bool)
+    region[:, 80:] = True                                    # only the right half is the object
+    out = np.asarray(recolor_outside(Image.fromarray(a), [(60, 50, 100, 70)], PALETTE["white"], region)).astype(int)
+    assert (abs(out[10, 10] - a[10, 10].astype(int)) <= 2).all() and out[10, 150].min() > 200
+    parts = np.zeros((120, 160), bool)
+    parts[55:65, 65:95] = True                               # the lamp's outline, smaller than its box
+    b = a.copy()
+    b[50:55, 60:100] = (180, 30, 30)                          # paint inside the box, around the outline
+    out = np.asarray(recolor_outside(Image.fromarray(b), [(60, 50, 100, 70)], PALETTE["blue"], None, parts)).astype(int)
+    assert (out[56:64, 70:90] == b[56:64, 70:90]).all() and out[51, 80, 2] > out[51, 80, 0]   # paint in the box: blue
+
+
 def test_every_video_of_a_source_is_tested():
     from engine.teach import held_out_flags
     items = [{"key": (v, f)} for v, n in (("3", 500), ("5", 100), ("7", 20)) for f in range(0, 5 * n, 5)]

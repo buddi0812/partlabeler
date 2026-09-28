@@ -442,7 +442,10 @@ It is optional and is the only part of PartLabeler that trains a model.
 the API (see *AI apps and scripts*) can run `teach` on one or several of them: their confirmed frames become the
 training set (frames confirmed empty teach the model when to label nothing; about a fifth of every task is held back
 to test the model, so each video, for example each car colour, is measured), then `label_tasks` labels other tasks
-of the same project with the run. The model's parts (outlined by SAM 3 in segmentation projects) land on every frame nobody labeled or
+of the same project with the run. For objects in colours not seen yet, `recolor` (for example 0.3) adds a copy of
+that share of the training frames with the object repainted in another colour (white, silver, grey, black, blue,
+navy, green, yellow, orange, brown, red or beige); the labeled parts and their glow keep their own colours. The
+report's stress test then also shows the score with the object repainted white, black, blue and yellow. The model's parts (outlined by SAM 3 in segmentation projects) land on every frame nobody labeled or
 confirmed, shown dashed like tracked parts with the model's confidence; parts that jump or go missing, and parts
 the model was unsure of (under 0.6), are marked *to check*. When the model gives one part two labels, the surer one
 stays. Check them, fix, confirm; Ctrl+Z removes a whole labeling run.

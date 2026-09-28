@@ -61,7 +61,8 @@ def source_items(dataset_dir) -> list[dict]:
 def task_dataset(project, task_id: int, out, progress=None, should_stop=None) -> dict | None:
     """A project task's confirmed frames as a YOLO box dataset for teach(): images/, labels/ (one box per part;
     outlines give their boxes; a confirmed frame without parts is an empty file, a frame the model must leave
-    empty), classes.txt. Names are <task>_f<frame> so the frame step and the time order are known. Returns
+    empty), classes.txt. Names are <task>_f<frame> so the frame step and the time order are known. Projects with
+    outlines also get masks/<name>.png, the parts' pixels (recoloured copies keep exactly those). Returns
     {"frames", "boxes", "empty"}, or None when stopped."""
     out = Path(out)
     (out / "images").mkdir(parents=True, exist_ok=True)
@@ -79,6 +80,17 @@ def task_dataset(project, task_id: int, out, progress=None, should_stop=None) ->
         lines = [l for l in (yolo_line(p["cls"], *p["box"], W, H) for p in project.boxes(k) if p["source"] != "suggested") if l]
         if not (out / "images" / f"{name}.jpg").exists():
             project.place(k, out / "images" / f"{name}.jpg")
+        if project.task == "segment":
+            parts = np.zeros((H, W), np.uint8)
+            for p in project.boxes(k):
+                m = project.mask(k, p["obj"]) if p["source"] != "suggested" else None
+                if m is not None:
+                    parts[m.astype(bool)] = 255
+                elif p["source"] != "suggested":                  # a part without an outline: its box
+                    x1, y1, x2, y2 = (int(round(v)) for v in p["box"])
+                    parts[max(0, y1):y2, max(0, x1):x2] = 255
+            (out / "masks").mkdir(exist_ok=True)
+            Image.fromarray(parts).save(out / "masks" / f"{name}.png")
         (out / "labels" / f"{name}.txt").write_text("\n".join(lines) + ("\n" if lines else ""))
         boxes, empty = boxes + len(lines), empty + (not lines)
         if progress and n % 20 == 0:
@@ -259,8 +271,36 @@ def write_data_yaml(folder, classes, train: str = "images", val: str = "images")
                                          "".join(f"  {i}: {n}\n" for i, n in enumerate(classes)), encoding="utf-8")
 
 
+def _recolor_copies(copies, train, n, progress=None, should_stop=None):
+    """A copy of each (image, label lines, name, colour) with the object painted that colour: its outline from SAM 3,
+    prompted by the object's box inside the crop (the crop is the object's box grown by PARENT_MARGIN)."""
+    from engine import hw
+    from engine.segmenter import Segmenter
+    seg, m = Segmenter(), PARENT_MARGIN / (1 + 2 * PARENT_MARGIN)
+    try:
+        for j, (dst, lines, name, color, parts) in enumerate(copies):
+            if should_stop and should_stop():
+                return None
+            small = Image.open(dst).convert("RGB")
+            w, h = small.size
+            seg.set_image(small)
+            body = seg.segment(box=[w * m, h * m, w * (1 - m), h * (1 - m)])[0].astype(bool)
+            boxes = [((cx - bw / 2) * w, (cy - bh / 2) * h, (cx + bw / 2) * w, (cy + bh / 2) * h)
+                     for _, cx, cy, bw, bh in (parse_row(l) for l in lines)]
+            copy = f"{name}_rc_{color}"
+            recolor_outside(small, boxes, PALETTE[color], body, parts).save(train / "images" / (copy + ".jpg"), quality=95)
+            (train / "labels" / (copy + ".txt")).write_text("\n".join(lines) + ("\n" if lines else ""))
+            n["recoloured_copies"] += 1
+            if progress and j % 10 == 0:
+                progress(j, len(copies), "Painting training copies in other colours")
+    finally:
+        del seg
+        hw.free_gpu_memory()
+    return True
+
+
 def prepare(dataset_dir, out, parent: str | None = None, held_out: float = 0.2, progress=None,
-            should_stop=None) -> dict | None:
+            should_stop=None, recolor: float = 0.0) -> dict | None:
     """Training set in `out`: train/ and valid/ (images + YOLO labels) and data.yaml. With a parent (text such
     as "engine block"), each image is cut to that object (SAM 3) and its labels move into the crop. Returns
     the record also saved as prepared.json (reused when source and settings are unchanged); None if stopped."""
@@ -270,8 +310,8 @@ def prepare(dataset_dir, out, parent: str | None = None, held_out: float = 0.2, 
     if len(items) < 2:
         raise ValueError(f"{root}: need at least 2 labeled images")
     held = held_out_flags(items, held_out)
-    key = hashlib.sha1(json.dumps([str(root.resolve()), parent, held_out, classes,
-                                   [it["name"] for it in items]]).encode()).hexdigest()[:12]
+    key = hashlib.sha1(json.dumps([str(root.resolve()), parent, held_out, classes, [it["name"] for it in items]]
+                                  + ([recolor] if recolor else [])).encode()).hexdigest()[:12]
     if (out / "prepared.json").exists():
         rec = json.loads((out / "prepared.json").read_text(encoding="utf-8"))
         if rec.get("key") == key:
@@ -285,6 +325,7 @@ def prepare(dataset_dir, out, parent: str | None = None, held_out: float = 0.2, 
         from engine.parent import ParentFinder, crop_box
         finder = ParentFinder(parent)
     crops, missing, n, last = {}, [], Counter(), None      # last: (video, index, crop) of the latest search
+    copies = []                                               # training frames that also get a recoloured copy
     try:
         for k, (it, test) in enumerate(zip(items, held)):
             if should_stop and should_stop():
@@ -328,6 +369,11 @@ def prepare(dataset_dir, out, parent: str | None = None, held_out: float = 0.2, 
             else:
                 _save(img.crop(crop), dst)
             (split / "labels" / (it["name"] + ".txt")).write_text("\n".join(lines) + ("\n" if lines else ""))
+            pick = int(hashlib.sha1(it["name"].encode()).hexdigest()[:8], 16)   # the same copies on every run
+            if recolor and not test and crop != (0, 0, W, H) and pick % 1000 < recolor * 1000:
+                mask = root / "masks" / f"{it['name']}.png"
+                copies.append((dst, lines, it["name"], sorted(PALETTE)[pick % len(PALETTE)],
+                               np.asarray(Image.open(mask).crop(crop)) > 0 if mask.exists() else None))
             if progress and k % 10 == 0:
                 progress(k, len(items), "Preparing the training set" + (f" (finding '{parent}')" if parent else ""))
     finally:
@@ -335,6 +381,8 @@ def prepare(dataset_dir, out, parent: str | None = None, held_out: float = 0.2, 
             from engine import hw
             del finder
             hw.free_gpu_memory()
+    if copies and _recolor_copies(copies, out / "train", n, progress, should_stop) is None:
+        return None
     write_data_yaml(out, classes, "train/images", "valid/images")
     total = sum(n[k] for k in ("kept", "clipped", "outside_parent"))
     rec = {"key": key, "source": str(root.resolve()), "parent": parent, "held_out": held_out,
@@ -406,6 +454,43 @@ def repaint_outside(img: Image.Image, det: sv.Detections, tint=(0.25, 0.25, 0.27
     return Image.fromarray(a.clip(0, 255).astype(np.uint8))
 
 
+# Object colours for recoloured copies and the stress test, OpenCV 8-bit Lab (L* x 2.55, a* + 128, b* + 128).
+PALETTE = {"white": (235, 128, 131), "silver": (180, 128, 127), "grey": (120, 128, 128), "black": (35, 128, 128),
+           "blue": (90, 146, 80), "navy": (55, 140, 96), "green": (110, 96, 154), "yellow": (212, 124, 190),
+           "orange": (152, 168, 184), "brown": (88, 142, 150), "red": (112, 184, 160), "beige": (205, 131, 150)}
+
+
+def recolor_outside(img: Image.Image, boxes, color, region=None, parts=None) -> Image.Image:
+    """The object painted another colour, keeping its shading: inside `region` (a bool mask, e.g. the object's
+    outline; None = the whole picture) everything but the labeled parts moves to `color` (Lab as in PALETTE). The
+    parts keep their own colours, and so do bright pixels right next to them (a lamp's glow) and very dark areas
+    (tyres, glass, gaps). boxes: the parts, pixel [x1, y1, x2, y2]; parts: their exact pixels (a bool mask from
+    their outlines), kept instead of the whole boxes."""
+    import cv2
+    a = np.asarray(img.convert("RGB"))
+    lab = cv2.cvtColor(a, cv2.COLOR_RGB2LAB).astype(np.float32)
+    L = lab[..., 0]
+    keep, near = np.zeros(a.shape[:2], np.float32), np.zeros(a.shape[:2], np.float32)
+    for x1, y1, x2, y2 in boxes:
+        if parts is None:
+            keep[max(0, int(y1)):max(0, int(y2)), max(0, int(x1)):max(0, int(x2))] = 1
+        m = 0.5 * min(x2 - x1, y2 - y1) + 6                  # the glow: bright pixels close to the part
+        near[max(0, int(y1 - m)):max(0, int(y2 + m)), max(0, int(x1 - m)):max(0, int(x2 + m))] = 1
+    if parts is not None:
+        keep[parts[:keep.shape[0], :keep.shape[1]]] = 1
+    body = (keep == 0) if region is None else region & (keep == 0)
+    glow = max(170.0, min(245.0, float(np.percentile(L[body], 90)) + 5 if body.any() else 170.0))   # above a white body
+    keep = np.maximum(cv2.GaussianBlur(np.maximum(keep, near * (L > glow)), (0, 0), 3), keep)[..., None]   # parts exact
+    if region is not None:
+        keep = np.maximum(keep, cv2.GaussianBlur((~region).astype(np.float32), (0, 0), 3)[..., None])
+    new = np.stack([np.clip(color[0] + (L - np.median(L)) * 0.6, 0, 255),
+                    color[1] + (lab[..., 1] - np.median(lab[..., 1])) * 0.15,     # the object's own tint goes,
+                    color[2] + (lab[..., 2] - np.median(lab[..., 2])) * 0.15], axis=-1)  # its local variation stays
+    new = cv2.cvtColor(new.clip(0, 255).astype(np.uint8), cv2.COLOR_LAB2RGB).astype(np.float32)
+    w = (1 - keep) * np.clip((L - 40) / 60, 0, 1)[..., None]   # 0 on the parts and on dark pixels: kept as they are
+    return Image.fromarray((a * (1 - w) + new * w).round().clip(0, 255).astype(np.uint8))
+
+
 def hue_rotate(img: Image.Image, degrees: float = 180) -> Image.Image:
     h, s, v = img.convert("HSV").split()
     shift = int(round(degrees / 360 * 256))
@@ -414,7 +499,9 @@ def hue_rotate(img: Image.Image, degrees: float = 180) -> Image.Image:
 
 STRESS = {"grayscale": lambda im, t: ImageOps.grayscale(im).convert("RGB"),
           "hue_180": lambda im, t: hue_rotate(im, 180),
-          "dark_background": repaint_outside}
+          "dark_background": repaint_outside,
+          **{f"{c}_object": (lambda c: lambda im, t: recolor_outside(im, t.xyxy, PALETTE[c]))(c)
+             for c in ("white", "black", "blue", "yellow")}}
 
 
 def _map(preds, targets):
@@ -488,7 +575,7 @@ def _train_step(run_dir: Path, prep: dict, size, epochs, resolution, aug, progre
 
 def teach(dataset_dir, run_dir, parent: str | None = None, size: str = "small", epochs: int = 30,
           resolution: int = 640, held_out: float = 0.2, aug: str = "strong", progress=None,
-          should_stop=None) -> dict:
+          should_stop=None, recolor: float = 0.0) -> dict:
     """Analyse, prepare, train and prove; writes settings.json, report.json and report.md into run_dir and
     returns the report ({"status": "stopped", ...} when should_stop ended it early)."""
     from engine import detector, hw
@@ -503,7 +590,7 @@ def teach(dataset_dir, run_dir, parent: str | None = None, size: str = "small", 
     analysis = analyse(dataset_dir, resolution)
     _write_json(run_dir / "analysis.json", analysis)
     say(1, 4, "Preparing the training set")
-    prep = prepare(dataset_dir, run_dir / "dataset", parent, held_out, progress, should_stop)
+    prep = prepare(dataset_dir, run_dir / "dataset", parent, held_out, progress, should_stop, recolor)
     if prep is None:
         return {"status": "stopped", "step": "prepare", "run_dir": str(run_dir)}
     say(2, 4, "Training")
