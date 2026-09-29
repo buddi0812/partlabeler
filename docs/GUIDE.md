@@ -423,7 +423,7 @@ shows the device (GPU or CPU) and GPU memory in use.
 A detector says *which* lamp is there and in which state; it does not say whether the lamp is fully working (a
 detector still finds a lamp with a dark section). For that second check, `partlabeler part-reference` turns a
 project's confirmed frames into an XML reference: per group (for example a camera or station, `--group
-station_1=10,11,12`) and per part class, how the part looks when it is healthy. The ranges are the healthy
+camera_a=10,11,12`) and per part class, how the part looks when it is healthy. The ranges are the healthy
 examples' 0.5-99.5 percentiles:
 
 - where the part sits in the frame and how big its box is;
