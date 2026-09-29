@@ -33,7 +33,51 @@ def test_healthy_passes_and_defects_are_named():
     assert not dim["ok"]                                    # too dim to count as lit
     amber = L.check(ref, "cam", "drl", frame(colour=(255, 170, 0), seed=99)[0], BOX)
     assert "COLOUR" in amber["reasons"]
+
+
+def test_a_coloured_part_is_lit_only_in_its_colour():
+    frames = [frame(colour=(255, 150, 0), seed=s) for s in range(20)]              # an amber strip
+    ref = L.build(lambda: ((k, "cam", "ind", img, BOX, o) for k, (img, o) in enumerate(frames)))
+    assert ref["cam"]["parts"]["ind"]["lit_hue"] is not None
+    img, _ = frame(colour=(255, 150, 0), seed=99)
+    assert L.check(ref, "cam", "ind", img, BOX)["ok"]
+    img[45:55, 80:110] = 250                                 # a section bright but white: not the indicator's light
+    assert not L.check(ref, "cam", "ind", img, BOX)["ok"]
     assert L.check(ref, "cam", "fog", frame()[0], BOX)["reasons"] == ["UNKNOWN_PART"]
+
+
+def sweep_frame(reach, dead=None, seed=0):
+    """A strip lit from x=45 up to 45 + reach (of 110 px); the box follows the lit part; dead: (x1, x2) never lit."""
+    img, _ = frame(seed=seed)
+    img[45:55, 45:155] = 70                                 # unlit strip
+    end = 45 + reach
+    img[45:55, 45:end] = 255
+    outline = np.zeros((120, 200), bool)
+    outline[45:55, 45:end] = True
+    if dead:
+        img[45:55, dead[0]:dead[1]] = 70
+        outline[45:55, dead[0]:dead[1]] = False
+    xs = np.nonzero(outline.any(axis=0))[0]
+    box = (int(xs.min()), 45, int(xs.max()) + 1, 55) if len(xs) else None
+    return img, box, outline
+
+
+def test_sweeping_parts_must_reach_their_full_shape():
+    blinks = [sweep_frame(r, seed=s) for s in range(12) for r in (15, 40, 70, 110)]
+    ref = L.build(lambda: ((k, "cam", "ind", img, box, o) for k, (img, box, o) in enumerate(blinks)), sweep=["ind"])
+    assert ref["cam"]["parts"]["ind"]["sweep"] and ref["cam"]["parts"]["ind"]["samples"] == 12   # full frames only
+    window = lambda **kw: [sweep_frame(r, seed=99, **kw)[:2] for r in (15, 40, 70, 110)]
+    assert L.check_sweep(ref, "cam", "ind", window())["ok"]
+    short = L.check_sweep(ref, "cam", "ind", [f for f in window(dead=(128, 155))])        # the far end never lights
+    assert "NOT_FULL" in short["reasons"]
+    gap = L.check_sweep(ref, "cam", "ind", window(dead=(85, 110)))                        # a dead middle section
+    assert any(r.startswith("DARK_SEGMENT") for r in gap["reasons"])
+    assert L.check_sweep(ref, "cam", "ind", [])["reasons"] == ["NOT_SEEN"]
+    one_bad = [window(), window(dead=(128, 155)), window()]                        # one bad blink: still OK
+    assert L.check_blinks(ref, "cam", "ind", one_bad)["ok"]
+    two_bad = [window(dead=(128, 155)), window(), window(dead=(128, 155))]         # 2 of 3 fail: not OK
+    r = L.check_blinks(ref, "cam", "ind", two_bad)
+    assert not r["ok"] and r["failed"] == 2 and "NOT_FULL" in r["reasons"]
 
 
 def test_xml_round_trip(tmp_path):

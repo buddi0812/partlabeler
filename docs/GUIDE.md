@@ -436,8 +436,11 @@ examples' 0.5-99.5 percentiles:
 `engine/lampcheck.py` is the standalone checker to copy into production (numpy, OpenCV and the standard library
 only): `read_xml`, then `check(reference, group, part, image, box)` for each detected part gives OK, or reasons such
 as `DARK_SEGMENT 7,8`, `AREA_LOW`, `SHAPE`, `COLOUR`, `POSITION`; `check_pair` compares left and right. Measure a
-new product or a moved camera again from its own confirmed frames. Parts that are partly lit on purpose (a
-progressive indicator's sweep) are best judged at their full state.
+new product or a moved camera again from its own confirmed frames. Parts that light up in stages (a progressive
+indicator sweeping from its tip to full length) are named with `--sweep` (e.g. `--sweep left_ind,right_ind`): their
+reference is built from fully swept frames, and `check_sweep(reference, group, part, frames)` checks a few blinks'
+worth of frames: where the part reaches furthest it must show its full shape (`NOT_FULL` when the sweep never gets
+there, `DARK_SEGMENT` for a gap).
 
 ## Teach & Transfer: how it works
 

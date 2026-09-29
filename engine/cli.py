@@ -216,7 +216,9 @@ def part_reference(project: Path = typer.Argument(..., exists=True, file_okay=Fa
                    out: Path = typer.Option(..., help="The XML file to write."),
                    group: list[str] = typer.Option(None, "--group", help="NAME=task,task,...: tasks that share a camera "
                                                    "setup get their own reference (repeat; default: one group)."),
-                   every: int = typer.Option(1, min=1, help="Use every Nth confirmed frame.")):
+                   every: int = typer.Option(1, min=1, help="Use every Nth confirmed frame."),
+                   sweep: str = typer.Option("", help="Classes that light up in stages (e.g. progressive indicators), "
+                                             "comma-separated: checked on their full shape.")):
     """Reference profiles of the lit parts (lamps, LEDs) on a project's confirmed frames, as XML for a production
     check (engine/lampcheck.py, a standalone file: measure the detected part the same way, compare, OK or reasons)."""
     import numpy as np
@@ -240,7 +242,7 @@ def part_reference(project: Path = typer.Argument(..., exists=True, file_okay=Fa
                 m = p.mask(k, b["obj"])
                 yield k, g, p.classes[b["cls"]], img, b["box"], m.astype(bool) if m is not None else None
     pairs = [(c, "right_" + c[5:]) for c in p.classes if c.startswith("left_") and "right_" + c[5:] in p.classes]
-    ref = lampcheck.build(samples, pairs)
+    ref = lampcheck.build(samples, pairs, sweep=[c.strip() for c in sweep.split(",") if c.strip()])
     lampcheck.write_xml(ref, out, {"project": p.meta["name"], "frames": len(items)})
     typer.echo(f"{sum(len(g['parts']) for g in ref.values())} part profiles in {len(ref)} group(s) -> {out}")
 
