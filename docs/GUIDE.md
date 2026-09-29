@@ -445,7 +445,10 @@ to test the model, so each video, for example each car colour, is measured), the
 of the same project with the run. For objects in colours not seen yet, `recolor` (for example 0.3) adds a copy of
 that share of the training frames with the object repainted in another colour (white, silver, grey, black, blue,
 navy, green, yellow, orange, brown, red or beige); the labeled parts and their glow keep their own colours. The
-report's stress test then also shows the score with the object repainted white, black, blue and yellow. The model's parts (outlined by SAM 3 in segmentation projects) land on every frame nobody labeled or
+report's stress test then also shows the score with the object repainted white, black, blue and yellow. With a
+parent object (e.g. `car`) frames are cut to it by default, which makes small parts bigger; `crop: false` trains on
+whole frames instead, exactly as a production camera sees them (the parent is then only found to paint the copies),
+and a higher `resolution` (for example 960 instead of 640) keeps small parts visible. The model's parts (outlined by SAM 3 in segmentation projects) land on every frame nobody labeled or
 confirmed, shown dashed like tracked parts with the model's confidence; parts that jump or go missing, and parts
 the model was unsure of (under 0.6), are marked *to check*. When the model gives one part two labels, the surer one
 stays. Check them, fix, confirm; Ctrl+Z removes a whole labeling run.

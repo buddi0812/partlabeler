@@ -272,19 +272,19 @@ def write_data_yaml(folder, classes, train: str = "images", val: str = "images")
 
 
 def _recolor_copies(copies, train, n, progress=None, should_stop=None):
-    """A copy of each (image, label lines, name, colour) with the object painted that colour: its outline from SAM 3,
-    prompted by the object's box inside the crop (the crop is the object's box grown by PARENT_MARGIN)."""
+    """A copy of each (image, label lines, name, colour, part pixels, object box) with the object painted that
+    colour: its outline from SAM 3, prompted by the object's box in that image."""
     from engine import hw
     from engine.segmenter import Segmenter
-    seg, m = Segmenter(), PARENT_MARGIN / (1 + 2 * PARENT_MARGIN)
+    seg = Segmenter()
     try:
-        for j, (dst, lines, name, color, parts) in enumerate(copies):
+        for j, (dst, lines, name, color, parts, obj) in enumerate(copies):
             if should_stop and should_stop():
                 return None
             small = Image.open(dst).convert("RGB")
             w, h = small.size
             seg.set_image(small)
-            body = seg.segment(box=[w * m, h * m, w * (1 - m), h * (1 - m)])[0].astype(bool)
+            body = seg.segment(box=[float(v) for v in obj])[0].astype(bool)
             boxes = [((cx - bw / 2) * w, (cy - bh / 2) * h, (cx + bw / 2) * w, (cy + bh / 2) * h)
                      for _, cx, cy, bw, bh in (parse_row(l) for l in lines)]
             copy = f"{name}_rc_{color}"
@@ -300,10 +300,12 @@ def _recolor_copies(copies, train, n, progress=None, should_stop=None):
 
 
 def prepare(dataset_dir, out, parent: str | None = None, held_out: float = 0.2, progress=None,
-            should_stop=None, recolor: float = 0.0) -> dict | None:
+            should_stop=None, recolor: float = 0.0, crop_to_parent: bool = True) -> dict | None:
     """Training set in `out`: train/ and valid/ (images + YOLO labels) and data.yaml. With a parent (text such
-    as "engine block"), each image is cut to that object (SAM 3) and its labels move into the crop. Returns
-    the record also saved as prepared.json (reused when source and settings are unchanged); None if stopped."""
+    as "engine block"), each image is cut to that object (SAM 3) and its labels move into the crop; with
+    crop_to_parent False the images stay whole and the parent is only found for the recoloured copies (`recolor`:
+    the share of training frames that also get one). Returns the record also saved as prepared.json (reused when
+    source and settings are unchanged); None if stopped."""
     root, out = Path(dataset_dir), Path(out)
     classes = classes_of(root)
     items = [it for it in source_items(root) if it["label"] is not None]
@@ -311,7 +313,8 @@ def prepare(dataset_dir, out, parent: str | None = None, held_out: float = 0.2, 
         raise ValueError(f"{root}: need at least 2 labeled images")
     held = held_out_flags(items, held_out)
     key = hashlib.sha1(json.dumps([str(root.resolve()), parent, held_out, classes, [it["name"] for it in items]]
-                                  + ([recolor] if recolor else [])).encode()).hexdigest()[:12]
+                                  + ([recolor] if recolor else []) + ([] if crop_to_parent else ["whole"])
+                                  ).encode()).hexdigest()[:12]
     if (out / "prepared.json").exists():
         rec = json.loads((out / "prepared.json").read_text(encoding="utf-8"))
         if rec.get("key") == key:
@@ -332,9 +335,14 @@ def prepare(dataset_dir, out, parent: str | None = None, held_out: float = 0.2, 
                 return None
             img = Image.open(it["image"])
             W, H = img.size
-            crop = (0, 0, W, H)
+            crop, obj = (0, 0, W, H), None                    # obj: the parent's box, found or reused
             rows, _ = read_labels(it["label"], len(classes))
-            if finder:
+            pick = int(hashlib.sha1(it["name"].encode()).hexdigest()[:8], 16)   # the same copies on every run
+            copy = recolor and not test and pick % 1000 < recolor * 1000
+            if finder and not crop_to_parent and copy:            # whole images: the object only for the copy
+                obj = finder.find(img.convert("RGB"))
+                n["parent_searches"] += 1
+            elif finder and crop_to_parent:
                 # frames of one video (names _fNNNNNN): the object barely moves between neighbours, so its crop is
                 # reused for the next frames; searched again every PARENT_EVERY frames, or when a label of this
                 # frame would fall outside it. Pictures without frame numbers are searched one by one.
@@ -342,12 +350,13 @@ def prepare(dataset_dir, out, parent: str | None = None, held_out: float = 0.2, 
                 crop = last[2] if last and video is not None and last[0] == video and k - last[1] < PARENT_EVERY else None
                 if crop and not all(_inside(r, crop, W, H) for r in rows):
                     crop = None
+                obj = last[3] if crop else None
                 if crop is None:
                     box = finder.find(img.convert("RGB"))
                     n["parent_searches"] += 1
                     if box:
-                        crop = crop_box(box, W, H, PARENT_MARGIN)
-                        last = (video, k, crop)
+                        crop, obj = crop_box(box, W, H, PARENT_MARGIN), box
+                        last = (video, k, crop, box)
                     else:
                         crop, last = (0, 0, W, H), None
                         missing.append(it["name"])
@@ -369,11 +378,12 @@ def prepare(dataset_dir, out, parent: str | None = None, held_out: float = 0.2, 
             else:
                 _save(img.crop(crop), dst)
             (split / "labels" / (it["name"] + ".txt")).write_text("\n".join(lines) + ("\n" if lines else ""))
-            pick = int(hashlib.sha1(it["name"].encode()).hexdigest()[:8], 16)   # the same copies on every run
-            if recolor and not test and crop != (0, 0, W, H) and pick % 1000 < recolor * 1000:
+            if copy and obj:                                   # the object's box in the saved image
                 mask = root / "masks" / f"{it['name']}.png"
+                ox, oy = crop[0], crop[1]
                 copies.append((dst, lines, it["name"], sorted(PALETTE)[pick % len(PALETTE)],
-                               np.asarray(Image.open(mask).crop(crop)) > 0 if mask.exists() else None))
+                               np.asarray(Image.open(mask).crop(crop)) > 0 if mask.exists() else None,
+                               (obj[0] - ox, obj[1] - oy, obj[2] - ox, obj[3] - oy)))
             if progress and k % 10 == 0:
                 progress(k, len(items), "Preparing the training set" + (f" (finding '{parent}')" if parent else ""))
     finally:
@@ -388,7 +398,7 @@ def prepare(dataset_dir, out, parent: str | None = None, held_out: float = 0.2, 
     rec = {"key": key, "source": str(root.resolve()), "parent": parent, "held_out": held_out,
            "train": [it["name"] for it, h in zip(items, held) if not h],
            "valid": [it["name"] for it, h in zip(items, held) if h],
-           "boxes": dict(n), "parent_coverage": round(n["kept"] / total, 3) if parent and total else None,
+           "boxes": dict(n), "parent_coverage": round(n["kept"] / total, 3) if parent and crop_to_parent and total else None,
            "parent_missing": missing, "crops": crops}
     (out / "prepared.json").write_text(json.dumps(rec), encoding="utf-8")
     return rec
@@ -575,7 +585,7 @@ def _train_step(run_dir: Path, prep: dict, size, epochs, resolution, aug, progre
 
 def teach(dataset_dir, run_dir, parent: str | None = None, size: str = "small", epochs: int = 30,
           resolution: int = 640, held_out: float = 0.2, aug: str = "strong", progress=None,
-          should_stop=None, recolor: float = 0.0) -> dict:
+          should_stop=None, recolor: float = 0.0, crop_to_parent: bool = True) -> dict:
     """Analyse, prepare, train and prove; writes settings.json, report.json and report.md into run_dir and
     returns the report ({"status": "stopped", ...} when should_stop ended it early)."""
     from engine import detector, hw
@@ -590,7 +600,7 @@ def teach(dataset_dir, run_dir, parent: str | None = None, size: str = "small", 
     analysis = analyse(dataset_dir, resolution)
     _write_json(run_dir / "analysis.json", analysis)
     say(1, 4, "Preparing the training set")
-    prep = prepare(dataset_dir, run_dir / "dataset", parent, held_out, progress, should_stop, recolor)
+    prep = prepare(dataset_dir, run_dir / "dataset", parent, held_out, progress, should_stop, recolor, crop_to_parent)
     if prep is None:
         return {"status": "stopped", "step": "prepare", "run_dir": str(run_dir)}
     say(2, 4, "Training")
@@ -627,7 +637,8 @@ def teach(dataset_dir, run_dir, parent: str | None = None, size: str = "small", 
     if low:
         warnings.append(f"classes with held-out recall under {TARGETS['recall']:.2f} (check how consistently the "
                         f"source labels them): {', '.join(low)}")
-    settings = {"classes": classes, "parent": parent, "parent_margin": PARENT_MARGIN, "size": size,
+    settings = {"classes": classes, "parent": parent if crop_to_parent else None, "object": parent,   # no parent:
+                "recolor": recolor, "parent_margin": PARENT_MARGIN, "size": size,                   # whole frames
                 "resolution": resolution, "threshold": proof["threshold"], "every": sampling["every"],
                 "naming": sampling["naming"], "image_ext": sampling["image_ext"],
                 "presence": {n: pc["presence"] for n, pc in analysis["per_class"].items()},

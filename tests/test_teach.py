@@ -117,6 +117,52 @@ def test_recolor_keeps_the_parts_and_repaints_around_them():
     assert (out[56:64, 70:90] == b[56:64, 70:90]).all() and out[51, 80, 2] > out[51, 80, 0]   # paint in the box: blue
 
 
+def test_recoloured_copies_with_and_without_the_crop(tmp_path, monkeypatch):
+    import numpy as np
+    import engine.parent as parent
+    import engine.segmenter as segmenter
+    from PIL import Image
+    from engine.teach import prepare
+    searched, prompts = [], []
+
+    class Finder:
+        def __init__(self, text):
+            pass
+
+        def find(self, img):
+            searched.append(1)
+            return (20, 20, 80, 80)
+
+    class Seg:                                             # SAM 3 stand-in: the object is its box
+        def set_image(self, img):
+            self.size = img.size
+
+        def segment(self, box):
+            prompts.append([round(v) for v in box])
+            m = np.zeros(self.size[::-1], bool)
+            x1, y1, x2, y2 = (int(v) for v in box)
+            m[y1:y2, x1:x2] = True
+            return m, 1.0
+    monkeypatch.setattr(parent, "ParentFinder", Finder)
+    monkeypatch.setattr(segmenter, "Segmenter", Seg)
+    src = tmp_path / "src"
+    (src / "images").mkdir(parents=True)
+    (src / "labels").mkdir()
+    (src / "classes.txt").write_text("lamp\n")
+    for f in range(10):
+        Image.new("RGB", (100, 100), (180, 30, 30)).save(src / "images" / f"cam_f{f * 5:06d}.jpg")
+        (src / "labels" / f"cam_f{f * 5:06d}.txt").write_text("0 0.5 0.5 0.1 0.1\n")
+    whole = prepare(src, tmp_path / "whole", parent="car", recolor=1.0, crop_to_parent=False)
+    copies = sorted((tmp_path / "whole" / "train" / "images").glob("*_rc_*.jpg"))
+    assert whole["boxes"]["recoloured_copies"] == len(copies) == len(whole["train"]) > 0
+    assert Image.open(copies[0]).size == (100, 100) and len(searched) == len(copies)   # whole images; searched for copies only
+    assert prompts[0] == [20, 20, 80, 80] and whole["parent_coverage"] is None
+    searched.clear(), prompts.clear()
+    cropped = prepare(src, tmp_path / "crop", parent="car", recolor=1.0)
+    assert cropped["boxes"]["recoloured_copies"] > 0
+    assert prompts[0] == [8, 8, 68, 68]           # the object's box inside the crop (crop starts at 20 - 0.12 * 60)
+
+
 def test_every_video_of_a_source_is_tested():
     from engine.teach import held_out_flags
     items = [{"key": (v, f)} for v, n in (("3", 500), ("5", 100), ("7", 20)) for f in range(0, 5 * n, 5)]

@@ -1119,8 +1119,11 @@ def teach(body: dict = Body(...)) -> dict:
         if not dataset.is_dir():
             raise HTTPException(400, "Pick the labeled dataset folder (with images/ and labels/)")
     kw = {k: body[k] for k in ("size", "epochs", "resolution") if body.get(k)}
+    if kw.get("resolution") and (int(kw["resolution"]) <= 0 or int(kw["resolution"]) % 32):
+        raise HTTPException(400, "resolution must be a multiple of 32, e.g. 640 or 960")
     parent = (body.get("parent") or "").strip() or None
     recolor = min(1.0, max(0.0, float(body.get("recolor") or 0)))
+    crop = body.get("crop", True) is not False                # False: whole frames (the parent only for recolouring)
 
     def job(progress, should_stop):
         for t in tasks or []:
@@ -1128,7 +1131,7 @@ def teach(body: dict = Body(...)) -> dict:
             if task_dataset(p, t, dataset, progress, should_stop) is None:
                 return {"status": "stopped", "step": "source"}
         return run_teach(dataset, runs_dir() / name, parent=parent, progress=progress, should_stop=should_stop,
-                         recolor=recolor, **{k: (int(v) if k != "size" else v) for k, v in kw.items()})
+                         recolor=recolor, crop_to_parent=crop, **{k: (int(v) if k != "size" else v) for k, v in kw.items()})
 
     def done(res):
         res = res or {}

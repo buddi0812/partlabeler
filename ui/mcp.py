@@ -506,10 +506,14 @@ def swap_classes(args):
       size=S("nano | small (default) | medium", enum=["nano", "small", "medium"]), epochs=I("Training epochs (default 30)", minimum=1),
       recolor={"type": "number", "description": "Share of training frames (0-1) that also get a copy with the object "
                "in another colour (parts untouched): for objects of colours not seen yet. Default 0"},
+      crop=B("With parent: cut each frame to it (default true); false trains on whole frames, as production sees them "
+             "(the parent is then only found to paint the recoloured copies)"),
+      resolution=I("Model input size, a multiple of 32 (default 640; small parts in whole frames: e.g. 960)", minimum=320),
       wait_s=WAIT)
 def teach(args):
     body = {"project": args["project"], "task": args.get("task"), "tasks": args.get("tasks"), "name": args.get("run"),
-            "parent": args.get("parent"), "recolor": args.get("recolor"),
+            "parent": args.get("parent"), "recolor": args.get("recolor"), "crop": args.get("crop", True),
+            "resolution": args.get("resolution"),
             "size": args.get("size"), "epochs": args.get("epochs")}
     res = H.teach(body)
     return {"run": res["run"], **_wait(res["job"], float(args.get("wait_s") or 0))}
