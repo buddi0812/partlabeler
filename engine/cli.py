@@ -211,6 +211,40 @@ def frames_to_video(project: Path = typer.Argument(..., exists=True, file_okay=F
     typer.echo(f"{len(todo)} tasks, {freed / 2**30:.1f} GB can be freed: delete {old_to}" if todo else "nothing to change")
 
 
+@app.command("part-reference")
+def part_reference(project: Path = typer.Argument(..., exists=True, file_okay=False, help="Project folder."),
+                   out: Path = typer.Option(..., help="The XML file to write."),
+                   group: list[str] = typer.Option(None, "--group", help="NAME=task,task,...: tasks that share a camera "
+                                                   "setup get their own reference (repeat; default: one group)."),
+                   every: int = typer.Option(1, min=1, help="Use every Nth confirmed frame.")):
+    """Reference profiles of the lit parts (lamps, LEDs) on a project's confirmed frames, as XML for a production
+    check (engine/lampcheck.py, a standalone file: measure the detected part the same way, compare, OK or reasons)."""
+    import numpy as np
+    from engine import lampcheck
+    from engine.project import Project
+    p = Project(project)
+    groups = {}
+    for g in group or []:
+        name, _, ids = g.partition("=")
+        groups.update({t.strip(): name.strip() for t in ids.split(",") if t.strip()})
+    items = [k for k in range(len(p.items)) if p.is_reviewed(k)][::every]
+
+    def samples():
+        for k in items:
+            parts = [b for b in p.boxes(k) if b["source"] != "suggested"]
+            if not parts:
+                continue
+            img = np.asarray(p.image(k).convert("RGB"))
+            g = groups.get(p.task_of(k)["name"], groups.get(str(p.task_of(k)["id"]), "all"))
+            for b in parts:
+                m = p.mask(k, b["obj"])
+                yield k, g, p.classes[b["cls"]], img, b["box"], m.astype(bool) if m is not None else None
+    pairs = [(c, "right_" + c[5:]) for c in p.classes if c.startswith("left_") and "right_" + c[5:] in p.classes]
+    ref = lampcheck.build(samples, pairs)
+    lampcheck.write_xml(ref, out, {"project": p.meta["name"], "frames": len(items)})
+    typer.echo(f"{sum(len(g['parts']) for g in ref.values())} part profiles in {len(ref)} group(s) -> {out}")
+
+
 account_app = typer.Typer(help="Accounts of the local app: each keeps its settings and projects folder.", no_args_is_help=True)
 app.add_typer(account_app, name="account")
 

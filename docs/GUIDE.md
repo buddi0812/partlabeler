@@ -418,6 +418,27 @@ it, which helps when the camera or distance changes. Leave it empty to search th
 change look** lists classes that are states of one part (see *Track through a video*). The Settings section also
 shows the device (GPU or CPU) and GPU memory in use.
 
+## A reference for checking lit parts in production
+
+A detector says *which* lamp is there and in which state; it does not say whether the lamp is fully working (a
+detector still finds a lamp with a dark section). For that second check, `partlabeler part-reference` turns a
+project's confirmed frames into an XML reference: per group (for example a camera or station, `--group
+station_1=10,11,12`) and per part class, how the part looks when it is healthy. The ranges are the healthy
+examples' 0.5-99.5 percentiles:
+
+- where the part sits in the frame and how big its box is;
+- how many pixels are lit and what share of the box (lit = brightest colour channel above the part's threshold,
+  calibrated on your outlines);
+- how much of each of 20 segments along the part is lit (a dead group of LEDs shows as a dark segment);
+- the lit area's shape against an average template, and the colour of the lit pixels;
+- for left_/right_ classes, how the two sides' lit areas compare.
+
+`engine/lampcheck.py` is the standalone checker to copy into production (numpy, OpenCV and the standard library
+only): `read_xml`, then `check(reference, group, part, image, box)` for each detected part gives OK, or reasons such
+as `DARK_SEGMENT 7,8`, `AREA_LOW`, `SHAPE`, `COLOUR`, `POSITION`; `check_pair` compares left and right. Measure a
+new product or a moved camera again from its own confirmed frames. Parts that are partly lit on purpose (a
+progressive indicator's sweep) are best judged at their full state.
+
 ## Teach & Transfer: how it works
 
 Teach & Transfer is for when one video is already labeled and you want similar videos labeled the same way.
