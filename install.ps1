@@ -96,6 +96,64 @@ function Assert-LastExit([string]$Action, [string]$Advice = "") {
     }
 }
 
+function Test-VcRuntime {
+    # PyTorch's DLLs need the Microsoft Visual C++ 2015-2022 runtime (x64). Binaries built with Visual Studio 17.10+
+    # crash with a runtime older than 14.40, so an older one counts as missing. A fresh Windows may have none.
+    $sys = Join-Path $env:SystemRoot "System32"
+    foreach ($dll in "vcruntime140.dll", "vcruntime140_1.dll", "msvcp140.dll") {
+        if (-not (Test-Path -LiteralPath (Join-Path $sys $dll))) { return $false }
+    }
+    foreach ($key in "HKLM:\SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64",
+                     "HKLM:\SOFTWARE\WOW6432Node\Microsoft\VisualStudio\14.0\VC\Runtimes\x64") {
+        $rt = Get-ItemProperty -LiteralPath $key -ErrorAction SilentlyContinue
+        if ($rt -and $null -ne $rt.Major) {
+            return ([int]$rt.Major -gt 14) -or ([int]$rt.Major -eq 14 -and [int]$rt.Minor -ge 40)
+        }
+    }
+    return $true                                    # DLLs present, version unknown (installed by another app)
+}
+
+function Install-VcRuntime {
+    $url = "https://aka.ms/vs/17/release/vc_redist.x64.exe"
+    $exe = Join-Path $env:TEMP "vc_redist.x64.exe"
+    Write-Info "Downloading it from Microsoft ($url, about 25 MB) ..."
+    $oldProgress = $ProgressPreference
+    $ProgressPreference = "SilentlyContinue"         # Windows PowerShell's progress bar slows downloads a lot
+    try {
+        [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor 3072
+        Invoke-WebRequest -Uri $url -OutFile $exe -UseBasicParsing
+    } catch {
+        Stop-Install "Downloading the Microsoft Visual C++ runtime failed: $($_.Exception.Message)" "Install it yourself from $url and run the installer again."
+    } finally {
+        $ProgressPreference = $oldProgress
+    }
+    $sig = Get-AuthenticodeSignature -LiteralPath $exe
+    if ($sig.Status -ne "Valid" -or $sig.SignerCertificate.Subject -notmatch "O=Microsoft Corporation") {
+        Remove-Item -LiteralPath $exe -ErrorAction SilentlyContinue
+        Stop-Install "The downloaded Visual C++ runtime is not signed by Microsoft; it was not run." "Install it yourself from $url and run the installer again."
+    }
+    $admin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+    if (-not $admin) {
+        Write-Info "Installing it: Windows asks for administrator permission (click Yes) ..."
+    } else {
+        Write-Info "Installing it ..."
+    }
+    try {
+        $run = @{ FilePath = $exe; ArgumentList = @("/install", "/quiet", "/norestart"); Wait = $true; PassThru = $true }
+        if (-not $admin) { $run.Verb = "RunAs" }
+        $proc = Start-Process @run
+    } catch {
+        Stop-Install "The Visual C++ runtime was not installed: $($_.Exception.Message)" "Run the installer again and click Yes when Windows asks, or install it yourself from $url."
+    }
+    Remove-Item -LiteralPath $exe -ErrorAction SilentlyContinue
+    switch ($proc.ExitCode) {
+        0 { Write-Info "Visual C++ runtime installed." }
+        1638 { Write-Info "A newer Visual C++ runtime is already installed." }
+        3010 { Write-Warn "Visual C++ runtime installed; Windows wants a restart. Restart the PC if PartLabeler does not start." }
+        default { Stop-Install "Installing the Visual C++ runtime failed (exit code $($proc.ExitCode))." "Install it yourself from $url and run the installer again." }
+    }
+}
+
 function Find-Uv {
     $cmd = Get-Command uv -ErrorAction SilentlyContinue
     if ($cmd) {
@@ -326,6 +384,12 @@ Write-Info "PyTorch build: $variant"
 
 # ---- 4. PyTorch ------------------------------------------------------------------------------
 Write-Step "PyTorch ($variant) - the first install downloads about 2.5 GB"
+if (Test-VcRuntime) {
+    Write-Info "Microsoft Visual C++ runtime: present."
+} else {
+    Write-Info "PyTorch needs the Microsoft Visual C++ runtime (2015-2022, x64, 14.40 or newer); this PC has none or an older one."
+    Install-VcRuntime
+}
 $indexUrl = "https://download.pytorch.org/whl/$variant"
 $torchArgs = @("pip", "install", "--python", $VenvPy, "torch", "torchvision", "--index-url", $indexUrl)
 if ($reinstall) {

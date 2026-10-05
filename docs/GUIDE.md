@@ -632,7 +632,8 @@ your last action; press its stop button to run another step (the annotator keeps
 ## Install and requirements
 
 Windows: double-click `install_windows.bat` (installs Python 3.12 via uv, the right PyTorch for your NVIDIA
-driver, and about 4 GB of models). Linux / macOS: `bash install.sh`. Options: `-Cpu`, `-NoModels`,
+driver, the Microsoft Visual C++ runtime PyTorch needs when the PC lacks it (Windows asks for administrator
+permission once), and about 4 GB of models). Linux / macOS: `bash install.sh`. Options: `-Cpu`, `-NoModels`,
 `-NoTeach`, `-Dev`. `python -m engine.cli doctor` checks the setup. An NVIDIA GPU is recommended (developed
 on an RTX 3060 12 GB; all models together use about 4 GB). CPU works but is slow.
 
