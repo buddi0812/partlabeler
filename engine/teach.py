@@ -62,8 +62,9 @@ def task_dataset(project, task_id: int, out, progress=None, should_stop=None) ->
     """A project task's confirmed frames as a YOLO box dataset for teach(): images/, labels/ (one box per part;
     outlines give their boxes; a confirmed frame without parts is an empty file, a frame the model must leave
     empty), classes.txt. Names are <task>_f<frame> so the frame step and the time order are known. Projects with
-    outlines also get masks/<name>.png, the parts' pixels (recoloured copies keep exactly those). Returns
-    {"frames", "boxes", "empty"}, or None when stopped."""
+    outlines also get masks/<name>.png, the parts' pixels (recoloured copies keep exactly those), and
+    polygons/<name>.txt, each part's outline as a YOLO segmentation row in the order of the box rows (for models
+    that outline parts). Returns {"frames", "boxes", "empty"}, or None when stopped."""
     out = Path(out)
     (out / "images").mkdir(parents=True, exist_ok=True)
     (out / "labels").mkdir(parents=True, exist_ok=True)
@@ -81,21 +82,67 @@ def task_dataset(project, task_id: int, out, progress=None, should_stop=None) ->
         if not (out / "images" / f"{name}.jpg").exists():
             project.place(k, out / "images" / f"{name}.jpg")
         if project.task == "segment":
-            parts = np.zeros((H, W), np.uint8)
+            parts, polys = np.zeros((H, W), np.uint8), []
             for p in project.boxes(k):
-                m = project.mask(k, p["obj"]) if p["source"] != "suggested" else None
+                if p["source"] == "suggested" or not yolo_line(p["cls"], *p["box"], W, H):
+                    continue
+                m = project.mask(k, p["obj"])
+                poly = mask_polygon(m.astype(bool)) if m is not None else None
                 if m is not None:
                     parts[m.astype(bool)] = 255
-                elif p["source"] != "suggested":                  # a part without an outline: its box
+                else:                                          # a part without an outline: its box
                     x1, y1, x2, y2 = (int(round(v)) for v in p["box"])
                     parts[max(0, y1):y2, max(0, x1):x2] = 255
+                if poly is None:
+                    x1, y1, x2, y2 = p["box"]
+                    poly = np.array([[x1, y1], [x2, y1], [x2, y2], [x1, y2]], float)
+                polys.append(polygon_line(p["cls"], poly, W, H))
             (out / "masks").mkdir(exist_ok=True)
+            (out / "polygons").mkdir(exist_ok=True)
             Image.fromarray(parts).save(out / "masks" / f"{name}.png")
+            (out / "polygons" / f"{name}.txt").write_text("\n".join(polys) + ("\n" if polys else ""))
         (out / "labels" / f"{name}.txt").write_text("\n".join(lines) + ("\n" if lines else ""))
         boxes, empty = boxes + len(lines), empty + (not lines)
         if progress and n % 20 == 0:
             progress(n + 1, len(todo), f"Writing the confirmed frames of task {project.task_of(k)['name']}")
     return {"frames": len(todo), "boxes": boxes, "empty": empty}
+
+
+def mask_polygon(mask: np.ndarray):
+    """One polygon (pixel x, y points) around a part's pixels; several separate pieces are joined into one by
+    zero-width bridges between their nearest points (the usual YOLO way). None when nothing is outlined."""
+    import cv2
+    found, _ = cv2.findContours(mask.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    pieces = sorted((c[:, 0, :].astype(float) + 0.5 for c in found if len(c) >= 3), key=lambda c: -len(c))
+    if not pieces:
+        return None
+    poly = pieces[0]
+    for c in pieces[1:]:
+        i, j = np.unravel_index(((poly[:, None] - c[None]) ** 2).sum(-1).argmin(), (len(poly), len(c)))
+        poly = np.concatenate([poly[:i + 1], np.roll(c, -j, axis=0), c[j:j + 1], poly[i:]])
+    return poly
+
+
+def polygon_line(c: int, poly, W, H) -> str:
+    """YOLO segmentation row: class, then x y of each point as a share of the image."""
+    p = np.clip(np.asarray(poly, float) / [W, H], 0, 1)
+    return f"{c} " + " ".join(f"{x:.6f} {y:.6f}" for x, y in p)
+
+
+def line_box(line: str):
+    """(class, x1, y1, x2, y2 as shares of the image) of a YOLO box or segmentation row; None if malformed."""
+    v = line.split()
+    try:
+        c, nums = int(float(v[0])), [float(x) for x in v[1:]]
+    except (ValueError, IndexError):
+        return None
+    if len(nums) == 4:
+        cx, cy, w, h = nums
+        return c, cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2
+    if len(nums) < 6 or len(nums) % 2:
+        return None
+    xs, ys = nums[0::2], nums[1::2]
+    return c, min(xs), min(ys), max(xs), max(ys)
 
 
 def parse_row(line: str):
@@ -158,7 +205,7 @@ def analyse(dataset_dir, resolution: int = 640) -> dict:
         background += not rows
         with Image.open(it["image"]) as im:
             W, H = im.size
-        scale, seen = resolution / max(W, H), set()
+        seen = set()
         for c, cx, cy, w, h in rows:
             key = (c, round(cx, 6), round(cy, 6), round(w, 6), round(h, 6))
             if key in seen:
@@ -167,7 +214,7 @@ def analyse(dataset_dir, resolution: int = 640) -> dict:
             seen.add(key)
             boxes[c] += 1
             sizes[c].append((w * W, h * H))
-            tiny[c] += min(w * W, h * H) * scale < TINY_PX
+            tiny[c] += min(w, h) * resolution < TINY_PX         # each side stretched to the input on its own
         frames.update({c for c, *_ in rows})
     labeled = sum(it["label"] is not None for it in items)
     per_class = {}
@@ -261,6 +308,17 @@ def from_crop(row, crop, W, H) -> str | None:
     return yolo_line(c, x1, y1, x1 + w * cw, y1 + h * ch, W, H)
 
 
+def crop_polygon(line: str, crop, W, H) -> str | None:
+    """A full-image YOLO segmentation row in the coordinates of crop (points clipped to it); None if outside."""
+    v = line.split()
+    p = np.array(v[1:], float).reshape(-1, 2) * [W, H] - [crop[0], crop[1]]
+    cw, ch = crop[2] - crop[0], crop[3] - crop[1]
+    p = np.clip(p, 0, [cw, ch])
+    if np.ptp(p[:, 0]) <= 0 or np.ptp(p[:, 1]) <= 0:
+        return None
+    return polygon_line(int(float(v[0])), p, cw, ch)
+
+
 def _save(img: Image.Image, path: Path) -> None:
     jpg = path.suffix.lower() in (".jpg", ".jpeg")
     (img.convert("RGB") if jpg else img).save(path, **({"quality": 95} if jpg else {}))
@@ -285,8 +343,7 @@ def _recolor_copies(copies, train, n, progress=None, should_stop=None):
             w, h = small.size
             seg.set_image(small)
             body = seg.segment(box=[float(v) for v in obj])[0].astype(bool)
-            boxes = [((cx - bw / 2) * w, (cy - bh / 2) * h, (cx + bw / 2) * w, (cy + bh / 2) * h)
-                     for _, cx, cy, bw, bh in (parse_row(l) for l in lines)]
+            boxes = [(x1 * w, y1 * h, x2 * w, y2 * h) for _, x1, y1, x2, y2 in (line_box(l) for l in lines)]
             copy = f"{name}_rc_{color}"
             recolor_outside(small, boxes, PALETTE[color], body, parts).save(train / "images" / (copy + ".jpg"), quality=95)
             (train / "labels" / (copy + ".txt")).write_text("\n".join(lines) + ("\n" if lines else ""))
@@ -300,13 +357,19 @@ def _recolor_copies(copies, train, n, progress=None, should_stop=None):
 
 
 def prepare(dataset_dir, out, parent: str | None = None, held_out: float = 0.2, progress=None,
-            should_stop=None, recolor: float = 0.0, crop_to_parent: bool = True) -> dict | None:
+            should_stop=None, recolor: float = 0.0, crop_to_parent: bool = True, polygons: bool = False,
+            empty_every: int = 1) -> dict | None:
     """Training set in `out`: train/ and valid/ (images + YOLO labels) and data.yaml. With a parent (text such
     as "engine block"), each image is cut to that object (SAM 3) and its labels move into the crop; with
     crop_to_parent False the images stay whole and the parent is only found for the recoloured copies (`recolor`:
     the share of training frames that also get one). Returns the record also saved as prepared.json (reused when
-    source and settings are unchanged); None if stopped."""
+    source and settings are unchanged); None if stopped. polygons: the labels are the parts' outlines (the
+    source's polygons/ folder, from a project with outlines), for a model that outlines parts. empty_every: train on
+    1 in N frames without parts (neighbouring video frames of nothing are near copies); held-out frames all kept."""
     root, out = Path(dataset_dir), Path(out)
+    if polygons and not (root / "polygons").is_dir():
+        raise ValueError(f"{root}: an outline model needs the parts' outlines (polygons/): teach from the tasks of a "
+                         "project with outlines")
     classes = classes_of(root)
     items = [it for it in source_items(root) if it["label"] is not None]
     if len(items) < 2:
@@ -314,6 +377,7 @@ def prepare(dataset_dir, out, parent: str | None = None, held_out: float = 0.2, 
     held = held_out_flags(items, held_out)
     key = hashlib.sha1(json.dumps([str(root.resolve()), parent, held_out, classes, [it["name"] for it in items]]
                                   + ([recolor] if recolor else []) + ([] if crop_to_parent else ["whole"])
+                                  + (["polygons"] if polygons else []) + ([f"empty/{empty_every}"] if empty_every > 1 else [])
                                   ).encode()).hexdigest()[:12]
     if (out / "prepared.json").exists():
         rec = json.loads((out / "prepared.json").read_text(encoding="utf-8"))
@@ -339,6 +403,9 @@ def prepare(dataset_dir, out, parent: str | None = None, held_out: float = 0.2, 
             rows, _ = read_labels(it["label"], len(classes))
             pick = int(hashlib.sha1(it["name"].encode()).hexdigest()[:8], 16)   # the same copies on every run
             copy = recolor and not test and pick % 1000 < recolor * 1000
+            if not rows and not test and pick % empty_every:     # an empty training frame left out
+                n["empty_left_out"] += 1
+                continue
             if finder and not crop_to_parent and copy:            # whole images: the object only for the copy
                 obj = finder.find(img.convert("RGB"))
                 n["parent_searches"] += 1
@@ -371,6 +438,10 @@ def prepare(dataset_dir, out, parent: str | None = None, held_out: float = 0.2, 
                 line = to_crop(r, crop, W, H)
                 n["kept" if line and inside else "clipped" if line else "outside_parent"] += 1
                 lines += [line] if line else []
+            if polygons:                                       # the same parts, outlined, moved into the crop
+                lines = [crop_polygon(l, crop, W, H) for l in dict.fromkeys(
+                    (root / "polygons" / f"{it['name']}.txt").read_text().splitlines()) if l.strip()]
+                lines = [l for l in lines if l]
             split = out / ("valid" if test else "train")
             dst = split / "images" / (it["name"] + it["image"].suffix.lower())
             if crop == (0, 0, W, H):
@@ -406,13 +477,40 @@ def prepare(dataset_dir, out, parent: str | None = None, held_out: float = 0.2, 
 
 # ---- prove ----------------------------------------------------------------------------------
 def load_targets(label: Path, W: int, H: int) -> sv.Detections:
-    rows = [r for r in map(parse_row, label.read_text().splitlines()) if r] if label.exists() else []
+    """The labels as Detections (boxes; outlines give their boxes); data["polygons"]: each row's points in pixels
+    (None for a box row)."""
+    lines = [l for l in label.read_text().splitlines() if l.strip()] if label.exists() else []
+    rows = [(r, l) for r, l in ((line_box(l), l) for l in lines) if r]
     if not rows:
         return sv.Detections(xyxy=np.zeros((0, 4)), class_id=np.zeros(0, int))
-    a = np.array(rows, float)
-    xyxy = np.stack([(a[:, 1] - a[:, 3] / 2) * W, (a[:, 2] - a[:, 4] / 2) * H,
-                     (a[:, 1] + a[:, 3] / 2) * W, (a[:, 2] + a[:, 4] / 2) * H], axis=1)
-    return sv.Detections(xyxy=xyxy, class_id=a[:, 0].astype(int))
+    a = np.array([r for r, _ in rows], float)
+    polys = np.empty(len(rows), object)                     # one array of points per row (never stacked)
+    for k, (_, l) in enumerate(rows):
+        polys[k] = np.array(l.split()[1:], float).reshape(-1, 2) * [W, H] if len(l.split()) > 5 else None
+    return sv.Detections(xyxy=a[:, 1:] * [W, H, W, H], class_id=a[:, 0].astype(int), data={"polygons": polys})
+
+
+def mask_ious(pred: sv.Detections, target: sv.Detections, iou: float = 0.5) -> list[tuple[int, float]]:
+    """(class, outline IoU) of each labeled outline and the surest prediction of its class whose box overlaps it
+    (box IoU at least iou); parts not found are left out (recall counts them)."""
+    import cv2
+    if pred.mask is None or not len(target) or "polygons" not in target.data:
+        return []
+    H, W = pred.mask.shape[1:] if len(pred) else (0, 0)
+    out, used = [], set()
+    for t in range(len(target)):
+        poly, c = target.data["polygons"][t], int(target.class_id[t])
+        cand = [i for i in np.argsort(-pred.confidence) if int(pred.class_id[i]) == c and i not in used]
+        cand = [i for i in cand if sv.box_iou_batch(target.xyxy[t:t + 1], pred.xyxy[i:i + 1])[0, 0] >= iou]
+        if poly is None or not cand:
+            continue
+        used.add(cand[0])
+        m = np.zeros((H, W), np.uint8)
+        cv2.fillPoly(m, [np.round(poly - 0.5).astype(np.int32)], 1)
+        p = pred.mask[cand[0]]
+        union = np.logical_or(p, m).sum()
+        out.append((c, float(np.logical_and(p, m).sum() / union) if union else 0.0))
+    return out
 
 
 def count_matches(preds, targets, iou: float = 0.5) -> tuple[Counter, Counter, Counter]:
@@ -519,15 +617,35 @@ def _map(preds, targets):
     return MeanAveragePrecision().update(preds, targets).compute()
 
 
-def prove(model, valid_dir, classes, progress=None) -> dict:
+def prove(model, valid_dir, classes, progress=None, should_stop=None) -> dict:
     """Agreement with the source labels on held-out frames: mAP50, mAP50-95, the confidence threshold with
-    the best micro F1, recall/precision per class at it, and the colour stress test."""
+    the best micro F1, recall/precision per class at it, and the colour stress test (Stop skips the rest of it).
+    Frames are read in small batches, never all held in memory."""
     from engine import detector
     valid_dir = Path(valid_dir)
     files = sorted(p for p in (valid_dir / "images").iterdir() if p.suffix.lower() in IMAGE_EXTS)
-    images = [Image.open(f).convert("RGB") for f in files]
-    targets = [load_targets(valid_dir / "labels" / (f.stem + ".txt"), *im.size) for im, f in zip(images, files)]
-    preds = detector.predict(model, images, threshold=0.01)
+    targets = []
+    for f in files:
+        with Image.open(f) as im:                            # the size only: nothing decoded
+            targets.append(load_targets(valid_dir / "labels" / (f.stem + ".txt"), *im.size))
+
+    outlines = []                                            # (class, IoU) of labeled outlines found
+
+    def predict(change=None, batch=16):
+        out = []
+        for i in range(0, len(files), batch):
+            ims = [Image.open(f).convert("RGB") for f in files[i:i + batch]]
+            got = detector.predict(model, [change(im, t) for im, t in zip(ims, targets[i:])] if change else ims,
+                                   threshold=0.01)
+            for k, d in enumerate(got):
+                if d.mask is not None:                         # outlines: measured now, not kept (memory)
+                    if not change:
+                        outlines.extend(mask_ious(d[d.confidence >= 0.3], targets[i + k]))
+                    d.mask = None
+            out += got
+        return out
+
+    preds = predict()
     m = _map(preds, targets)
     sweep = f1_sweep(preds, targets)
     th = pick_threshold(sweep)
@@ -541,11 +659,20 @@ def prove(model, valid_dir, classes, progress=None) -> dict:
     TP, FP, FN = sum(tp.values()), sum(fp.values()), sum(fn.values())
     stress = {}
     for k, (name, fn_) in enumerate(STRESS.items()):
+        if should_stop and should_stop():
+            break
         if progress:
             progress(k, len(STRESS), f"Colour stress test: {name}")
-        vm = _map(detector.predict(model, [fn_(im, t) for im, t in zip(images, targets)], threshold=0.01), targets)
+        vm = _map(predict(fn_), targets)
         stress[name] = {"mAP50": round(float(vm.map50), 3), "drop": round(100 * float(m.map50 - vm.map50), 1)}
+    iou_c = defaultdict(list)
+    for c, v in outlines:
+        iou_c[c].append(v)
+    for c, name in enumerate(classes):
+        if iou_c[c]:
+            per_class[name]["outline_IoU"] = round(float(np.mean(iou_c[c])), 3)
     return {"frames": len(files), "labels": TP + FN, "mAP50": round(float(m.map50), 3),
+            "outline_IoU": round(float(np.mean([v for _, v in outlines])), 3) if outlines else None,
             "mAP50_95": round(float(m.map50_95), 3), "threshold": th, "f1_sweep": sweep,
             "f1": sweep[th], "recall": round(TP / max(TP + FN, 1), 3), "precision": round(TP / max(TP + FP, 1), 3),
             "per_class": per_class, "stress": stress}
@@ -585,24 +712,40 @@ def _train_step(run_dir: Path, prep: dict, size, epochs, resolution, aug, progre
 
 def teach(dataset_dir, run_dir, parent: str | None = None, size: str = "small", epochs: int = 30,
           resolution: int = 640, held_out: float = 0.2, aug: str = "strong", progress=None,
-          should_stop=None, recolor: float = 0.0, crop_to_parent: bool = True) -> dict:
+          should_stop=None, recolor: float = 0.0, crop_to_parent: bool = True, stage: str = "all",
+          empty_every: int = 1) -> dict:
     """Analyse, prepare, train and prove; writes settings.json, report.json and report.md into run_dir and
-    returns the report ({"status": "stopped", ...} when should_stop ended it early)."""
+    returns the report ({"status": "stopped", ...} when should_stop ended it early). A "seg-" size also outlines
+    the parts (trained on the source's polygons/). To train on another machine (e.g. a cloud GPU): stage "prepare"
+    stops once run_dir holds analysis.json and dataset/; copy run_dir there and call teach(None, run_dir, ...,
+    stage="train") with the same settings: it trains and proves from them."""
     from engine import detector, hw
-    detector.check_resolution(resolution)
-    detector.aug_config([], aug)
+    if stage not in ("all", "prepare", "train"):
+        raise ValueError(f"unknown stage {stage!r}")
     if size not in detector.SIZES:
         raise ValueError(f"unknown model size {size!r}; choose one of {', '.join(detector.SIZES)}")
-    dataset_dir, run_dir = Path(dataset_dir).resolve(), Path(run_dir)
+    detector.check_resolution(resolution, size)
+    detector.aug_config([], aug)
+    run_dir = Path(run_dir)
     run_dir.mkdir(parents=True, exist_ok=True)
     say = progress or (lambda *a: None)
-    say(0, 4, "Analysing the source labels")
-    analysis = analyse(dataset_dir, resolution)
-    _write_json(run_dir / "analysis.json", analysis)
-    say(1, 4, "Preparing the training set")
-    prep = prepare(dataset_dir, run_dir / "dataset", parent, held_out, progress, should_stop, recolor, crop_to_parent)
-    if prep is None:
-        return {"status": "stopped", "step": "prepare", "run_dir": str(run_dir)}
+    if stage == "train":
+        analysis = json.loads((run_dir / "analysis.json").read_text(encoding="utf-8"))
+        prep = json.loads((run_dir / "dataset" / "prepared.json").read_text(encoding="utf-8"))
+        dataset_dir = Path(analysis["source"])
+    else:
+        dataset_dir = Path(dataset_dir).resolve()
+        say(0, 4, "Analysing the source labels")
+        analysis = analyse(dataset_dir, resolution)
+        _write_json(run_dir / "analysis.json", analysis)
+        say(1, 4, "Preparing the training set")
+        prep = prepare(dataset_dir, run_dir / "dataset", parent, held_out, progress, should_stop, recolor,
+                       crop_to_parent, polygons=detector.is_seg(size), empty_every=empty_every)
+        if prep is None:
+            return {"status": "stopped", "step": "prepare", "run_dir": str(run_dir)}
+        if stage == "prepare":
+            return {"status": "prepared", "run_dir": str(run_dir), "train_frames": len(prep["train"]),
+                    "held_out_frames": len(prep["valid"]), "boxes": prep["boxes"]}
     say(2, 4, "Training")
     ckpt = _train_step(run_dir, prep, size, epochs, resolution, aug, progress, should_stop)
     if ckpt is None:
@@ -610,7 +753,7 @@ def teach(dataset_dir, run_dir, parent: str | None = None, size: str = "small", 
     say(3, 4, "Proving on held-out frames")
     model = detector.load(ckpt, size, resolution)
     try:
-        proof = prove(model, run_dir / "dataset" / "valid", analysis["classes"], progress)
+        proof = prove(model, run_dir / "dataset" / "valid", analysis["classes"], progress, should_stop)
     finally:
         del model
         hw.free_gpu_memory()
@@ -624,6 +767,9 @@ def teach(dataset_dir, run_dir, parent: str | None = None, size: str = "small", 
                "colour stress drop": {"value": worst, "target": f"<= {TARGETS['stress_drop']:.0f} points",
                                       "pass": worst <= TARGETS["stress_drop"]}}
     warnings = list(analysis["warnings"])
+    skipped = [n for n in STRESS if n not in proof["stress"]]
+    if skipped:
+        warnings.append(f"the colour stress test was stopped early; not run: {', '.join(skipped)}")
     if parent and prep["parent_coverage"] is not None and prep["parent_coverage"] < 0.9:
         warnings.append(f"only {prep['parent_coverage']:.0%} of labeled boxes lie wholly inside the '{parent}' crop: "
                         "check the parent text")
@@ -670,7 +816,9 @@ def report_md(r: dict) -> str:
            "| Target | Value | Required | Result |", "|---|---|---|---|"]
     out += [f"| {k} | {fmt(t['value'])} | {t['target']} | {'pass' if t['pass'] else 'FAIL'} |" for k, t in r["targets"].items()]
     out += ["", f"mAP50-95 {ho['mAP50_95']:.3f} · confidence threshold {ho['threshold']:.2f} (best micro F1 "
-            f"{ho['f1']:.3f}) · recall {ho['recall']:.3f} · precision {ho['precision']:.3f}", "",
+            f"{ho['f1']:.3f}) · recall {ho['recall']:.3f} · precision {ho['precision']:.3f}"
+            + (f" · outline IoU {ho['outline_IoU']:.3f} (predicted vs labeled outlines of the parts found)"
+               if ho.get("outline_IoU") is not None else ""), "",
             "## Per class (held-out frames, at the threshold)", "",
             "| Class | Source boxes | In % of frames | Held-out labels | Recall | Precision | AP50 |",
             "|---|---|---|---|---|---|---|"]
@@ -679,7 +827,8 @@ def report_md(r: dict) -> str:
         low = pc["recall"] is not None and pc["recall"] < TARGETS["recall"]
         recall = f"**{fmt(pc['recall'])}**" if low else fmt(pc["recall"])
         out.append(f"| {name} | {src['boxes']} | {src['presence']:.0%} | {pc['labels']} | {recall} | "
-                   f"{fmt(pc['precision'])} | {fmt(pc['AP50'])} |")
+                   f"{fmt(pc['precision'])} | {fmt(pc['AP50'])} |" + (f" outline IoU {pc['outline_IoU']:.3f}"
+                                                                        if pc.get("outline_IoU") is not None else ""))
     out += ["", "## Colour stress test (same held-out frames)", "", "| Variant | mAP50 | Drop (points) |", "|---|---|---|"]
     out += [f"| {k} | {v['mAP50']:.3f} | {v['drop']:.1f} |" for k, v in ho["stress"].items()]
     out += ["", "## Warnings", ""] + ([f"- {w}" for w in r["warnings"]] or ["- none"])
@@ -692,6 +841,6 @@ def report_md(r: dict) -> str:
             + (f"; {p['parent_coverage']:.0%} of labeled boxes wholly inside" if p["parent_coverage"] is not None else ""),
             f"- Split: {p['train_frames']} train / {p['held_out_frames']} held-out frames, time blocks",
             f"- Model: RF-DETR {s['size']}, {s['resolution']} px, horizontal flip "
-            f"{'off (left_/right_ classes)' if a['mirrored_pairs'] else 'on'}; {r['training']['minutes']} min training",
+            f"{'off (left/right classes)' if a['mirrored_pairs'] else 'on'}; {r['training']['minutes']} min training",
             f"- Checkpoint: `{r['checkpoint']}`", ""]
     return "\n".join(out)

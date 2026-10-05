@@ -419,6 +419,34 @@ def find_parts(args):
     return {**_where(p, item), "found": _new_parts(p, item, before), "messages": said, "busy": sess.running}
 
 
+@tool("Annotate by text: SAM 3 finds the objects the words name (e.g. ['car', 'truck cabin', 'wheel']) on a frame, "
+      "on it and the rest of its task, on its whole task or on the whole project, and adds them as parts to check "
+      "(each phrase becomes a label of its own name when new; `labels` renames them). Confirmed frames are left alone "
+      "unless include_confirmed. Long scopes keep running after wait_s: follow them with status, then get_annotations.",
+      ["project", "objects"], **AT,
+      objects=A("What to find, one phrase per kind of object: 'car', 'truck cabin', 'wheel'", {"type": "string"},
+                minItems=1),
+      labels=A("Optional label for each phrase, same order (default: the phrase itself)", {"type": "string"}),
+      scope=S("frame (default) | rest (this frame to the end of its task) | task | project",
+              enum=["frame", "rest", "task", "project"]),
+      threshold={"type": "number", "description": "SAM 3 sureness 0–1, default 0.5"},
+      include_confirmed=B("Also annotate frames a person confirmed"), wait_s=WAIT)
+def annotate_text(args):
+    sess = _sess(args)
+    p = sess.p
+    scope = args.get("scope") or "frame"
+    if args.get("item") is None and args.get("task") is not None and args.get("frame") is None:
+        args = {**args, "frame": 1}                       # a task alone: from its first frame
+    item = _item(p, args) if scope != "project" or any(args.get(k) is not None for k in ("item", "task")) else 0
+    objects = args["objects"] if isinstance(args["objects"], list) else [args["objects"]]
+    labels = args.get("labels") or []
+    prompts = [{"text": o, "label": labels[k] if k < len(labels) else None} for k, o in enumerate(objects)]
+    said = _run(sess, {"type": "annotate_text", "item": item, "prompts": prompts, "scope": scope,
+                       "threshold": float(args.get("threshold") or 0.5),
+                       "include_confirmed": bool(args.get("include_confirmed"))}, args.get("wait_s", 120))
+    return {**_where(p, item), "scope": scope, "labels": p.classes, "messages": said, "busy": sess.running}
+
+
 @tool("Find more parts like one part on the same frame (SAM 3 example search); added as suggestions.",
       ["project", "part"], **AT, part=PART, threshold={"type": "number", "description": "0–1, default 0.3"}, wait_s=WAIT)
 def find_similar(args):
@@ -503,12 +531,15 @@ def swap_classes(args):
       "the user asked for it. Then label_tasks labels other tasks with it.", ["project"], project=PROJECT, task=TASK,
       tasks=A("Several task ids, learned together (instead of task)", {"type": "integer"}),
       run=S("Name for the run (default: run_<date>)"), parent=S("Object the parts sit on, to crop to (e.g. 'car')"),
-      size=S("nano | small (default) | medium", enum=["nano", "small", "medium"]), epochs=I("Training epochs (default 30)", minimum=1),
+      size=S("nano | small (default) | medium; seg-nano | seg-small | seg-medium also outline the parts "
+             "(projects with outlines)", enum=["nano", "small", "medium", "seg-nano", "seg-small", "seg-medium"]),
+      epochs=I("Training epochs (default 30)", minimum=1),
       recolor={"type": "number", "description": "Share of training frames (0-1) that also get a copy with the object "
                "in another colour (parts untouched): for objects of colours not seen yet. Default 0"},
       crop=B("With parent: cut each frame to it (default true); false trains on whole frames, as production sees them "
              "(the parent is then only found to paint the recoloured copies)"),
-      resolution=I("Model input size, a multiple of 32 (default 640; small parts in whole frames: e.g. 960)", minimum=320),
+      resolution=I("Model input size, a multiple of 32 (seg-: of 24) (default 640; small parts in whole frames: "
+                   "e.g. 960)", minimum=320),
       wait_s=WAIT)
 def teach(args):
     body = {"project": args["project"], "task": args.get("task"), "tasks": args.get("tasks"), "name": args.get("run"),

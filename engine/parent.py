@@ -39,6 +39,25 @@ class ConceptFinder:
                                                            target_sizes=sizes)[0]
         return [([float(v) for v in b], float(s)) for b, s in zip(res["boxes"].float().cpu(), res["scores"].float().cpu())]
 
+    @torch.inference_mode()
+    def detect_texts(self, image, texts, threshold: float = 0.5, masks: bool = False) -> dict:
+        """{text: [(box, score, mask or None), ...]}: every instance of each phrase ("car", "truck cabin", "wheel").
+        The image is encoded once and every phrase reuses it; masks (bool, image size) come from the same pass."""
+        img = self.proc(images=image, return_tensors="pt")
+        sizes = img["original_sizes"].tolist()
+        vision = self.model.get_vision_features(pixel_values=img["pixel_values"].to(self.device, self.dtype))
+        out = {}
+        for text in texts:
+            tok = self.proc(text=text, return_tensors="pt")
+            res = self.model(vision_embeds=vision, **{k: v.to(self.device) for k, v in tok.items()
+                                                      if k in ("input_ids", "attention_mask")})
+            r = self.proc.post_process_instance_segmentation(res, threshold=threshold, mask_threshold=0.5,
+                                                             target_sizes=sizes)[0]
+            ms = r["masks"].cpu().numpy().astype(bool) if masks else [None] * len(r["scores"])
+            out[text] = [([float(v) for v in b], float(s), m)
+                         for b, s, m in zip(r["boxes"].float().cpu(), r["scores"].float().cpu(), ms)]
+        return out
+
     def largest(self, image, text: str, threshold: float = 0.5):
         """Box of the main instance of `text`: the largest, which in a fixed inspection camera is the
         object being inspected, not one queued behind it; None if nothing is found."""

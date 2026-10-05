@@ -45,6 +45,26 @@ def fake_run(tmp_path, monkeypatch, boxes):
     return run
 
 
+def test_an_outline_model_labels_with_its_own_outlines(tmp_path, video, monkeypatch):
+    p, (t1, t2) = two_tasks(tmp_path, video)
+    run = fake_run(tmp_path, monkeypatch, [(0, [1, 1, 10, 10], 0.9)])
+    W, H = p.image_size(p.ranges[t2][0])
+    fake = detector.predict
+
+    def with_mask(model, img, thr):
+        d = fake(model, img, thr)
+        d.mask = np.zeros((1, H, W), bool)
+        d.mask[0, 2:6, 3:9] = True                                              # the model's own outline
+        return d
+    monkeypatch.setattr(detector, "predict", with_mask)
+    sam = []
+    label = __import__("engine.transfer", fromlist=["label_project"]).label_project
+    label(p, run, [t2], outline=lambda item, boxes: sam.append(item) or [None] * len(boxes))
+    a = p.ranges[t2][0]
+    m = p.mask(a, p.boxes(a)[0]["obj"]).astype(bool)
+    assert not sam and m.sum() == 24 and m[2:6, 3:9].all()                     # no SAM 3: the model's pixels
+
+
 def test_label_tasks_fills_unchecked_frames_and_keeps_part_ids(tmp_path, video, monkeypatch):
     p, (t1, t2) = two_tasks(tmp_path, video)
     a, b = p.ranges[t2]

@@ -82,7 +82,7 @@ too). A program acts as your account, in your projects folder, and only while Pa
 The tools: list_projects, get_project, create_project, set_labels, trash_project; add_tasks, update_task, delete_task,
 set_job, get_job; get_frame (the image with every part numbered, plus the parts as JSON; crop zooms in),
 get_annotations; add_part (click points and/or a box; SAM 3 outlines it), edit_part, delete_parts, find_parts (words,
-SAM 3 text search), find_similar, suggest, accept_suggestions; track; confirm_frames; set_image_class; undo; stop;
+SAM 3 text search), annotate_text (annotate by text: a frame, the rest of a task, a task or the project), find_similar, suggest, accept_suggestions; track; confirm_frames; set_image_class; undo; stop;
 status (progress and frames to check); clear_parts, swap_classes; frames_to_video; export, backup, import_backup;
 teach (train a detector on one task's confirmed frames), list_runs, label_tasks (label other tasks with it, as parts
 to check). Coordinates are pixels of the full-size frame.
@@ -91,6 +91,19 @@ Everything a program does appears live in open annotator tabs, and Ctrl+Z (or th
 to confirm frames only after you checked them. **Revoke** a token in Settings to cut a program off; command line:
 `.venv\Scripts\python -m engine.cli account token USERNAME --label "my script"` makes one. Some apps (opencode with
 OpenAI-compatible models) only pass the JSON to the model, not the frame images.
+
+### The integration API (for test frameworks and production systems)
+
+`/api/v1` is a small, versioned API for other programs: annotate one image without storing anything
+(`POST /api/v1/annotate` with the image and the objects to find), create a project, upload a video or images as a task,
+annotate by text, read the parts back as JSON, export and download the dataset as a zip, and follow jobs. It uses the
+same API tokens. `GET /api/v1/health` needs no token (for health checks). `client/partlabeler_client.py` is a
+ready Python client (one file, no extra packages) to copy into a test suite. Every route, error code and the design
+of the production side are in `docs/INTEGRATION.md`.
+
+By default PartLabeler listens only on this computer. To let another machine call it, start it with
+`partlabeler app --host 0.0.0.0` (network mode): other machines then reach only `/api/v1`, with a token, never the
+app's pages or its other routes; put an HTTPS proxy in front of it on a shared network.
 
 ## Projects, tasks and jobs (as in CVAT)
 
@@ -394,6 +407,25 @@ look-alikes. **Back to frames** (Esc) returns to the annotator.
 - Suggestions are dotted boxes. **Accept all** (Y) keeps them all; select one and press Del to drop it.
   Suggestions you never accept are left out of the export.
 
+## Annotate by text
+
+Name the objects and SAM 3 boxes every one it sees, with no labeling first: common things such as car, truck, truck
+cabin, wheel, bus, person, license plate, headlight, door, window, forklift, pallet, box or helmet, or any short
+phrase (one or two words work best).
+
+1. Under **Annotate by text** in the right panel (or press **W**), type the objects separated by commas, or click
+   the common ones below the field (click again to remove one).
+2. Choose where: **Only this frame**, **This frame and the rest of the task**, **The whole task** or **The whole
+   project**.
+3. Click **Annotate**. Each name becomes a class of its own (added to the list when new); in outline projects every
+   part also gets its outline. Long runs show their progress at the bottom and stop with **X**.
+
+What it finds is marked to check, like tracked parts: look through the frames and confirm them. Confirmed frames are
+left alone unless you tick **Also confirmed frames**. A part already boxed is never added twice, the same object keeps
+its number from frame to frame, and one Ctrl+Z removes the whole run. **Sureness** (0.5 by default) is the lowest
+score kept: lower it when objects are missed, raise it when there are false finds. Annotate by text needs no training;
+on a GPU it takes about half a second per frame for a few names.
+
 ## Export the dataset
 
 The project page (**Actions → Export dataset**), a task's ⋯ menu (**Export task dataset**) and the annotator
@@ -438,9 +470,28 @@ only): `read_xml`, then `check(reference, group, part, image, box)` for each det
 as `DARK_SEGMENT 7,8`, `AREA_LOW`, `SHAPE`, `COLOUR`, `POSITION`; `check_pair` compares left and right. Measure a
 new product or a moved camera again from its own confirmed frames. Parts that light up in stages (a progressive
 indicator sweeping from its tip to full length) are named with `--sweep` (e.g. `--sweep left_ind,right_ind`): their
-reference is built from fully swept frames, and `check_sweep(reference, group, part, frames)` checks a few blinks'
-worth of frames: where the part reaches furthest it must show its full shape (`NOT_FULL` when the sweep never gets
-there, `DARK_SEGMENT` for a gap).
+reference is built from fully swept frames, and `check_sweep(reference, group, part, frames)` checks one blink's
+frames: where the part reaches furthest it must show its full shape (`NOT_FULL` when the sweep never gets there,
+`DARK_SEGMENT` for a gap). Judge a part over time rather than on one frame, because a real fault lasts and a moment of
+glare or a state change does not: `check_blinks` fails a sweeping part when 2 of 3 neighbouring blinks fail, and
+`check_frames(reference, group, part, frames)` fails a steady part when 3 of 5 neighbouring frames fail (the XML
+records both rules). Run the camera at its full frame rate for sweeping parts, so the frame where the sweep is
+complete is not missed.
+
+**Tuning a reference on recordings.** A reference built from labeled frames describes the labels, not what the
+production detector sees. For the fewest false alarms, measure the parts as production does (the production model's
+boxes, on frames where the object is in place) on recordings of healthy objects, and build the reference from those
+measurements with `lampcheck.profiles(values, ...)` (`pct` and `margin` set how wide the ranges are). The check
+settings are part of the reference: `write_xml(..., settings={"steady_vote": (3, 5), "sweep_vote": (2, 3),
+"dark_share": ..., "reach": ..., "relative": ...})` stores them and every check reads them back (`relative` leaves
+out absolute size and lit area, for parts whose distance to the camera changes). Choose the settings by leaving
+recordings out: every healthy recording must pass, and simulated faults (a dark section, a dimmed part, a dead end
+of a sweep) must still be caught; widening ranges until nothing fails would also stop catching faults. Loosen per
+part: `margin={"default": 0.1, "<part>:<check>": ...}` widens one part's check only (a part's own `dark_share` and
+`reach` go in the same dict), so one awkward part does not blunt the others. A part that looks different on two
+product variants (e.g. a small separate lamp on one trim, a long strip on another) gets one profile per variant (a
+`variant` label on its measured values); the check picks the variant nearest to the part's position after taking off
+how far the whole object stands from its usual place (`shift`, e.g. from its other parts in the same picture).
 
 ## Teach & Transfer: how it works
 
@@ -453,7 +504,9 @@ It is optional and is the only part of PartLabeler that trains a model.
    default). This can take from minutes to about an hour.
 2. **Prove**: the trained model labels the held-back frames and is scored against your labels (mAP50, recall
    and a colour stress test). Targets: held-out mAP50 at least 0.90, recall at least 0.90, and at most a
-   10-point drop when colours change. The report says whether the targets are met.
+   10-point drop when colours change. The report says whether the targets are met. The stress test repaints
+   every held-back frame several times and can take a while; **Stop** during it skips the rest and still
+   saves the model and the report.
 3. **Transfer**: choose the finished Teach run, add the videos or image folders to label and click
    **Start labeling**. Each output folder looks exactly like the source dataset (same classes, same file
    naming), plus a preview video and a list of frames to check. With **Check along tracks (videos)** ticked
@@ -472,7 +525,14 @@ navy, green, yellow, orange, brown, red or beige); the labeled parts and their g
 report's stress test then also shows the score with the object repainted white, black, blue and yellow. With a
 parent object (e.g. `car`) frames are cut to it by default, which makes small parts bigger; `crop: false` trains on
 whole frames instead, exactly as a production camera sees them (the parent is then only found to paint the copies),
-and a higher `resolution` (for example 960 instead of 640) keeps small parts visible. The model's parts (outlined by SAM 3 in segmentation projects) land on every frame nobody labeled or
+and a higher `resolution` (for example 960 instead of 640) keeps small parts visible. In a segmentation project,
+the `seg-nano`, `seg-small` and `seg-medium` sizes train a model that also outlines each part (from your outlines;
+`resolution` then a multiple of 24); the report adds the outline IoU, how well its outlines match yours on the
+held-back frames. When most frames show no part (a lamp that is off most of the time), `empty_every` (e.g. 3)
+trains on 1 in 3 of those empty frames, which is much faster; the held-back frames are all kept. To train on another
+machine, such as a cloud GPU, `teach(..., stage="prepare")` stops once the
+run folder holds the prepared training set; copy the folder there and call `teach(None, run_folder, ...,
+stage="train")` with the same settings. The model's parts (in segmentation projects outlined by the model itself for a `seg-` run, else by SAM 3) land on every frame nobody labeled or
 confirmed, shown dashed like tracked parts with the model's confidence; parts that jump or go missing, and parts
 the model was unsure of (under 0.6), are marked *to check*. When the model gives one part two labels, the surer one
 stays. Check them, fix, confirm; Ctrl+Z removes a whole labeling run.
@@ -484,6 +544,32 @@ model is trained, so it starts in seconds and runs at 1 to 2 seconds a frame). I
 example dataset it found about 70% of the parts on frames like its examples and fewer on another colour, with
 extra boxes to delete, so check every frame in the annotator (**Review in annotator**). For accurate labels,
 use Teach. From the command line: `python -m engine.cli quick <dataset> <video> --run <folder>`.
+
+**The model in production**: `partlabeler export-model <run>` writes a folder to copy to the production machine
+(`<run>/export`): the model as ONNX (`rfdetr-<size>.onnx`, plus an FP16 copy for TensorRT 11 and newer, which
+take precision from the model file), `model.json` (the classes, the confidence threshold, how
+to prepare a frame: stretched to the model's size, ImageNet mean and std; and how to read the outputs),
+`build_engine.py` and `check/` (held-out frames with the trained model's boxes and scores, every class). The export
+itself is checked against the trained model on held-out frames. For the lowest latency, run `python build_engine.py`
+on the production machine: it builds a TensorRT engine there (engines only run on the GPU and TensorRT version they
+were built with) in FP16 at the builder's highest optimization level, prints the engine's time per frame, and checks
+that it gives the trained model's parts and boxes on the `check/` frames (`--fp32` if FP16 ever fails the check).
+INT8 is not used: it can cost accuracy. The export needs the ONNX tools: `pip install "rfdetr[onnx]==1.11.0"
+onnxconverter-common`. Several cameras seen at the same moment (for example the left and right side of a car) can
+share one engine call: `partlabeler export-model <run> --batch 2` fixes the batch at 2 (one launch for both frames).
+A run trained elsewhere (Colab) is checked on its labeled source frames when its held-out frames are not on this PC.
+For outline models, `python build_engine.py --boxes-only` builds the engine without the outline output (the `onnx`
+package prunes it first): the same boxes and scores, faster (about 15% on an RTX 3060 at 960 px), for production code
+that needs only the parts' boxes.
+
+The export folder also gets `partcheck.py` and `lampcheck.py`, the production runtime: `Engine` runs a built
+engine with the least latency (the frame uploaded once, prepared and decoded on the GPU in one CUDA graph, only the
+parts' numbers coming back; outlines only when asked), and `Camera` judges each lamp function of one camera with a
+part reference (above): ON when its parts are found (or blinking), OK unless a part fails the reference check by its
+vote (steady parts 3 of the last 5 checks; blinking parts 2 of the last 3 blinks, each checked on its fullest frame).
+Parts are judged only while the object is in place (most steady parts where the reference has them: nothing is
+judged while a car drives in), and steady faults wait a settle time after a function switches (lamps change state).
+`python partcheck.py config.json STATION CAMERA=VIDEO ...` tries it on recordings and prints the timings.
 
 A parent object can be given in Teach too; the model then looks only inside it. If a run stops, starting it
 again resumes from the last epoch. If Teach & Transfer is greyed out, it was not installed: run the
@@ -527,7 +613,7 @@ the projects. If a project with the same name exists, the restored one gets `_2`
 Click: new part · M: next larger outline · Shift/Alt+click: grow/shrink the selected part · Ctrl+click:
 select · B: draw box · C: click mode · 1–9, 0, [ ]: class · Del: delete · Esc: deselect · Ctrl+Z: undo ·
 ← → (A / D): previous / next frame · Shift+→: next to check · K or Space: play / pause · Enter: confirm · T / Shift+T: track ahead /
-to the end · R / Shift+R: track back / to the start · U / Shift+U: re-track ahead / to the end · X: stop · S: suggest · F: find similar · Y: accept all ·
+to the end · R / Shift+R: track back / to the start · U / Shift+U: re-track ahead / to the end · X: stop · S: suggest · F: find similar · Y: accept all · W: annotate by text ·
 N: notifications · ?: all shortcuts. Ctrl+wheel / + / −: zoom · Z: whole frame · Space+drag or wheel: move when zoomed. Outlines: P brush · E eraser ·
 Shift+P smart brush · Shift+E smart eraser · , and . brush size. G: sort parts (grid: group
 by look). Grid: 1–9 and 0 give the selected pictures a class · Ctrl+A select all shown · Del clear · Space or

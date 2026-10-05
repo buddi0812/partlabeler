@@ -58,12 +58,14 @@ def _classes(path: Path) -> list[str]:
 @app.command("app")
 def app_cmd(home: Path = typer.Option(None, help="Folder holding the projects (default: PARTLABELER_HOME, else \"home\" in ~/.partlabeler/app.json, else projects/)."),
             port: int = typer.Option(8765, help="Local port."),
-            browser: bool = typer.Option(True, "--browser/--no-browser", help="Open the page in a browser.")):
+            browser: bool = typer.Option(True, "--browser/--no-browser", help="Open the page in a browser."),
+            host: str = typer.Option("127.0.0.1", help="Listen address. Anything else (e.g. 0.0.0.0) is network mode: "
+                                                        "other machines reach only the integration API /api/v1 with API tokens.")):
     """Start the annotator (start page, projects, Teach & Transfer) at http://127.0.0.1:PORT."""
     from engine.update import finish_pending
     finish_pending(log=typer.echo)                             # packages an update from the start screen left for now
     from ui.host_fastapi import serve
-    serve(home, port, browser)
+    serve(home, port, browser, host=host)
 
 
 @app.command()
@@ -221,6 +223,7 @@ def part_reference(project: Path = typer.Argument(..., exists=True, file_okay=Fa
                                              "comma-separated: checked on their full shape.")):
     """Reference profiles of the lit parts (lamps, LEDs) on a project's confirmed frames, as XML for a production
     check (engine/lampcheck.py, a standalone file: measure the detected part the same way, compare, OK or reasons)."""
+    from engine.project import lr_pairs
     import numpy as np
     from engine import lampcheck
     from engine.project import Project
@@ -241,7 +244,7 @@ def part_reference(project: Path = typer.Argument(..., exists=True, file_okay=Fa
             for b in parts:
                 m = p.mask(k, b["obj"])
                 yield k, g, p.classes[b["cls"]], img, b["box"], m.astype(bool) if m is not None else None
-    pairs = [(c, "right_" + c[5:]) for c in p.classes if c.startswith("left_") and "right_" + c[5:] in p.classes]
+    pairs = lr_pairs(p.classes)
     ref = lampcheck.build(samples, pairs, sweep=[c.strip() for c in sweep.split(",") if c.strip()])
     lampcheck.write_xml(ref, out, {"project": p.meta["name"], "frames": len(items)})
     typer.echo(f"{sum(len(g['parts']) for g in ref.values())} part profiles in {len(ref)} group(s) -> {out}")
@@ -323,7 +326,8 @@ def teach(dataset: Path = typer.Argument(..., exists=True, file_okay=False,
                                          help="Labeled source: images/, labels/, classes.txt or data.yaml."),
           run: Path = typer.Option(..., help="Run folder (model, settings, report); rerun to resume."),
           parent: str | None = typer.Option(None, help="Object the parts sit on, e.g. 'engine block'; crops to it."),
-          size: str = typer.Option("small", click_type=click.Choice(SIZES), help="RF-DETR size."),
+          size: str = typer.Option("small", click_type=click.Choice(SIZES),
+                                   help="RF-DETR size; seg-* also outlines the parts (needs a source with polygons/)."),
           epochs: int = typer.Option(30, min=1),
           resolution: int = typer.Option(640, help="Model input size, a multiple of 32."),
           held_out: float = typer.Option(0.2, min=0.05, max=0.5, help="Share of frames held out (time blocks)."),
@@ -331,12 +335,14 @@ def teach(dataset: Path = typer.Argument(..., exists=True, file_okay=False,
           recolor: float = typer.Option(0.0, min=0.0, max=1.0, help="Share of training frames that also get a copy "
                                         "with the object in another colour (parts untouched)."),
           crop: bool = typer.Option(True, "--crop/--no-crop", help="With --parent: cut frames to it, or train on whole "
-                                    "frames (the parent then only paints the recoloured copies).")):
+                                    "frames (the parent then only paints the recoloured copies)."),
+          empty_every: int = typer.Option(1, min=1, help="Train on 1 in N frames without parts (held-out frames all "
+                                          "kept): faster when most frames are empty.")):
     """Learn a labeled source and prove on held-out frames that the model reproduces its labels."""
     from engine.teach import teach as run_teach
     with _bar() as progress:
         r = run_teach(dataset, run, parent, size, epochs, resolution, held_out, aug, progress=progress, recolor=recolor,
-                      crop_to_parent=crop)
+                      crop_to_parent=crop, empty_every=empty_every)
     if r["status"] != "done":
         typer.echo(f"stopped during {r['step']}; run the same command again to resume")
         raise typer.Exit(1)
@@ -369,6 +375,23 @@ def transfer(run: Path = typer.Argument(..., exists=True, file_okay=False, help=
             c = s["track_check"]
             typer.echo(f"  track check: {c['label_flip']} label flips, {c['possible_miss']} possible misses, "
                        f"{c['lone_box']} one-frame boxes (in the frames to check; labels unchanged)")
+
+
+@app.command("export-model")
+def export_model(run: Path = typer.Argument(..., exists=True, file_okay=False, help="Run folder made by teach."),
+                 out: Path | None = typer.Option(None, help="Output folder (default: RUN/export)."),
+                 batch: int = typer.Option(1, min=1, help="Fixed batch size: frames run together (e.g. 2 cameras).")):
+    """The run's model as ONNX for production (ONNX Runtime, or a TensorRT engine built there), with model.json
+    (classes, threshold, input and output contract) and a check against the PyTorch model on held-out frames."""
+    from engine.detector import export_onnx
+    r = export_onnx(run, out, batch=batch)
+    p = r["parity"]
+    typer.echo(r["path"])
+    typer.echo(f"  check on {p['frames']} held-out frames: {p['boxes']} boxes, {p['missing']} missing, "
+               f"largest box difference {p['worst_px']} px")
+    typer.echo(f"  TensorRT: {r['tensorrt']}")
+    if p["missing"]:
+        raise typer.Exit(1)
 
 
 @app.command()

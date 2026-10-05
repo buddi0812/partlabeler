@@ -67,11 +67,22 @@ def read_classes(path: Path) -> list[str]:
     return [l.strip() for l in text.splitlines() if l.strip()]
 
 
+def lr_pairs(classes) -> list[tuple[str, str]]:
+    """(left, right) classes whose names differ only by the word left/right, wherever it sits: left_drl/right_drl,
+    license_lamp_left/license_lamp_right, rear_left_park/rear_right_park."""
+    names, out = set(classes), []
+    for n in classes:
+        words = n.split("_")
+        twin = "_".join("right" if w == "left" else w for w in words)
+        if "left" in words and twin in names:
+            out.append((n, twin))
+    return out
+
+
 def mirrored_pairs(classes) -> bool:
-    """True when class names come in left_/right_ pairs: mirroring an image would swap their meaning,
-    so horizontal-flip augmentation must stay off."""
-    names = set(classes)
-    return any(n.startswith("left_") and "right_" + n[5:] in names for n in names)
+    """True when classes come in left/right pairs: mirroring an image would swap their meaning, so horizontal-flip
+    augmentation must stay off."""
+    return bool(lr_pairs(classes))
 
 
 class _Rows(list):

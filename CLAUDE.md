@@ -33,4 +33,9 @@
   `/api/tools/<name>`; Bearer API tokens (accounts.py, hashed, revocable) are checked in the `signed_in` middleware;
   tools call `Session.call` (engine/api.py) so edits are live in open tabs and undoable. Default projects folder of a
   computer: `~/.partlabeler/app.json` {"home": ...} (`accounts.default_home`).
+- Integration API (`ui/v1.py`; contract and production design guide `docs/INTEGRATION.md`; stdlib client
+  `client/partlabeler_client.py`): `/api/v1`, changes only by addition (breaking = `/api/v2`). Network mode (`--host`):
+  other machines and proxied requests reach only `/api/v1`; path tools (`LOCAL_ONLY_TOOLS`) are refused there.
+- Annotate by text (`engine/textlabel.py`, `ConceptFinder.detect_texts`: one image encoding for all phrases): scopes
+  frame / rest / task / project, finds stored as `imported` parts to check, never doubled, one undo step.
 - Layout: `engine/` (no UI code; `api.py` is the one message protocol), `ui/` (`canvas.js` annotator, `home.js` start screen, two hosts), `engine/cli.py` (`partlabeler` CLI). User data lives in `data/` and `projects/`, both gitignored: never commit them.

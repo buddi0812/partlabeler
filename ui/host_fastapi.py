@@ -6,8 +6,9 @@
 Everything lives in the home folder: one sub-folder per project, `_teach/<run>` per Teach run,
 `_trash/` for projects moved to the trash, `.partlabeler/notifications.json` for the notification history.
 Each account (engine/accounts.py) may pick its own home folder in Settings; --home is the default one.
-The server listens on 127.0.0.1 only; the file browser shows this computer's folders to this computer.
-Every page and API call needs a signed-in account, except /login, /api/auth/* and the UI files.
+The server listens on 127.0.0.1 unless started with --host (network mode, for test and production systems): then
+other machines reach only the integration API (/api/v1, ui/v1.py) with API tokens, never the pages, sign-in or file
+browser. Every page and API call needs a signed-in account, except /login, /api/auth/*, /api/v1/health and the UI files.
 """
 import argparse
 import asyncio
@@ -252,7 +253,7 @@ async def revalidate_ui(request, call_next):
     return response
 
 
-OPEN = ("/login", "/api/auth/", "/ui/")                  # reachable before signing in
+OPEN = ("/login", "/api/auth/", "/ui/", "/api/v1/health")  # reachable before signing in
 
 
 @app.middleware("http")
@@ -1119,8 +1120,12 @@ def teach(body: dict = Body(...)) -> dict:
         if not dataset.is_dir():
             raise HTTPException(400, "Pick the labeled dataset folder (with images/ and labels/)")
     kw = {k: body[k] for k in ("size", "epochs", "resolution") if body.get(k)}
-    if kw.get("resolution") and (int(kw["resolution"]) <= 0 or int(kw["resolution"]) % 32):
-        raise HTTPException(400, "resolution must be a multiple of 32, e.g. 640 or 960")
+    if kw.get("resolution"):
+        from engine.detector import check_resolution
+        try:
+            check_resolution(int(kw["resolution"]), kw.get("size", "small"))
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from None
     parent = (body.get("parent") or "").strip() or None
     recolor = min(1.0, max(0.0, float(body.get("recolor") or 0)))
     crop = body.get("crop", True) is not False                # False: whole frames (the parent only for recolouring)
@@ -1331,7 +1336,10 @@ def assistant_chat(body: dict = Body(...)):
 
 
 # ---- entry points -------------------------------------------------------------------------
-def serve(home: Path | None = None, port: int = 8765, open_browser: bool = True, project: str | None = None) -> None:
+def serve(home: Path | None = None, port: int = 8765, open_browser: bool = True, project: str | None = None,
+          host: str = "127.0.0.1") -> None:
+    """host: 127.0.0.1 (this computer only), or an address of this computer for network mode (e.g. 0.0.0.0): other
+    machines then reach only /api/v1 with API tokens (put HTTPS in front, docs/INTEGRATION.md)."""
     from engine import utf8_output
     utf8_output()
     state["home"] = Path(home) if home else default_home()
@@ -1340,9 +1348,12 @@ def serve(home: Path | None = None, port: int = 8765, open_browser: bool = True,
     print(f"PartLabeler: {url}   (projects in {state['home'].resolve()}; Ctrl+C to quit)", flush=True)
     if not accounts().users():
         print("First start: the page asks you to create your account.", flush=True)
+    if host not in ("127.0.0.1", "localhost", "::1"):
+        print(f"Network mode on {host}:{port}: other machines reach only the integration API (/api/v1) with API "
+              "tokens; use HTTPS in front of it (docs/INTEGRATION.md).", flush=True)
     if open_browser:
         threading.Timer(1.5, lambda: webbrowser.open(url)).start()
-    uvicorn.run(app, host="127.0.0.1", port=port, log_level="warning")
+    uvicorn.run(app, host=host, port=port, log_level="warning")
 
 
 def main():
@@ -1351,18 +1362,21 @@ def main():
     ap.add_argument("--project", help="open this project folder directly (its parent becomes the home folder)")
     ap.add_argument("--port", type=int, default=8765)
     ap.add_argument("--no-browser", action="store_true")
+    ap.add_argument("--host", default="127.0.0.1", help="listen address; other than 127.0.0.1: network mode (/api/v1 only from other machines)")
     args = ap.parse_args()
     if args.project:
         folder = Path(args.project).resolve()
         if not (folder / "project.json").exists():
             raise SystemExit(f"{folder} is not a project; create one on the start screen or with `partlabeler new`")
-        serve(folder.parent, args.port, not args.no_browser, folder.name)
+        serve(folder.parent, args.port, not args.no_browser, folder.name, args.host)
     else:
-        serve(args.home and Path(args.home), args.port, not args.no_browser)
+        serve(args.home and Path(args.home), args.port, not args.no_browser, host=args.host)
 
 
 from ui import mcp as _mcp                                   # noqa: E402  (/mcp and /api/tools use the functions above)
 _mcp.mount(app, sys.modules[__name__])
+from ui import v1 as _v1                                     # noqa: E402  (the integration API and the network guard)
+_v1.mount(app, sys.modules[__name__])
 
 if __name__ == "__main__":
     main()

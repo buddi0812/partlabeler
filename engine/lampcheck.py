@@ -8,6 +8,17 @@ right not matching). Standalone on purpose (numpy, OpenCV, the standard library)
     check_pair(ref, group, part_a, image_rgb, box_a, part_b, box_b)
     check_sweep(ref, group, part, [(image_rgb, box), ...])   # one blink of a part that lights up in a sweep
     check_blinks(ref, group, part, [blink1_frames, blink2_frames, ...])   # several blinks: 2 of 3 must fail
+    check_frames(ref, group, part, [(image_rgb, box), ...])  # a steady part over neighbouring frames: 3 of 5 must fail
+    check_values(ref, group, part, measure(image_rgb, box, ...))  # the same judgement on measured values
+
+A part can have variants (e.g. two trims of a product: a long lamp strip or a small separate lamp): profiles() builds
+one profile per variant (the measured values' "variant" label), and the checks judge a part against the variant whose
+position is nearest, after `shift` (how far the whole object stands from its usual place, e.g. from the other parts
+of the same picture) is taken off; the check's result says which variant it used.
+
+A reference can carry its own check settings (tuned on recordings: votes, dark-section thresholds, how far a sweep must
+reach, "relative" = no absolute size or area, for parts whose distance to the camera varies): write_xml(...,
+settings=...) stores them, read_xml gives each group its "settings", and the checks use them (defaults: DEFAULTS).
 
 Parts that light up in stages (a progressive indicator sweeping from its tip to full length) are built with
 build(..., sweep=[names]) from their fully swept frames only, and checked over a few blinks: the frame where the part
@@ -35,6 +46,7 @@ DARK_SHARE = 0.3                # sweeping (thin) parts: a segment is also dark 
 SEGMENT_LIT = 0.05              # sweeping parts: segments checked when usually at least this share lit
 STEADY_LIT = 0.3                # steady parts: segments checked when usually at least this share lit
 VOTE = (2, 3)                   # sweeping parts over several blinks: not OK when at least 2 of 3 blinks fail
+STEADY_VOTE = (3, 5)            # steady parts over neighbouring frames: not OK when at least 3 of 5 frames fail
 RANGES = ("cx", "cy", "w", "h", "long", "lit_px", "fill", "chroma")
 # the least half-width of a range, so a tolerance is never zero: absolute, or relative (r) to the value
 MIN_HALF = {"cx": 0.01, "cy": 0.01, "w": ("r", 0.03), "h": ("r", 0.03), "long": ("r", 0.03), "lit_px": ("r", 0.05),
@@ -44,6 +56,13 @@ FULL = 0.9                      # sweeping parts: frames whose long side reaches
 REACH = 0.85                    # ... and a blink counts as full when it reaches 85% of it (sampling can miss the end)
 COLOURED = 15.0                 # parts whose lit pixels are this colourful (Lab chroma) are lit only in their own hue
 HUE_TOLERANCE = 30.0
+DEFAULTS = {"steady_vote": STEADY_VOTE, "sweep_vote": VOTE, "dark_run": DARK_RUN, "dark_share": DARK_SHARE,
+            "steady_lit": STEADY_LIT, "reach": REACH, "relative": False}
+
+
+def settings(ref: dict, group: str) -> dict:
+    """The check settings of a reference group: its tuned ones over DEFAULTS."""
+    return DEFAULTS | ref.get(group, {}).get("settings", {})
 
 
 def _patch(image, box):
@@ -124,9 +143,9 @@ def calibrate(crops, hue=None) -> int:
     return int(good[len(good) // 2])
 
 
-def _range(values, key=None):
-    lo, hi = np.percentile(values, PCT)
-    m = (hi - lo) * MARGIN
+def _range(values, key=None, pct=PCT, margin=MARGIN):
+    lo, hi = np.percentile(values, pct)
+    m = (hi - lo) * margin
     lo, hi = lo - m, hi + m
     least = MIN_HALF.get(key)
     if least is not None:
@@ -162,48 +181,105 @@ def build(samples, pairs=(), calibration: int = 80, sweep=()) -> dict:
         if v:
             vals[(group, part)].append(v)
             lit[(group, frame)][part] = v["lit_px"]
-    ref = defaultdict(lambda: {"parts": {}, "pairs": {}})
-    for (group, part), vs in vals.items():
+    return profiles(vals, lit, thresholds, hues, pairs, sweep)
+
+
+def profiles(vals, lit, thresholds, hues, pairs=(), sweep=(), pct=PCT, margin=MARGIN) -> dict:
+    """The reference from measured healthy parts: vals {(group, part): [measure(...), ...]}, lit {(group, frame):
+    {part: lit_px}} (for pairs), the parts' lit thresholds and hues {(group, part): ...}; pct and margin set how wide
+    the ranges are (tuned on recordings). margin: one for every range, or per check {"default": 0.1, "chroma": 0.5,
+    "hue": ..., "lit_px": ..., "fill": ..., "segments": ..., "overlap": ..., "pair": ...} (loosen only the check that
+    raises false alarms on healthy recordings), and per part "<part>:<check>" (e.g. "right_ind:lit_px"; a pair as
+    "<part_a>:pair"). Per-part check settings go in the same dict and are stored with the part: "<part>:dark_share",
+    "<part>:reach" (e.g. dark_share 0 with a wide segment margin: no dark-section check for a compact, irregular
+    lamp whose lit profile along its box is not stable)."""
+    if not isinstance(margin, dict):
+        margin = {"default": margin}
+    mg = lambda k, part=None: margin.get(f"{part}:{k}", margin.get(k, margin.get("default", MARGIN)))
+    ref = defaultdict(lambda: {"parts": {}, "pairs": {}, "variants": {}})
+
+    def profile(group, part, vs):
         full_long = None
         if part in sweep and vs:                              # the fully swept frames only
             cut = FULL * np.percentile([v["long"] for v in vs], 95)
             vs = [v for v in vs if v["long"] >= cut]
             full_long = float(np.median([v["long"] for v in vs])) if vs else None
         if len(vs) < 5:
-            continue
+            return None
         seg = np.array([v["segments"] for v in vs])
         med = np.median(seg, axis=0)
         template = np.mean([v["grid"] for v in vs], axis=0)
         ious = [_iou(v["grid"], template) for v in vs]
-        ref[group]["parts"][part] = {
+        return {
+            **{k: float(margin[f"{part}:{k}"]) for k in ("dark_share", "reach") if f"{part}:{k}" in margin},
+            "centre": [float(np.median([v["cx"] for v in vs])), float(np.median([v["cy"] for v in vs]))],
             "samples": len(vs), "threshold": thresholds.get((group, part), 240), "sweep": part in sweep,
             "full_long": full_long, "lit_hue": hues.get((group, part)),
-            **{k: _range([v[k] for v in vs], k) for k in RANGES},
-            "hue": _range([v["hue"] for v in vs], "hue") if np.median([v["chroma"] for v in vs]) > 15 else None,
+            **{k: _range([v[k] for v in vs], k, pct, mg(k, part)) for k in RANGES},
+            "hue": _range([v["hue"] for v in vs], "hue", pct, mg("hue", part))
+            if np.median([v["chroma"] for v in vs]) > 15 else None,
             "segment_median": [round(float(x), 3) for x in med],
-            "segment_min": [round(float(max(0.0, np.percentile(seg[:, i], PCT[0]) - MARGIN * med[i])), 3)
+            "segment_min": [round(float(max(0.0, np.percentile(seg[:, i], pct[0]) - mg("segments", part) * med[i])), 3)
                             if med[i] >= SEGMENT_LIT else None for i in range(SEGMENTS)],   # normally lit ones only
-            "template": template, "overlap_min": float(max(0.0, np.percentile(ious, PCT[0]) - MARGIN))}
+            "template": template, "overlap_min": float(max(0.0, np.percentile(ious, pct[0]) - mg("overlap", part)))}
+    for (group, part), vs in vals.items():
+        by = defaultdict(list)                                # variants: the most common one first
+        for v in vs:
+            by[v.get("variant", 0)].append(v)
+        built = [p for p in (profile(group, part, x) for x in sorted(by.values(), key=len, reverse=True)) if p]
+        if built:
+            ref[group]["parts"][part] = built[0]
+            if built[1:]:
+                ref[group]["variants"][part] = built[1:]
     for a, b in pairs:
         for group in ref:
             ratios = [f[a] / f[b] for (g, _), f in lit.items() if g == group and a in f and b in f and f[b] > 0]
             if len(ratios) >= 5 and a in ref[group]["parts"] and b in ref[group]["parts"]:
-                ref[group]["pairs"][(a, b)] = {"area_ratio": _range(ratios)}
+                ref[group]["pairs"][(a, b)] = {"area_ratio": _range(ratios, None, pct, mg("pair", a))}
     return dict(ref)
 
 
-def check(ref: dict, group: str, part: str, image: np.ndarray, box) -> dict:
+def check(ref: dict, group: str, part: str, image: np.ndarray, box, shift=(0.0, 0.0)) -> dict:
     """OK or not. Reasons (not OK): AREA_LOW, FILL_LOW (too little lit), DARK_SEGMENT (a dark section: the segment
     numbers), SHAPE, COLOUR, UNKNOWN_PART, NO_PIXELS. Notes (still OK: they say nothing about the part working):
-    AREA_HIGH, FILL_HIGH (glare, bloom), POSITION, SIZE (where the object stopped)."""
+    AREA_HIGH, FILL_HIGH (glare, bloom), POSITION, SIZE (where the object stopped). shift: (dx, dy) as shares of the
+    frame, how far the object stands from its usual place (for choosing a part's variant)."""
     r = ref.get(group, {}).get("parts", {}).get(part)
     if r is None:
         return {"ok": False, "reasons": ["UNKNOWN_PART"], "values": {}}
-    v = measure(image, box, r["threshold"], r.get("lit_hue"))
+    return check_values(ref, group, part, measure(image, box, r["threshold"], r.get("lit_hue")), shift)
+
+
+def centre(r) -> tuple:
+    """A profile's usual box centre (shares of the frame): the healthy examples' median (older references: the middle
+    of the position ranges)."""
+    if r.get("centre"):
+        return tuple(r["centre"])
+    return (r["cx"][0] + r["cx"][1]) / 2, (r["cy"][0] + r["cy"][1]) / 2
+
+
+def variant(ref: dict, group: str, part: str, cx: float, cy: float, shift=(0.0, 0.0)):
+    """(profile, index) of the part's variant nearest to its centre (cx, cy) minus the object's shift."""
+    g = ref.get(group, {})
+    options = [g.get("parts", {}).get(part)] + g.get("variants", {}).get(part, [])
+    if options[0] is None or len(options) == 1:
+        return options[0], 0
+    x, y = cx - shift[0], cy - shift[1]
+    k = min(range(len(options)), key=lambda i: (x - centre(options[i])[0]) ** 2 + (y - centre(options[i])[1]) ** 2)
+    return options[k], k
+
+
+def check_values(ref: dict, group: str, part: str, v, shift=(0.0, 0.0)) -> dict:
+    """check() on a part's measured values (measure() with the part's threshold and hue; None: nothing measurable)."""
+    r = ref.get(group, {}).get("parts", {}).get(part)
+    if r is None:
+        return {"ok": False, "reasons": ["UNKNOWN_PART"], "values": {}}
     if v is None:
         return {"ok": False, "reasons": ["NO_PIXELS"], "values": {}}
+    r, k = variant(ref, group, part, v["cx"], v["cy"], shift)
+    s = settings(ref, group)
     reasons, notes = [], []
-    for key, code in (("lit_px", "AREA"), ("fill", "FILL")):
+    for key, code in (("lit_px", "AREA"), ("fill", "FILL")) if not s["relative"] else (("fill", "FILL"),):
         lo, hi = r[key]
         if v[key] < lo:
             reasons.append(f"{code}_LOW")
@@ -213,20 +289,21 @@ def check(ref: dict, group: str, part: str, image: np.ndarray, box) -> dict:
         notes.append("POSITION")
     if not (r["w"][0] <= v["w"] <= r["w"][1] and r["h"][0] <= v["h"] <= r["h"][1]):
         notes.append("SIZE")
-    if r.get("sweep") and r.get("full_long") and v["long"] < REACH * r["full_long"]:   # never reached full length
-        reasons.append("NOT_FULL")
+    s = s | {k: r[k] for k in ("dark_share", "reach") if r.get(k) is not None}    # the part's own settings
+    if r.get("sweep") and r.get("full_long") and not s["relative"] and v["long"] < s["reach"] * r["full_long"]:
+        reasons.append("NOT_FULL")                        # never reached its full length
     if r.get("sweep"):                                    # thin strips: also relative to the usual share
-        dark = [i for i, (lo, m, s) in enumerate(zip(r["segment_min"], r["segment_median"], v["segments"]))
-                if lo is not None and s < max(lo, DARK_SHARE * m)]
+        dark = [i for i, (lo, m, x) in enumerate(zip(r["segment_min"], r["segment_median"], v["segments"]))
+                if lo is not None and x < max(lo, s["dark_share"] * m)]
     else:
-        dark = [i for i, (lo, m, s) in enumerate(zip(r["segment_min"], r["segment_median"], v["segments"]))
-                if lo is not None and m >= STEADY_LIT and s < lo]
+        dark = [i for i, (lo, m, x) in enumerate(zip(r["segment_min"], r["segment_median"], v["segments"]))
+                if lo is not None and m >= s["steady_lit"] and x < lo]
     runs, cur = [], []
     for i in dark:                                        # neighbouring dark segments: a dead section
         cur = cur + [i] if cur and i == cur[-1] + 1 else [i]
-        if len(cur) == DARK_RUN:
+        if len(cur) == s["dark_run"]:
             runs.append(cur)
-        elif len(cur) > DARK_RUN:
+        elif len(cur) > s["dark_run"]:
             runs[-1] = cur
     if runs:
         reasons.append("DARK_SEGMENT " + ",".join(str(i + 1) for run in runs for i in run))
@@ -235,8 +312,8 @@ def check(ref: dict, group: str, part: str, image: np.ndarray, box) -> dict:
         reasons.append("SHAPE")
     if v["chroma"] > r["chroma"][1] or (r["hue"] and not _hue_in(v["hue"], r["hue"])):
         reasons.append("COLOUR")
-    return {"ok": not reasons, "reasons": reasons, "notes": notes,
-            "values": {k: round(v[k], 4) for k in (*RANGES, "hue")} | {"overlap": round(overlap, 3)}}
+    return {"ok": not reasons, "reasons": reasons, "notes": notes, "variant": k,
+            "values": {key: round(v[key], 4) for key in (*RANGES, "hue")} | {"overlap": round(overlap, 3)}}
 
 
 def check_sweep(ref: dict, group: str, part: str, frames) -> dict:
@@ -250,16 +327,26 @@ def check_sweep(ref: dict, group: str, part: str, frames) -> dict:
     return check(ref, group, part, *frames[peak]) | {"peak": peak}
 
 
-def check_blinks(ref: dict, group: str, part: str, blinks, vote=VOTE) -> dict:
+def check_blinks(ref: dict, group: str, part: str, blinks, vote=None) -> dict:
     """A sweeping part over consecutive blinks (each a list of (image, box)): not OK when at least vote[0] of any
     vote[1] neighbouring blinks fail check_sweep (a dead LED fails every blink; a missed moment only one)."""
     results = [check_sweep(ref, group, part, frames) for frames in blinks]
+    return _vote(results, vote or settings(ref, group)["sweep_vote"]) | {"blinks": len(results), "per_blink": results}
+
+
+def check_frames(ref: dict, group: str, part: str, frames, vote=None) -> dict:
+    """A steady part over neighbouring frames [(image, box)]: not OK when at least vote[0] of any vote[1] neighbouring
+    frames fail check() (a dead section fails in every frame; a moment of glare or a state change only briefly)."""
+    results = [check(ref, group, part, image, box) for image, box in frames]
+    return _vote(results, vote or settings(ref, group)["steady_vote"]) | {"frames": len(results), "per_frame": results}
+
+
+def _vote(results, vote) -> dict:
     need, of = vote
     bad = [not r["ok"] for r in results]
     failing = any(sum(bad[k:k + of]) >= need for k in range(max(1, len(bad) - of + 1))) if len(bad) >= need else all(bad)
     reasons = sorted({x.split(" ")[0] for r, b in zip(results, bad) if b for x in r["reasons"]})
-    return {"ok": not failing, "reasons": reasons if failing else [], "blinks": len(results), "failed": sum(bad),
-            "per_blink": results}
+    return {"ok": not failing, "reasons": reasons if failing else [], "failed": sum(bad)}
 
 
 def _hue_in(h, rng):
@@ -280,15 +367,28 @@ def check_pair(ref, group, part_a, image, box_a, part_b, box_b) -> dict:
 
 
 # ---- XML ---------------------------------------------------------------------------------------------------------
-def write_xml(ref: dict, path, meta: dict | None = None, validation: dict | None = None) -> None:
+def write_xml(ref: dict, path, meta: dict | None = None, validation: dict | None = None,
+              settings: dict | None = None) -> None:
+    """settings: the check settings (DEFAULTS' keys) this reference was tuned with, stored for every group."""
+    s = DEFAULTS | (settings or {})
     root = ET.Element("PartReference", {"version": "1", "segments": str(SEGMENTS), "grid": f"{GRID[0]}x{GRID[1]}",
-                                        "measurement": "lit = max(R,G,B) >= threshold inside the part's box"}
+                                        "measurement": "lit = max(R,G,B) >= threshold inside the part's box",
+                                        "steady_vote": "%d of %d frames" % tuple(s["steady_vote"]),
+                                        "sweep_vote": "%d of %d blinks" % tuple(s["sweep_vote"])}
+                      | {k: str(s[k]).lower() if isinstance(s[k], bool) else str(s[k])
+                         for k in ("dark_run", "dark_share", "steady_lit", "reach", "relative")
+                         if settings and k in settings}
                       | {k: str(v) for k, v in (meta or {}).items()})
     for group, g in ref.items():
         ge = ET.SubElement(root, "Group", {"name": str(group)})
-        for part, r in g["parts"].items():
+        rows = [(part, r, 0) for part, r in g["parts"].items()] + \
+            [(part, r, i) for part, vs in g.get("variants", {}).items() for i, r in enumerate(vs, 1)]
+        for part, r, var in rows:
             pe = ET.SubElement(ge, "Part", {"class": part, "samples": str(r["samples"]), "threshold": str(r["threshold"]),
                                             "sweep": "1" if r.get("sweep") else "0"}
+                               | ({"variant": str(var)} if var else {})
+                               | ({"centre": f"{r['centre'][0]:.5f} {r['centre'][1]:.5f}"} if r.get("centre") else {})
+                               | {k: f"{r[k]:g}" for k in ("dark_share", "reach") if r.get(k) is not None}
                                | ({"full_long": f"{r['full_long']:.1f}"} if r.get("full_long") else {})
                                | ({"lit_hue": f"{r['lit_hue']:.1f}"} if r.get("lit_hue") is not None else {}))
             for k in RANGES:
@@ -316,12 +416,24 @@ def read_xml(path) -> dict:
     ref = {}
     root = ET.parse(path).getroot()
     rows, cols = (int(x) for x in root.get("grid", f"{GRID[0]}x{GRID[1]}").split("x"))
+    tuned = {}
+    for key in ("steady_vote", "sweep_vote"):                 # "3 of 5 frames"
+        if root.get(key):
+            words = root.get(key).split()
+            tuned[key] = (int(words[0]), int(words[2]))
+    for key, cast in (("dark_run", int), ("dark_share", float), ("steady_lit", float), ("reach", float)):
+        if root.get(key):
+            tuned[key] = cast(root.get(key))
+    if root.get("relative"):
+        tuned["relative"] = root.get("relative") == "true"
     for ge in root.iter("Group"):
-        g = ref.setdefault(ge.get("name"), {"parts": {}, "pairs": {}})
+        g = ref.setdefault(ge.get("name"), {"parts": {}, "pairs": {}, "variants": {}, "settings": dict(tuned)})
         for pe in ge.iter("Part"):
             rng = {e.get("name"): [float(e.get("min")), float(e.get("max"))] for e in pe.iter("Range")}
             seg, tpl = pe.find("Segments"), pe.find("Template")
-            g["parts"][pe.get("class")] = {
+            prof = {
+                "centre": [float(x) for x in pe.get("centre").split()] if pe.get("centre") else None,
+                **{k: float(pe.get(k)) for k in ("dark_share", "reach") if pe.get(k) is not None},
                 "samples": int(pe.get("samples")), "threshold": int(pe.get("threshold")),
                 "sweep": pe.get("sweep") == "1",
                 "full_long": float(pe.get("full_long")) if pe.get("full_long") else None,
@@ -331,6 +443,10 @@ def read_xml(path) -> dict:
                 "segment_min": [None if x == "-" else float(x) for x in seg.get("min").split()],
                 "template": np.array([int(x) / 100 for x in tpl.text.split()], np.float32).reshape(rows, cols),
                 "overlap_min": float(tpl.get("overlap_min"))}
+            if pe.get("variant", "0") == "0":
+                g["parts"][pe.get("class")] = prof
+            else:
+                g["variants"].setdefault(pe.get("class"), []).append(prof)
         for pr in ge.iter("Pair"):
             g["pairs"][(pr.get("a"), pr.get("b"))] = {"area_ratio": [float(pr.get("area_ratio_min")),
                                                                       float(pr.get("area_ratio_max"))]}

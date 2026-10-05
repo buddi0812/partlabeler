@@ -25,6 +25,7 @@ dependencies = [
     "scikit-learn",
     "fastapi",
     "uvicorn[standard]",
+    "python-multipart",                      # file uploads to the integration API (/api/v1)
     "anywidget",
     "jupyter-ui-poll",
     "typer",
@@ -34,6 +35,7 @@ dependencies = [
 
 [project.optional-dependencies]
 teach = ["rfdetr[train]==1.11.0", "albumentations", "faster-coco-eval"]
+onnx = ["rfdetr[onnx]==1.11.0", "onnxconverter-common"]
 dev = ["pytest", "playwright", "jupyterlab"]
 
 [project.scripts]

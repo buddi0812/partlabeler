@@ -73,6 +73,9 @@ const CSS = `
 .pl-x { border:none !important; padding:2px 7px !important; color:var(--muted); background:none !important; font-size:16px !important; }
 .pl-x:hover { color:var(--bad); }
 .pl-empty { color:var(--muted); font-size:13px; }
+.pl-objs { display:flex; flex-wrap:wrap; gap:4px; margin-top:6px; }
+.pl-obj { font-size:12px !important; padding:2px 8px !important; border-radius:99px !important; }
+.pl-obj[aria-pressed=true] { background:var(--accent-soft); border-color:var(--accent); }
 .pl-side .flash { outline:2px solid var(--accent); outline-offset:4px; border-radius:8px; }
 .pl-settings summary { cursor:pointer; font-weight:600; font-size:13px; }
 .pl-settings[open] summary { margin-bottom:8px; }
@@ -188,6 +191,9 @@ const NOTE_CSS = `
 const STATUS = ["No boxes", "Suggestions", "Tracked or imported", "Has your boxes", "Confirmed"];
 const FORMAT_NAMES = { yolo: "YOLO", coco: "COCO", cvat: "CVAT", voc: "Pascal VOC", labelstudio: "Label Studio",
                        folders: "Class folders", csv: "CSV list" };
+// Annotate by text: one click adds a common object (any other name can be typed)
+const COMMON_OBJECTS = ["car", "truck", "truck cabin", "wheel", "bus", "person", "license plate", "headlight", "door",
+                        "window", "forklift", "pallet", "box", "helmet"];
 const TASK_NAMES = { detect: "Object detection", segment: "Segmentation", classify: "Classification" };
 // The signed-in account's preferences (Settings): the local app puts them in window.PL; notebooks have none,
 // so there the defaults and this browser's storage apply.
@@ -832,6 +838,19 @@ function render({ model, el }) {
           <div class="pl-tools pl-seg" style="margin-top:6px">
           <button type="button" data-b="outlineHere" title="Outline every box on this frame that has no outline yet">Outline boxes</button>
           <button type="button" data-b="outlineAll" title="Outline every box without an outline, on every frame">…on every frame</button></div></section>
+        <section class="pl-textsec"><h2 id="pl-text-h">Annotate by text</h2>
+          <form class="pl-textform pl-tools"><input type="text" class="pl-text" name="objects" autocomplete="off" spellcheck="false"
+            placeholder="e.g. car, truck cabin, wheel" aria-labelledby="pl-text-h" style="flex:1;min-width:0">
+            <button type="submit" class="pl-tgo" title="Find every object you named and box it (W focuses the words)">Annotate</button></form>
+          <div class="pl-objs" role="group" aria-label="Common objects">${COMMON_OBJECTS.map((o) =>
+            `<button type="button" class="pl-obj" data-word="${o}" aria-pressed="false">${o}</button>`).join("")}</div>
+          <select class="pl-tscope" name="text-scope" aria-label="Where to annotate" style="margin-top:6px">
+            <option value="frame">Only this frame</option><option value="rest">This frame and the rest of the task</option>
+            <option value="task">The whole task</option><option value="project">The whole project</option></select>
+          <label class="pl-range" style="margin-top:6px">Sureness <input type="range" class="pl-tthr" min="0.2" max="0.9" step="0.05" value="0.5"
+            name="text-sureness" aria-label="Lowest sureness to keep"><span class="pl-tthr-v">0.50</span></label>
+          <label class="pl-src" style="margin-top:4px"><input type="checkbox" class="pl-tconf" name="text-confirmed"> Also confirmed frames</label>
+          <span class="pl-src" style="margin-top:4px">SAM 3 boxes every object you name; a new name becomes a class. What it finds is marked to check.</span></section>
         <section class="pl-sort" hidden><h2>Sort</h2><div class="pl-tools">
           <button type="button" data-b="group" title="Put look-alikes together (G)">Group by look</button>
           <button type="button" data-b="suggestTags" class="pl-imgonly" title="Suggest a class for every image without one, from the ones you classed (S)">Suggest classes</button>
@@ -892,6 +911,7 @@ function render({ model, el }) {
         <div><span>Suggest boxes from labeled frames</span><kbd>S</kbd></div>
         <div><span>Find more like the selected box</span><kbd>F</kbd></div>
         <div><span>Accept all suggestions</span><kbd>Y</kbd></div>
+        <div><span>Annotate by text: type what to find</span><kbd>W</kbd></div>
         <div><span>Notifications</span><kbd>N</kbd></div>
         <div><span>Ask Rivet, the helper</span><kbd>H</kbd></div>
         <div><span>This list</span><kbd>?</kbd></div>
@@ -1084,6 +1104,7 @@ function render({ model, el }) {
     const grid = Boolean(S.grid), cl = classify();
     el.querySelectorAll(".pl-seg").forEach((n) => (n.hidden = !seg() || grid));
     $(".pl-toolsec").hidden = grid; $(".pl-boxes").closest("section").hidden = grid; $(".pl-find").hidden = grid;
+    $(".pl-textsec").hidden = grid || cl;
     $(".pl-sort").hidden = !grid;
     el.querySelectorAll(".pl-imgonly").forEach((n) => (n.hidden = !cl));
     el.querySelectorAll(".pl-partsonly").forEach((n) => (n.hidden = cl));
@@ -1124,7 +1145,7 @@ function render({ model, el }) {
     $(".pl-video").hidden = view().kind !== "video";
     $('[data-a="review"]').textContent = S.data.reviewed ? "Unconfirm frame" : "Confirm frame";
     $(".pl-device").textContent = [S.project.device, S.gpu && `GPU memory in use: ${S.gpu}`].filter(Boolean).join(". ");
-    el.querySelectorAll('[data-b="group"],[data-b="suggestTags"],[data-b="odd"],[data-b="outlineHere"],[data-b="outlineAll"],[data-b="sortParts"]')
+    el.querySelectorAll('[data-b="group"],[data-b="suggestTags"],[data-b="odd"],[data-b="outlineHere"],[data-b="outlineAll"],[data-b="sortParts"],.pl-tgo')
       .forEach((b) => (b.disabled = busy));
     const cl = classify();
     $('[data-a="prev"]').closest(".pl-group").hidden = cl; $('[data-a="review"]').hidden = cl;
@@ -1370,6 +1391,30 @@ function render({ model, el }) {
     const name = $(".pl-newcls").value.trim(); if (!name) return;
     const G = S.grid, keys = G?.sel.size ? [...G.sel] : undefined;
     send({ type: "add_class", name, of: G?.of, keys }); $(".pl-newcls").value = "";
+  });
+  // ---- annotate by text --------------------------------------------------------------------
+  const words = () => $(".pl-text").value.split(/[,;\n]/).map((w) => w.trim().replace(/\s+/g, " ")).filter(Boolean);
+  const markWords = () => {
+    const have = new Set(words().map((w) => w.toLowerCase()));
+    el.querySelectorAll(".pl-obj").forEach((b) => b.setAttribute("aria-pressed", have.has(b.dataset.word)));
+  };
+  $(".pl-text").addEventListener("input", markWords);
+  $(".pl-objs").addEventListener("click", (e) => {
+    const w = e.target.closest("[data-word]")?.dataset.word; if (!w) return;
+    const list = words(), k = list.findIndex((x) => x.toLowerCase() === w);
+    if (k >= 0) list.splice(k, 1); else list.push(w);
+    $(".pl-text").value = list.join(", "); markWords();
+  });
+  $(".pl-tthr").addEventListener("input", (e) => { $(".pl-tthr-v").textContent = (+e.target.value).toFixed(2); });
+  $(".pl-textform").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const text = words().join(", ");
+    if (!text) { hint("Type what to find, e.g. car, wheel, or pick it below"); $(".pl-text").focus(); return; }
+    if (S.busy) return;
+    const scope = $(".pl-tscope").value, t = view();
+    const n = { frame: 1, rest: t.end - S.item, task: t.end - t.start, project: S.statuses.length }[scope];
+    if (n > 300 && !confirm(`Annotate ${n} frames by text? It takes about ${Math.max(1, Math.round(n * (0.4 + 0.15 * words().length) / 60))} minutes; you can stop it any time (X).`)) return;
+    send({ type: "annotate_text", item: S.item, text, scope, threshold: +$(".pl-tthr").value, include_confirmed: $(".pl-tconf").checked });
   });
   let kTimer = 0;
   $(".pl-k").addEventListener("input", (e) => {
@@ -1782,6 +1827,7 @@ function render({ model, el }) {
     else if (k === "k") togglePlay();
     else if ((k === "," || k === ".") && seg()) { S.brush = Math.max(1, Math.min(120, Math.round(S.brush * (k === "." ? 1.25 : 0.8)))); $(".pl-bsize").value = S.brush; renderSide(); draw(); }
     else if (k === "g" && !classify()) actions.sortParts();
+    else if (k === "w" && !classify() && !S.grid) { flash($(".pl-textsec")); $(".pl-text").focus(); }
     else if (k === "m") { if (S.sel != null) send({ type: "cycle", item: S.item, obj: S.sel }); }
     else if (k === "n") center.toggle();
     else if (k === "?") actions.help();

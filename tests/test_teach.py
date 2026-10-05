@@ -1,5 +1,6 @@
 """Teach & Transfer logic and the CLI: fast, CPU only, no model weights (the detector is faked)."""
 import json
+import shutil
 
 import numpy as np
 import pytest
@@ -10,7 +11,7 @@ from typer.testing import CliRunner
 from engine import detector, hw
 from engine.cli import app
 from engine.teach import (analyse, f1_sweep, from_crop, infer_sampling, parse_row, pick_threshold, prepare,
-                          source_items, teach, time_blocks, to_crop)
+                          prove, source_items, teach, time_blocks, to_crop)
 from engine.transfer import frames_to_check, transfer
 from tests.test_project import CLASSES, video  # noqa: F401  (fixture)
 
@@ -239,6 +240,10 @@ def test_flip_only_without_left_right_pairs_and_batch_plan():
     assert "HorizontalFlip" not in detector.aug_config(["left_drl", "right_drl", "grill"])
     assert detector.aug_config(["bolt", "nut"])["HorizontalFlip"] == {"p": 0.5}
     assert "HorizontalFlip" in detector.aug_config(["left_bolt", "nut"])                  # no pair
+    assert "HorizontalFlip" not in detector.aug_config(["license_lamp_left", "license_lamp_right"])   # suffix pair
+    from engine.project import lr_pairs
+    assert lr_pairs(["rear_left_park", "rear_right_park", "left_drl", "right_drl", "lefty", "side_ind"]) == [
+        ("rear_left_park", "rear_right_park"), ("left_drl", "right_drl")]
     assert detector.aug_config(["bolt"], "off") == {}
     assert detector.aug_config(["bolt"], "strong")["HueSaturationValue"]["hue_shift_limit"] == 180
     with pytest.raises(ValueError):
@@ -295,6 +300,8 @@ def test_teach_end_to_end_with_a_fake_detector(tmp_path, monkeypatch, fake_detec
         ["left_lamp", "right_lamp", "bolt"], 5, "{stem}_f{frame:06d}", "model/checkpoint_best_total.pth")
     assert s["presence"] == {"left_lamp": 1.0, "right_lamp": 1.0, "bolt": 0.0}
     assert "PASS" in (run / "report.md").read_text() and json.loads((run / "report.json").read_text())["passed"]
+    stopped = prove(object(), run / "dataset" / "valid", s["classes"], should_stop=lambda: True)   # Stop: no stress test
+    assert stopped["mAP50"] == 1.0 and stopped["stress"] == {}
     teach(src, run, epochs=1, resolution=320)                            # complete: no second training
     assert calls == [None]
     (run / "model/trained.json").unlink()                                # interrupted run: resumes
@@ -324,7 +331,7 @@ def test_transfer_then_review_with_a_fake_detector(tmp_path, video, fake_detecto
     assert "4 frames (1 in 5), 8 boxes from 4 label files" in res.output
 
 
-@pytest.mark.parametrize("cmd", ["app", "new", "export", "teach", "transfer", "review", "models", "doctor"])
+@pytest.mark.parametrize("cmd", ["app", "new", "export", "teach", "transfer", "export-model", "review", "models", "doctor"])
 def test_cli_help(cmd):
     res = runner.invoke(app, [cmd, "--help"])
     assert res.exit_code == 0 and "Usage" in res.output
@@ -391,3 +398,91 @@ def test_training_halves_the_batch_when_the_gpu_runs_out_of_memory(tmp_path, mon
     with pytest.raises(torch.OutOfMemoryError):
         detector.train(ds, tmp_path / "out2", "small", epochs=1)
     assert calls == [(4, 4), (2, 8), (1, 16)]                         # down to batch 1, then gives up
+
+
+def test_onnx_decode_scores_each_class_and_drops_background():
+    dets = np.array([[0.5, 0.5, 0.2, 0.4], [0.1, 0.1, 0.1, 0.1]], np.float32)
+    labels = np.array([[4.0, 3.0, 9.0], [-9.0, -9.0, 9.0]], np.float32)     # last column: background
+    xyxy, scores, cls, q = detector.onnx_decode(dets, labels, 100, 50, 0.5)
+    assert list(q) == [0, 0]
+    plane = np.where(np.arange(8) < 4, 5.0, -5.0)[None, :].repeat(4, 0)            # left half inside
+    px = detector.onnx_masks(np.stack([plane, -plane]), q, 16, 8)
+    assert px.shape == (2, 8, 16) and px[0, :, :7].all() and not px[0, :, 9:].any()
+    assert list(cls) == [0, 1] and scores[0] > scores[1]                     # one query, two classes: both kept
+    assert np.allclose(xyxy, [[40, 15, 60, 35]] * 2)
+    x = detector.onnx_input(Image.new("RGB", (64, 32), (255, 0, 0)), 32)
+    assert x.shape == (1, 3, 32, 32) and abs(x[0, 0, 5, 5] - (1 - 0.485) / 0.229) < 1e-4
+
+
+def test_the_production_bundle_prepares_and_decodes_like_the_export(tmp_path):
+    from engine import build_engine as B
+    rgb = np.random.default_rng(0).integers(0, 256, (48, 80, 3), dtype=np.uint8)
+    card = {"resolution": 32, "input": {"mean": list(detector.MEAN), "std": list(detector.STD)}}
+    assert np.abs(B.prepare(rgb, card) - detector.onnx_input(Image.fromarray(rgb), 32)).max() < 1e-4
+    dets = np.random.default_rng(1).random((6, 4), np.float32)
+    labels = np.random.default_rng(2).normal(0, 3, (6, 4)).astype(np.float32)
+    for a, b in zip(B.decode(dets, labels, 80, 48, 0.3), detector.onnx_decode(dets, labels, 80, 48, 0.3)):
+        assert np.allclose(a, b)
+    out = tmp_path / "out.json"                               # trtexec --exportOutput layout
+    out.write_text('[ { "name" : "dets"\n, "dimensions" : "1x2x2"\n, "values" : [ 1, 2, 3, 4 ]\n}\n]')
+    assert B.read_outputs(out)["dets"].tolist() == [[[1, 2], [3, 4]]]
+    assert [B.trt_major(f"&&&& RUNNING TensorRT.trtexec [TensorRT v{v}]") for v in (110300, 101500, 8601)] == [11, 10, 8]
+
+
+def test_outlines_become_one_polygon_per_part():
+    import cv2
+    from engine.teach import line_box, mask_polygon, polygon_line
+    m = np.zeros((40, 80), bool)
+    m[10:20, 5:25] = m[12:18, 50:70] = True                  # one part in two pieces
+    poly = mask_polygon(m)
+    back = np.zeros((40, 80), np.uint8)
+    cv2.fillPoly(back, [np.round(poly - 0.5).astype(np.int32)], 1)
+    assert (back.astype(bool) & m).sum() / (back.astype(bool) | m).sum() > 0.9
+    c, x1, y1, x2, y2 = line_box(polygon_line(2, poly, 80, 40))
+    assert c == 2 and x1 < 5 / 80 + 0.01 and x2 > 69 / 80 and y1 < 10 / 40 + 0.02 and y2 > 17 / 40
+    assert line_box("1 0.5 0.5 0.2 0.4") == (1, 0.4, 0.3, 0.6, 0.7) or np.allclose(line_box("1 0.5 0.5 0.2 0.4")[1:], (0.4, 0.3, 0.6, 0.7))
+    assert mask_polygon(np.zeros((5, 5), bool)) is None
+
+
+def test_outline_models_train_on_polygons_in_stages(tmp_path, monkeypatch, fake_detector):
+    from engine.teach import load_targets, mask_ious
+    src = make_source(tmp_path / "src")
+    (src / "polygons").mkdir()
+    for f in (src / "labels").iterdir():                     # the two lamps outlined as diamonds
+        (src / "polygons" / f.name).write_text("0 0.25 0.4 0.35 0.5 0.25 0.6 0.15 0.5\n1 0.75 0.4 0.85 0.5 0.75 0.6 0.65 0.5\n")
+    trained = []
+
+    def fake_train(dataset_dir, out_dir, size, epochs, resolution, aug, resume, progress, should_stop):
+        trained.append((size, resolution))
+        (out_dir / "checkpoint_best_total.pth").write_bytes(b"x")
+        return out_dir / "checkpoint_best_total.pth"
+    monkeypatch.setattr(detector, "train", fake_train)
+    run = tmp_path / "run"
+    with pytest.raises(ValueError, match="multiple of 24"):
+        teach(src, run, size="seg-small", resolution=320)
+    r = teach(src, run, size="seg-small", resolution=384, epochs=1, stage="prepare")
+    assert r["status"] == "prepared" and not trained
+    label = next((run / "dataset" / "valid" / "labels").iterdir())
+    assert len(label.read_text().splitlines()[0].split()) == 9          # class + 4 points
+    t = load_targets(label, 160, 120)
+    assert np.allclose(t.xyxy[0], [24, 48, 56, 72]) and t.data["polygons"][0].shape == (4, 2)
+    moved = tmp_path / "elsewhere"                                        # e.g. a cloud GPU
+    shutil.copytree(run, moved)
+    r = teach(None, moved, size="seg-small", resolution=384, epochs=1, stage="train")
+    assert r["status"] == "done" and trained == [("seg-small", 384)] and r["held_out"]["mAP50"] == 1.0
+    pred = sv.Detections(xyxy=t.xyxy[:1], class_id=np.array([0]), confidence=np.array([0.9]),
+                         mask=np.zeros((1, 120, 160), bool))
+    pred.mask[0, 48:72, 24:56] = True                                     # the box as outline: diamond is half of it
+    (c, iou), = mask_ious(pred, t)
+    assert c == 0 and 0.4 < iou < 0.65
+    for f in list((src / "labels").iterdir())[::2]:                     # half the frames empty
+        f.write_text("")
+        (src / "polygons" / f.name).write_text("")
+    thin = teach(src, tmp_path / "thin", size="seg-small", resolution=384, stage="prepare", empty_every=3)
+    kept = [f for f in (tmp_path / "thin" / "dataset" / "train" / "labels").iterdir()]
+    held = [f for f in (tmp_path / "thin" / "dataset" / "valid" / "labels").iterdir()]
+    left, kept_empty, held_empty = (thin["boxes"]["empty_left_out"], sum(not f.read_text() for f in kept),
+                                    sum(not f.read_text() for f in held))
+    assert left > 0 and kept_empty + left + held_empty == 10 and held_empty > 0   # held-out empties all kept
+    with pytest.raises(ValueError, match="outlines"):
+        teach(make_source(tmp_path / "boxes_only"), tmp_path / "run2", size="seg-small", resolution=384, stage="prepare")

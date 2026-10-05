@@ -1,4 +1,6 @@
 """Reference profiles of lit parts and the check against them (engine/lampcheck.py), on synthetic lamp strips."""
+from collections import defaultdict
+
 import numpy as np
 
 from engine import lampcheck as L
@@ -80,6 +82,18 @@ def test_sweeping_parts_must_reach_their_full_shape():
     assert not r["ok"] and r["failed"] == 2 and "NOT_FULL" in r["reasons"]
 
 
+def test_a_steady_part_fails_only_when_most_neighbouring_frames_fail():
+    frames = [frame(seed=s) for s in range(30)]
+    ref = L.build(lambda: ((k, "cam", "drl", img, BOX, o) for k, (img, o) in enumerate(frames)))
+    good = [(frame(seed=100 + s)[0], BOX) for s in range(5)]
+    dark = frame(dead=(80, 110), seed=99)[0]                  # a dead section
+    assert not L.check(ref, "cam", "drl", dark, BOX)["ok"]
+    blip = good[:2] + [(dark, BOX)] + good[3:]                # one bad frame: still OK
+    assert L.check_frames(ref, "cam", "drl", blip)["ok"]
+    r = L.check_frames(ref, "cam", "drl", [good[0], (dark, BOX), (dark, BOX), good[1], (dark, BOX)])
+    assert not r["ok"] and r["failed"] == 3
+
+
 def test_xml_round_trip(tmp_path):
     ref = reference()
     L.write_xml(ref, tmp_path / "ref.xml", {"project": "demo"}, {"false_alarms": "0/10"})
@@ -107,3 +121,71 @@ def test_part_reference_command_writes_xml(tmp_path, video):
     assert r.exit_code == 0, r.output
     ref = L.read_xml(out)
     assert "left_lamp" in ref["all"]["parts"] and ref["all"]["parts"]["left_lamp"]["samples"] == 8
+
+
+def test_tuned_settings_travel_in_the_xml_and_change_the_check(tmp_path):
+    ref = reference()
+    img = frame(dead=(80, 110), seed=99)[0]
+    v = L.measure(img, BOX, ref["cam"]["parts"]["drl"]["threshold"])
+    assert L.check_values(ref, "cam", "drl", v) == L.check(ref, "cam", "drl", img, BOX)
+    tuned = {"steady_vote": (4, 6), "dark_run": 50, "relative": True}
+    L.write_xml(ref, tmp_path / "t.xml", settings=tuned)
+    back = L.read_xml(tmp_path / "t.xml")
+    s = L.settings(back, "cam")
+    assert s["steady_vote"] == (4, 6) and s["dark_run"] == 50 and s["relative"] and s["reach"] == L.REACH
+    r = L.check(back, "cam", "drl", img, BOX)
+    assert not any(x.startswith(("DARK_SEGMENT", "AREA")) for x in r["reasons"])   # no dark run of 50; no area
+    assert L.settings(L.read_xml(tmp_path / "t.xml"), "nope") == L.DEFAULTS
+    wide = L.profiles({("cam", "drl"): [L.measure(frame(seed=s)[0], BOX, 200) for s in range(20)]}, {},
+                      {("cam", "drl"): 200}, {}, margin=1.0)
+    narrow = L.profiles({("cam", "drl"): [L.measure(frame(seed=s)[0], BOX, 200) for s in range(20)]}, {},
+                        {("cam", "drl"): 200}, {}, margin=0.0)
+    lo, hi = wide["cam"]["parts"]["drl"]["fill"], narrow["cam"]["parts"]["drl"]["fill"]
+    assert lo[0] <= hi[0] and lo[1] >= hi[1]
+    only = L.profiles({("cam", "drl"): [L.measure(frame(seed=s)[0], BOX, 200) for s in range(20)]}, {},
+                      {("cam", "drl"): 200}, {}, margin={"default": 0.0, "fill": 1.0})["cam"]["parts"]["drl"]
+    assert only["fill"] == wide["cam"]["parts"]["drl"]["fill"]
+    assert only["lit_px"] == narrow["cam"]["parts"]["drl"]["lit_px"]
+
+
+def test_a_part_with_variants_is_judged_against_the_nearest_variant(tmp_path):
+    small = (150, 90, 180, 104)                              # another trim: a small lamp lower down
+    def lamp(img, box, dead=None):
+        img[box[1] + 2:box[3] - 2, box[0] + 2:box[2] - 2] = 255
+        if dead:
+            img[box[1]:box[3], dead[0]:dead[1]] = 70
+        return img
+    vals = defaultdict(list)
+    for s in range(30):
+        a = lamp(frame(seed=s)[0].copy(), BOX)
+        va = L.measure(a, BOX, 200)
+        vals[("cam", "ind")].append(va)
+        b = lamp(np.full((120, 200, 3), 60, np.uint8), small)
+        vb = L.measure(b, small, 200)
+        vb["variant"] = 1
+        vals[("cam", "ind")].append(vb)
+    ref = L.profiles(vals, {}, {("cam", "ind"): 200}, {})
+    assert len(ref["cam"]["variants"]["ind"]) == 1
+    ok_small = L.check(ref, "cam", "ind", lamp(np.full((120, 200, 3), 60, np.uint8), small), small)
+    assert ok_small["ok"] and ok_small["variant"] == 1
+    half = L.check(ref, "cam", "ind", lamp(frame(seed=99)[0].copy(), BOX, dead=(100, 160)), BOX)
+    assert not half["ok"] and half["variant"] == 0         # a half-dark strip is judged as a strip
+    moved = (BOX[0], BOX[1] + 36, BOX[2], BOX[3] + 36)      # the whole object stands lower: still the strip
+    img = lamp(np.full((120, 200, 3), 60, np.uint8), moved)
+    assert L.check(ref, "cam", "ind", img, moved, shift=(0.0, 0.3))["variant"] == 0
+    L.write_xml(ref, tmp_path / "v.xml")
+    back = L.read_xml(tmp_path / "v.xml")
+    assert len(back["cam"]["variants"]["ind"]) == 1
+    assert np.allclose(back["cam"]["variants"]["ind"][0]["cy"], ref["cam"]["variants"]["ind"][0]["cy"])
+
+
+def test_per_part_margins_and_settings(tmp_path):
+    vals = {("cam", p): [L.measure(frame(dead=(155 - s, 155), seed=s)[0], BOX, 200) for s in range(20)]
+            for p in ("a", "b")}                             # lamps a little different in length
+    ref = L.profiles(vals, {}, {("cam", "a"): 200, ("cam", "b"): 200}, {},
+                     margin={"default": 0.0, "a:fill": 1.0, "b:dark_share": 0.0})
+    pa, pb = ref["cam"]["parts"]["a"], ref["cam"]["parts"]["b"]
+    assert pa["fill"][1] - pa["fill"][0] > pb["fill"][1] - pb["fill"][0]       # only a's fill range widened
+    assert pb["dark_share"] == 0.0 and "dark_share" not in pa
+    L.write_xml(ref, tmp_path / "p.xml")
+    assert L.read_xml(tmp_path / "p.xml")["cam"]["parts"]["b"]["dark_share"] == 0.0

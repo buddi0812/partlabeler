@@ -202,7 +202,8 @@ def label_project(project, run_dir, task_ids, outline=None, parent_every: int = 
     the one before (IoU >= 0.3, same class), so jumps and gaps get the usual 'to check' marks. Frames a person
     labeled (drawn or tracked parts) or confirmed are left alone; the model's earlier labels are replaced. Two
     labels on one box (IoU >= 0.7) keep the surer one; parts under 0.6 are marked to check (Project.flags).
-    outline(item, boxes) -> masks turns the boxes into outlines (segmentation projects)."""
+    outline(item, boxes) -> masks turns the boxes into outlines (segmentation projects); a model that outlines parts
+    itself (a seg- run) gives its own outlines instead."""
     from engine import detector, hw
     run_dir = Path(run_dir)
     s = json.loads((run_dir / "settings.json").read_text(encoding="utf-8"))
@@ -234,20 +235,28 @@ def label_project(project, run_dir, task_ids, outline=None, parent_every: int = 
                     box = crop_box(hit, W, H, s.get("parent_margin", 0.12)) if hit else None
                 crop = box or (0, 0, W, H)
                 det = detector.predict(model, img.crop(crop) if box else img, float(s["threshold"]))
+                own = getattr(det, "mask", None) if outline else None     # the model's own outlines
                 dets = sorted(((to_project[int(c)], [float(x1 + crop[0]), float(y1 + crop[1]), float(x2 + crop[0]),
-                                                     float(y2 + crop[1])], float(p))
-                               for (x1, y1, x2, y2), c, p in zip(det.xyxy, det.class_id, det.confidence)
+                                                     float(y2 + crop[1])], float(p), j)
+                               for j, ((x1, y1, x2, y2), c, p) in enumerate(zip(det.xyxy, det.class_id, det.confidence))
                                if int(c) in to_project), key=lambda d: -d[2])
                 kept = []                                     # one part, two labels on the same box: the surer one
                 for d in dets:
                     if all(_iou(d[1], k[1]) < 0.7 for k in kept):
                         kept.append(d)
                 dets = kept
-                masks = outline(k, [d[1] for d in dets]) if outline and dets else [None] * len(dets)
+                if own is not None:                           # in the frame's coordinates
+                    masks = []
+                    for d in dets:
+                        m = np.zeros((H, W), bool)
+                        m[crop[1]:crop[1] + own.shape[1], crop[0]:crop[0] + own.shape[2]] = own[d[3]]
+                        masks.append(m)
+                else:
+                    masks = outline(k, [d[1] for d in dets]) if outline and dets else [None] * len(dets)
                 with project.db:
                     project.db.execute("DELETE FROM boxes WHERE item=? AND source='imported'", (k,))
                     now, used = [], set()
-                    for (c, bx, p), m in zip(dets, masks):
+                    for (c, bx, p, _), m in zip(dets, masks):
                         match = max((q for q in prev if q[1] == c and q[0] not in used and _iou(q[2], bx) >= 0.3),
                                     key=lambda q: _iou(q[2], bx), default=None)
                         # a fresh id comes from the project: a person may be drawing parts meanwhile

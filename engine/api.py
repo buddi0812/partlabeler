@@ -9,6 +9,7 @@ In:  ready | goto {item} | box {item, cls, box, obj?} | click {item, x, y, posit
      accept {item} | undo | track {item, count, direction, redo?} | clear {item, count, direction, classes?, confirmed?}
      stop | suggest {item}
      find_all {item, obj} | find_text {item, text, cls, threshold?} | settings {parent} | export {format, reviewed_only, tasks?}
+     annotate_text {item, text | prompts, scope: frame|rest|task|project, threshold?, include_confirmed?}
      paint {item, obj?, cls, x, y, png} | smart_paint {item, obj?, cls, points, radius, erase}
      outline {item, all?}                                                          (outline projects)
      add_task {path, every?} | add_class {name, of?, keys?} | grid {of} | thumbs {of, keys} | sort {of, k?} | tag {of, keys, cls} | accept_tags {keys}
@@ -60,12 +61,12 @@ UNDO_WORDS = {"box": "drawing a box", "outline": "outlining a part", "delete": "
               "tracking": "tracking", "suggestions": "suggestions", "find similar": "find similar",
               "paint": "painting an outline", "outline boxes": "outlining boxes", "classes": "a class change",
               "smart brush": "a smart brush stroke", "find text": "find by text", "clear": "clearing parts",
-              "class swap": "a class swap", "model labels": "labeling with a model"}
+              "class swap": "a class swap", "model labels": "labeling with a model", "text labels": "annotating by text"}
 FORMAT_NAMES = {"yolo": "YOLO", "coco": "COCO", "cvat": "CVAT", "voc": "Pascal VOC", "labelstudio": "Label Studio",
                 "folders": "class folders", "csv": "CSV"}
 THUMB = 224                                               # px, longest side of grid thumbnails
 JOBS = {"track", "suggest", "find_all", "find_text", "outline", "sort", "suggest_tags", "odd", "export", "add_task",
-        "label_tasks"}
+        "label_tasks", "annotate_text"}
 
 _MODELS: dict = {}
 _LOCKS = {k: threading.Lock() for k in ("seg", "track", "suggest", "concept", "embed", "load")}
@@ -807,6 +808,58 @@ class Session:
                         "Try other words or a lower threshold", self._goto(item))
 
         self._run("Finding by text", job)
+
+    def on_annotate_text(self, msg):
+        """Annotate by text: SAM 3 finds what a few words name (text "car, truck cabin, wheel", or prompts
+        [{"text", "label"?}]) on this frame, it and the rest of its task, its whole task or the whole project (scope
+        frame | rest | task | project) and adds the hits as parts to check, each phrase as a class of its own name
+        (added to the list when new). Confirmed frames are left alone unless include_confirmed. One undo step."""
+        from engine import textlabel
+        if self.p.task == "classify":
+            raise ValueError("Annotate by text finds parts: use it in an object detection or segmentation project")
+        prompts = textlabel.parse(msg.get("prompts") or msg.get("text") or "")
+        if not prompts:
+            raise ValueError("give the objects to find, e.g. car, truck, wheel")
+        scope = msg.get("scope") or "frame"
+        items = textlabel.scope_items(self.p, int(msg["item"]), scope)
+        if not msg.get("include_confirmed"):
+            items = [k for k in items if not self.p.is_reviewed(k)]
+        if not items:
+            self.notify("info", "Nothing to annotate", "Every frame there is confirmed: tick 'also confirmed frames' "
+                        "to annotate them too", self._goto(int(msg["item"])))
+            return
+        new = [label for _, label in prompts if label not in self.p.classes]
+        if new:
+            self.p.set_meta(classes=[*self.p.classes, *dict.fromkeys(new)])
+            self.send(self.project_msg())
+        pairs = [(text, self.p.classes.index(label)) for text, label in prompts]
+        threshold = float(msg.get("threshold") or 0.5)
+        self._remember(items, "text labels")
+
+        def job():
+            t0, last = time.perf_counter(), 0.0
+
+            def progress(done, total):
+                nonlocal last
+                if time.perf_counter() - last > 1.0 or done == total:
+                    last = time.perf_counter()
+                    self.send({"type": "progress", "task": "Annotating", "done": done, "total": total,
+                               "rate": round(done / (time.perf_counter() - t0), 2)})
+                    self.send(self.status_msg())
+            res = textlabel.annotate(self.p, items, pairs, self._model("concept"), threshold, self.outlines_on,
+                                     self._locks["concept"], progress, lambda: self.stop_flag)
+            found = ", ".join(f"{n} {c}" for c, n in sorted(res["per_class"].items())) or "nothing found"
+            where = {"frame": self._frame(items[0])}.get(scope, f"{res['frames']} frame{'s' if res['frames'] != 1 else ''}")
+            self.notify("success" if res["parts"] else "info",
+                        f"{'Stopped: annotated' if res['stopped'] else 'Annotated'} {res['parts']} part"
+                        f"{'s' if res['parts'] != 1 else ''} by text on {where}",
+                        f"{found} (“{', '.join(t for t, _ in prompts)}”, sureness ≥ {threshold:g}, "
+                        f"{time.perf_counter() - t0:.0f} s). They are parts to check: confirm the frames once they look "
+                        "right. Ctrl+Z undoes it.", self._goto(items[0]))
+            self.send({"type": "item_changed", "items": items})
+            self.send(self.status_msg())
+
+        self._run("Annotating by text", job)
 
     def _add_suggestions(self, item: int, hits, cls: int, label: str) -> int:
         """Hits [(box, score)] not already covered by a box become suggestions (outlined in outline projects)."""
