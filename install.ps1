@@ -194,6 +194,16 @@ function Find-NvidiaSmi {
     return $null
 }
 
+function Get-NvidiaDriver {
+    # The NVIDIA driver version Windows reports, for when nvidia-smi gives no CUDA version (some laptop drivers, or a
+    # driver updated without a restart). Windows shows driver 591.86 as 32.0.15.9186: the last five digits.
+    $card = Get-CimInstance Win32_VideoController -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -match "NVIDIA" } | Select-Object -First 1
+    $d = "$($card.DriverVersion)" -replace "\.", ""
+    if (-not $card -or $d.Length -lt 5) { return $null }
+    return @{ Name = $card.Name; Driver = [version]("{0}.{1}" -f $d.Substring($d.Length - 5, 3), $d.Substring($d.Length - 2)) }
+}
+
 function Get-TorchTag {
     # Build tag of the torch in .venv ("cu130", "cpu", ...); "" when torch is not installed.
     $v = & $VenvPy -c "import importlib.metadata as m; print(m.version('torch'))" 2>$null
@@ -307,51 +317,58 @@ if ($Cpu) {
     Write-Info "-Cuda $Cuda given: installing that build."
 } else {
     $smi = Find-NvidiaSmi
-    if (-not $smi) {
-        Write-Info "No NVIDIA driver found (nvidia-smi is missing): installing the CPU build."
-        Write-Info "Everything works on the CPU, only slower. With an NVIDIA GPU, install its driver and re-run."
+    $smiText = if ($smi) { (& $smi 2>$null) -join "`n" } else { "" }
+    if ($smi -and $LASTEXITCODE -eq 0 -and $smiText -match "CUDA Version:\s*(\d+)\.(\d+)") {
+        $driverCuda = [version]("{0}.{1}" -f $Matches[1], $Matches[2])
+        $gpus = @(& $smi "--query-gpu=name,driver_version,compute_cap" "--format=csv,noheader" 2>$null)
+        if ($LASTEXITCODE -ne 0 -or $gpus.Count -eq 0) {
+            # very old drivers cannot report compute_cap
+            $gpus = @(& $smi "--query-gpu=name,driver_version" "--format=csv,noheader" 2>$null)
+        }
+        foreach ($line in $gpus) {
+            $parts = @("$line" -split ",\s*")
+            Write-Info ("GPU: {0}   driver {1}" -f $parts[0], $parts[1])
+            if ($parts.Count -ge 3 -and $parts[2] -match "^\d+\.\d+$") {
+                $cap = [version]$parts[2]
+                if (-not $minCap -or $cap -lt $minCap) { $minCap = $cap }
+                if (-not $maxCap -or $cap -gt $maxCap) { $maxCap = $cap }
+            }
+        }
+    } elseif ($nv = Get-NvidiaDriver) {
+        # nvidia-smi is missing or names no CUDA version (seen on a laptop with driver 616.92): the driver version
+        # gives its CUDA level, as in the table above.
+        Write-Info ("GPU: {0}   driver {1}" -f $nv.Name, $nv.Driver)
+        Write-Info "nvidia-smi gave no CUDA version: using the driver version Windows reports."
+        $driverCuda = [version]"0.0"
+        foreach ($step in @(@("595.0", "13.2"), @("580.0", "13.0"), @("560.0", "12.6"), @("527.0", "12.0"))) {
+            if ($nv.Driver -ge [version]$step[0]) { $driverCuda = [version]$step[1]; break }
+        }
+        if ($nv.Name -match "RTX 50\d\d") { $maxCap = [version]"12.0" }          # Blackwell: no cu126 kernels
     } else {
-        $smiText = (& $smi 2>$null) -join "`n"
-        if ($LASTEXITCODE -ne 0 -or -not ($smiText -match "CUDA Version:\s*(\d+)\.(\d+)")) {
-            Write-Warn "nvidia-smi did not report a CUDA version (driver problem?). Installing the CPU build."
-            Write-Info "Update the driver from https://www.nvidia.com/drivers and run the installer again."
+        Write-Info "No NVIDIA driver found: installing the CPU build."
+        Write-Info "Everything works on the CPU, only slower. With an NVIDIA GPU, install its driver and re-run."
+    }
+    if ($driverCuda) {
+        Write-Info "The driver supports CUDA $driverCuda."
+        if ($driverCuda -ge [version]"13.2") {
+            $variant = "cu132"
+        } elseif ($driverCuda -ge [version]"13.0") {
+            $variant = "cu130"
+        } elseif ($driverCuda -ge [version]"12.0") {
+            $variant = "cu126"
+            if ($driverCuda -lt [version]"12.6") {
+                Write-Warn "this driver is older than 560. PyTorch should still run, but updating the driver is recommended."
+            }
         } else {
-            $driverCuda = [version]("{0}.{1}" -f $Matches[1], $Matches[2])
-            $gpus = @(& $smi "--query-gpu=name,driver_version,compute_cap" "--format=csv,noheader" 2>$null)
-            if ($LASTEXITCODE -ne 0 -or $gpus.Count -eq 0) {
-                # very old drivers cannot report compute_cap
-                $gpus = @(& $smi "--query-gpu=name,driver_version" "--format=csv,noheader" 2>$null)
-            }
-            foreach ($line in $gpus) {
-                $parts = @("$line" -split ",\s*")
-                Write-Info ("GPU: {0}   driver {1}" -f $parts[0], $parts[1])
-                if ($parts.Count -ge 3 -and $parts[2] -match "^\d+\.\d+$") {
-                    $cap = [version]$parts[2]
-                    if (-not $minCap -or $cap -lt $minCap) { $minCap = $cap }
-                    if (-not $maxCap -or $cap -gt $maxCap) { $maxCap = $cap }
-                }
-            }
-            Write-Info "The driver supports CUDA $driverCuda."
-            if ($driverCuda -ge [version]"13.2") {
-                $variant = "cu132"
-            } elseif ($driverCuda -ge [version]"13.0") {
-                $variant = "cu130"
-            } elseif ($driverCuda -ge [version]"12.0") {
-                $variant = "cu126"
-                if ($driverCuda -lt [version]"12.6") {
-                    Write-Warn "this driver is older than 560. PyTorch should still run, but updating the driver is recommended."
-                }
-            } else {
-                Write-Warn "this driver is too old for current PyTorch (needs 527 or newer). Installing the CPU build."
-                Write-Info "Update the driver from https://www.nvidia.com/drivers and run the installer again."
-            }
-            if ($minCap -and $minCap -lt [version]"7.5" -and $variant -ne "cpu" -and $variant -ne "cu126") {
-                Write-Info "GPU compute capability $minCap is older than Turing: using cu126 (CUDA 13 builds dropped it)."
-                $variant = "cu126"
-            }
-            if ($maxCap -and $maxCap -ge [version]"10.0" -and ($variant -eq "cu126" -or $variant -eq "cpu")) {
-                Stop-Install "This RTX 50-series (Blackwell) GPU needs NVIDIA driver 580 or newer for PyTorch." "Update the driver from https://www.nvidia.com/drivers and run the installer again, or run it with -Cpu."
-            }
+            Write-Warn "this driver is too old for current PyTorch (needs 527 or newer). Installing the CPU build."
+            Write-Info "Update the driver from https://www.nvidia.com/drivers and run the installer again."
+        }
+        if ($minCap -and $minCap -lt [version]"7.5" -and $variant -ne "cpu" -and $variant -ne "cu126") {
+            Write-Info "GPU compute capability $minCap is older than Turing: using cu126 (CUDA 13 builds dropped it)."
+            $variant = "cu126"
+        }
+        if ($maxCap -and $maxCap -ge [version]"10.0" -and ($variant -eq "cu126" -or $variant -eq "cpu")) {
+            Stop-Install "This RTX 50-series (Blackwell) GPU needs NVIDIA driver 580 or newer for PyTorch." "Update the driver from https://www.nvidia.com/drivers and run the installer again, or run it with -Cpu."
         }
     }
 }
