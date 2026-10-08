@@ -7,7 +7,7 @@ include = ["engine*", "ui*"]
 
 [project]
 name = "partlabeler"
-version = "0.1.0"
+version = "0.2.0"
 description = "Build labeled datasets of industrial parts from videos and image folders: click-to-box, tracking and matching (SAM 3, DINOv3), plus automatic Teach & Transfer (RF-DETR)"
 requires-python = ">=3.10"
 license = {text = "Apache-2.0"}
@@ -37,6 +37,11 @@ dependencies = [
 teach = ["rfdetr[train]==1.11.0", "albumentations", "faster-coco-eval"]
 onnx = ["rfdetr[onnx]==1.11.0", "onnxconverter-common"]
 dev = ["pytest", "playwright", "jupyterlab"]
+
+[tool.uv]
+# RF-DETR's train extra pulls in the Roboflow SDK, which only uploads models to Roboflow (PartLabeler never does):
+# left out, with its packages. uv reads this when run in this folder, as the installers and updates do.
+override-dependencies = ["roboflow ; sys_platform == 'never'"]
 
 [project.scripts]
 partlabeler = "engine.cli:app"

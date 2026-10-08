@@ -1,4 +1,7 @@
+import os
 import sys
+
+os.environ["NO_ALBUMENTATIONS_UPDATE"] = "1"         # albumentations asks PyPI for a newer version on import: never
 
 
 def utf8_output() -> None:

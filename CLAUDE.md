@@ -22,6 +22,11 @@
 - Label types (project.json `task`): detect (boxes), segment (outlines: masks as COCO RLE, box = mask box,
   polygons only at export, `engine/masks.py`) and classify (image classes on a grid). Smart sorting
   (`engine/sort.py`: grouping, suggestions, wrong-label check; S10) also drives "Sort parts" in box/outline projects.
+- Releases: tags `vX.Y.Z` (= pyproject version) on the published commit; a downstream USB/box installer pins a tag
+  and relies on: install.ps1 `-Cuda cu130|cu132|cu126|cpu`, `-Cpu`, `-NoModels`, `-Python` default 3.12, offline
+  with `UV_OFFLINE`/`HF_HUB_OFFLINE` + the uv on PATH; `engine.models` (`SAM3`, `DINOV3`, `SAM31`, `fetch`); the
+  service command `engine.cli app --no-browser --host --port --home`; the ONNX export format. Announce changes to
+  those first. `.gitattributes` export-ignore keeps notes, spikes, videos and samples out of release zips.
 - Updates (`engine/update.py`, start-screen button, `update_windows.bat`, `partlabeler update`): only the app's own
   files change; projects/, data/, .venv and models never; labels are backed up first. Keep it that way.
 - Accounts (`engine/accounts.py`): local only, `~/.partlabeler/accounts.json` (scrypt hashes; PARTLABELER_CONFIG moves it);

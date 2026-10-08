@@ -256,6 +256,7 @@ def export_onnx(run_dir, out_dir=None, check_frames: int = 40, bundle_frames: in
         import onnxruntime as ort
     except ImportError:
         raise RuntimeError('ONNX export needs the ONNX tools: pip install "rfdetr[onnx]==1.11.0" onnxconverter-common') from None
+    ort.disable_telemetry_events()                   # official Windows builds send usage telemetry (ETW) by default
     run_dir = Path(run_dir)
     s = json.loads((run_dir / "settings.json").read_text(encoding="utf-8"))
     out_dir = Path(out_dir or run_dir / "export")

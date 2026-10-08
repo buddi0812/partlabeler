@@ -718,3 +718,10 @@ for the newest version number (nothing about you or your projects is sent; set P
 check only when you click the button). Rivet, the helper robot, is the only feature that sends anything you type: it sends your typed question, the chat so far and which screen
 you are on (for example "annotator, frame 12 of 400") to Google Gemini. It never sends images, labels,
 project names or class names. Without a Gemini API key, Rivet answers from this guide offline.
+
+## Credits and licences
+
+Built with DINOv3. PartLabeler's matching and grouping use Meta's DINOv3 (DINOv3 License); outlining and tracking
+use Meta's Segment Anything 3 and 3.1 (SAM License; the vendored SAM 3.1 code carries a copy,
+`engine/vendor/muggled_sam/SAM-LICENSE.txt`); Teach & Transfer trains RF-DETR (Apache-2.0). PartLabeler itself is
+Apache-2.0 (`LICENSE`). The models' licences come with them in the model download.

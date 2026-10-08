@@ -98,7 +98,7 @@ def _item(p, args) -> int:
     else:
         raise ValueError("give item, or task and frame")
     if not 0 <= item < len(p.items):
-        raise ValueError(f"item must be 0–{len(p.items) - 1}")
+        raise ValueError(f"item must be 0–{len(p.items) - 1}" if p.items else "the project has no frames yet: add_tasks first")
     return item
 
 

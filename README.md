@@ -230,5 +230,6 @@ The tests need no model weights. `spikes/` holds the research scripts behind the
 
 ## Licenses of the models
 
-SAM 3: SAM License (commercial use allowed, some uses prohibited). DINOv3: DINOv3 License. RF-DETR: Apache-2.0.
+Built with DINOv3. SAM 3 and SAM 3.1: SAM License (commercial use allowed, some uses prohibited; the vendored SAM 3.1
+code carries it too, `engine/vendor/muggled_sam/SAM-LICENSE.txt`). DINOv3: DINOv3 License. RF-DETR: Apache-2.0.
 Check that these fit your use before shipping a dataset or model built with them.
