@@ -7,15 +7,29 @@
 
         powershell -NoProfile -ExecutionPolicy Bypass -File install.ps1 [options]
 
-        -Cpu           install the CPU build of PyTorch even if an NVIDIA GPU is present
+        -Cpu           install the CPU build of PyTorch even with an NVIDIA GPU present
         -NoModels      skip the model download (about 4 GB); get them later with
                        .venv\Scripts\python.exe -m engine.models
         -Dev           also install the developer tools (pytest, playwright, jupyterlab)
         -NoTeach       skip the Teach & Transfer extras (RF-DETR training)
         -Python 3.12   Python version for .venv (3.12 is what Colab uses)
         -Cuda cu130    pick the PyTorch build yourself: cu132, cu130, cu126 or cpu (default: auto)
+        -Prefetch DIR  download the torch/torchvision wheels this machine would use into DIR and exit
+                       (resumable; no .venv change); writes DIR\prefetch.json ({"variant", "torch", "files",
+                       "complete"}, "complete" set only once every file is downloaded and checked)
+        -Wheels DIR    install torch/torchvision from a prefetch DIR instead of downloading now (offline;
+                       refuses unless DIR\prefetch.json is complete and its variant matches this machine's)
+        -Plan          print the PyTorch decision as JSON and change nothing on disk; with -Prefetch DIR,
+                       also reports whether DIR already has a complete, matching prefetch (still no download)
+        -NoSelfCheck   skip step 7 (importing PartLabeler to check it); for a build machine that only
+                       collects packages (e.g. for a USB stick) and never actually runs them
 
-    Safe to run again: it reuses .venv, keeps a working PyTorch and skips finished downloads.
+    Safe to run again: it reuses .venv, skips finished downloads and never switches an already-installed
+    PyTorch build on its own (CPU stays CPU, a CUDA build stays that CUDA build) - only -Cpu or -Cuda <build>
+    does that; a CUDA build runs fine with no GPU present (engine/hw.py picks the device at runtime), so there
+    is nothing to switch even on a box with no GPU. -Plan makes a couple of small requests to the package
+    index, to report the real wheels a fresh install (or an explicit -Cuda <build>) would fetch; it still
+    changes nothing.
     Written for Windows PowerShell 5.1 (no &&, no ternary, no ??).
 #>
 [CmdletBinding()]
@@ -26,7 +40,11 @@ param(
     [switch]$NoTeach,
     [string]$Python = "3.12",
     [ValidateSet("auto", "cu132", "cu130", "cu126", "cpu")]
-    [string]$Cuda = "auto"
+    [string]$Cuda = "auto",
+    [string]$Prefetch = "",
+    [string]$Wheels = "",
+    [switch]$Plan,
+    [switch]$NoSelfCheck
 )
 
 # Native tools (uv, python) print progress on stderr. In PowerShell 5.1 that must not count as an
@@ -39,6 +57,7 @@ $Root = $PSScriptRoot
 $VenvPy = Join-Path $Root ".venv\Scripts\python.exe"
 $TotalSteps = 7
 $script:StepNo = 0
+$script:PlanLog = @()      # -Plan: one line per Write-Step/Write-Info, for the JSON "steps" field
 $Clock = [System.Diagnostics.Stopwatch]::StartNew()
 
 # ---------------------------------------------------------------------------------------------
@@ -68,19 +87,30 @@ $Clock = [System.Diagnostics.Stopwatch]::StartNew()
 
 function Write-Step([string]$Text) {
     $script:StepNo++
+    $script:PlanLog += ("[{0}/{1}] {2}" -f $script:StepNo, $TotalSteps, $Text)
+    if ($Plan) { return }
     Write-Host ""
     Write-Host ("[{0}/{1}] {2}" -f $script:StepNo, $TotalSteps, $Text) -ForegroundColor Cyan
 }
 
 function Write-Info([string]$Text) {
+    $script:PlanLog += "      $Text"
+    if ($Plan) { return }
     Write-Host "      $Text"
 }
 
 function Write-Warn([string]$Text) {
+    $script:PlanLog += "      WARNING: $Text"
+    if ($Plan) { return }
     Write-Host "      WARNING: $Text" -ForegroundColor Yellow
 }
 
 function Stop-Install([string]$Text, [string]$Advice = "") {
+    if ($Plan) {
+        # -Plan changes nothing: a problem that would stop a real run is reported as JSON, not as an exit.
+        [ordered]@{ ok = $false; error = $Text; advice = $Advice; steps = $script:PlanLog } | ConvertTo-Json -Depth 6
+        exit 1
+    }
     Write-Host ""
     Write-Host "ERROR: $Text" -ForegroundColor Red
     if ($Advice) {
@@ -226,9 +256,60 @@ function ConvertTo-CudaVersion([string]$Tag) {
     return $null
 }
 
-Write-Host ""
-Write-Host "PartLabeler installer for Windows" -ForegroundColor Green
-Write-Host "Folder: $Root"
+function Get-WheelInfo([string]$Variant, [string]$Pkg, [string]$PyTag) {
+    # The real wheel (name, url, sha256, bytes) a real install would fetch for $Pkg (torch or torchvision) at
+    # $Variant, for this Python ($PyTag, e.g. "cp312"): the highest version listed, read from the package index
+    # page (PyPI for cpu - it IS the Windows CPU build, see Get-TorchTag above; pytorch.org otherwise). One GET
+    # (the page) and one HEAD (Content-Length) - no download. $null on any network problem (not fatal to -Plan).
+    $indexUrl = if ($Variant -eq "cpu") { "https://pypi.org/simple/$Pkg/" } else { "https://download.pytorch.org/whl/$Variant/$Pkg/" }
+    try {
+        $html = (Invoke-WebRequest -Uri $indexUrl -UseBasicParsing -TimeoutSec 20).Content
+    } catch {
+        return $null
+    }
+    $suffix = if ($Variant -eq "cpu") { "-$PyTag-$PyTag-win_amd64\.whl" } else { "%2B$Variant-$PyTag-$PyTag-win_amd64\.whl" }   # "+" is %2B in the href
+    $pattern = 'href="([^"]*' + [regex]::Escape($Pkg) + '-([\d.]+)' + $suffix + ')(?:#sha256=([0-9a-f]{64}))?"'
+    $found = [regex]::Matches($html, $pattern) | ForEach-Object {
+        [ordered]@{ Url = ($_.Groups[1].Value -replace "%2B", "+"); Version = [version]$_.Groups[2].Value; Sha256 = $_.Groups[3].Value }
+    }
+    if (-not $found) {
+        return $null
+    }
+    $withHash = @($found | Where-Object { $_.Sha256 })
+    $best = ($(if ($withHash.Count) { $withHash } else { $found }) | Sort-Object { $_.Version } | Select-Object -Last 1)
+    $bytes = 0
+    try {
+        $bytes = [int64]((Invoke-WebRequest -Uri $best.Url -Method Head -UseBasicParsing -TimeoutSec 20).Headers["Content-Length"])
+    } catch {
+    }
+    return [ordered]@{ name = ($best.Url -split "/")[-1]; url = $best.Url; sha256 = $best.Sha256; bytes = $bytes }
+}
+
+function Write-Utf8NoBom([string]$Path, [string]$Text) {
+    # Set-Content -Encoding utf8 writes a BOM in PowerShell 5.1 (no utf8NoBOM here); a BOM breaks a plain
+    # json.load() in Python, which prefetch.json must stay readable by (other tools that read it, this script's tests).
+    [System.IO.File]::WriteAllText($Path, $Text, (New-Object System.Text.UTF8Encoding($false)))
+}
+
+function Get-PrefetchStatus([string]$Dir, [string]$Variant) {
+    # What -Prefetch left in $Dir, checked against the build $Variant a real install would use now.
+    $f = Join-Path $Dir "prefetch.json"
+    if (-not (Test-Path -LiteralPath $f)) {
+        return [ordered]@{ exists = $false; complete = $false; variant_matches = $false; json = $null }
+    }
+    try {
+        $j = Get-Content -LiteralPath $f -Raw | ConvertFrom-Json
+    } catch {
+        return [ordered]@{ exists = $true; complete = $false; variant_matches = $false; json = $null }
+    }
+    return [ordered]@{ exists = $true; complete = ($j.complete -eq $true); variant_matches = ($j.variant -eq $Variant); json = $j }
+}
+
+if (-not $Plan) {
+    Write-Host ""
+    Write-Host "PartLabeler installer for Windows" -ForegroundColor Green
+    Write-Host "Folder: $Root"
+}
 
 if (-not (Test-Path -LiteralPath (Join-Path $Root "pyproject.toml"))) {
     Stop-Install "pyproject.toml not found next to install.ps1." "Run the installer from the PartLabeler folder (the one you cloned or unzipped)."
@@ -251,57 +332,73 @@ try {
 Write-Step "uv (Python package manager)"
 $uv = Find-Uv
 if (-not $uv) {
-    Write-Info "uv is not installed. Installing it with the official installer from https://astral.sh/uv ..."
-    # A separate PowerShell process, so an 'exit' inside the downloaded script cannot end this one.
-    powershell -NoProfile -ExecutionPolicy Bypass -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor 3072; irm https://astral.sh/uv/install.ps1 | iex"
-    Assert-LastExit "Installing uv" "Check your internet connection, or install uv yourself (https://docs.astral.sh/uv/getting-started/installation/) and run the installer again."
-    # Pick up the PATH change the uv installer made, for this session only.
-    $env:Path = [Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [Environment]::GetEnvironmentVariable("Path", "User") + ";" + $env:Path
-    $uv = Find-Uv
-    if (-not $uv) {
-        Stop-Install "uv was installed but cannot be found." "Close this window, open a new one and run install_windows.bat again."
+    if ($Plan) {
+        Write-Info "uv is not installed: a real run would download and install it (https://astral.sh/uv)."
+    } else {
+        Write-Info "uv is not installed. Installing it with the official installer from https://astral.sh/uv ..."
+        # A separate PowerShell process, so an 'exit' inside the downloaded script cannot end this one.
+        powershell -NoProfile -ExecutionPolicy Bypass -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor 3072; irm https://astral.sh/uv/install.ps1 | iex"
+        Assert-LastExit "Installing uv" "Check your internet connection, or install uv yourself (https://docs.astral.sh/uv/getting-started/installation/) and run the installer again."
+        # Pick up the PATH change the uv installer made, for this session only.
+        $env:Path = [Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [Environment]::GetEnvironmentVariable("Path", "User") + ";" + $env:Path
+        $uv = Find-Uv
+        if (-not $uv) {
+            Stop-Install "uv was installed but cannot be found." "Close this window, open a new one and run install_windows.bat again."
+        }
     }
 }
-$uvDir = Split-Path -Parent $uv
-if (-not (($env:Path -split ";") -contains $uvDir)) {
-    $env:Path = $uvDir + ";" + $env:Path
+if ($uv) {
+    $uvDir = Split-Path -Parent $uv
+    if (-not (($env:Path -split ";") -contains $uvDir)) {
+        $env:Path = $uvDir + ";" + $env:Path
+    }
+    $uvVersion = & $uv --version
+    Write-Info "$uvVersion  ($uv)"
 }
-$uvVersion = & $uv --version
-Write-Info "$uvVersion  ($uv)"
 
 # ---- 2. Python + .venv ----------------------------------------------------------------------
 Write-Step "Python $Python and the virtual environment (.venv)"
-& $uv python install $Python
-if ($LASTEXITCODE -ne 0) {
-    # A damaged uv Python folder can make "install" fail although a usable Python is there.
-    $foundPy = & $uv python find $Python --system --no-project 2>$null
-    if ($LASTEXITCODE -eq 0 -and $foundPy) {
-        Write-Warn "uv could not install Python $Python, but found one it can use: $foundPy"
+if ($Plan) {
+    # Read-only: never installs a Python build or creates/clears .venv.
+    if (Test-Path -LiteralPath $VenvPy) {
+        $havePy = & $VenvPy -c "import sys; print('%d.%d' % sys.version_info[:2])" 2>$null
+        Write-Info $(if ($LASTEXITCODE -eq 0 -and $havePy) { "Reusing .venv (Python $havePy)." } else { ".venv exists but does not work; a real run would re-create it." })
     } else {
-        Stop-Install "Installing Python $Python failed." "Check your internet connection and try again."
+        Write-Info "No .venv yet: a real run would install Python $Python and create it."
     }
-}
-
-$wantPy = (($Python -split "\.")[0..1]) -join "."
-$makeVenv = $true
-if (Test-Path -LiteralPath $VenvPy) {
-    $havePy = & $VenvPy -c "import sys; print('%d.%d' % sys.version_info[:2])" 2>$null
-    if ($LASTEXITCODE -eq 0 -and $havePy) {
-        $makeVenv = $false
-        Write-Info "Reusing .venv (Python $havePy)."
-        if ("$havePy".Trim() -ne $wantPy) {
-            Write-Warn ".venv has Python $havePy, not $wantPy. To switch, delete the .venv folder and run the installer again."
+} else {
+    & $uv python install $Python
+    if ($LASTEXITCODE -ne 0) {
+        # A damaged uv Python folder can make "install" fail although a usable Python is there.
+        $foundPy = & $uv python find $Python --system --no-project 2>$null
+        if ($LASTEXITCODE -eq 0 -and $foundPy) {
+            Write-Warn "uv could not install Python $Python, but found one it can use: $foundPy"
+        } else {
+            Stop-Install "Installing Python $Python failed." "Check your internet connection and try again."
         }
-    } else {
-        Write-Warn ".venv exists but does not work (moved or copied from another PC?). Creating it again."
-        & $uv venv --clear --python $Python .venv
-        Assert-LastExit "Re-creating .venv"
-        $makeVenv = $false
     }
-}
-if ($makeVenv) {
-    & $uv venv --python $Python .venv
-    Assert-LastExit "Creating .venv"
+
+    $wantPy = (($Python -split "\.")[0..1]) -join "."
+    $makeVenv = $true
+    if (Test-Path -LiteralPath $VenvPy) {
+        $havePy = & $VenvPy -c "import sys; print('%d.%d' % sys.version_info[:2])" 2>$null
+        if ($LASTEXITCODE -eq 0 -and $havePy) {
+            $makeVenv = $false
+            Write-Info "Reusing .venv (Python $havePy)."
+            if ("$havePy".Trim() -ne $wantPy) {
+                Write-Warn ".venv has Python $havePy, not $wantPy. To switch, delete the .venv folder and run the installer again."
+            }
+        } else {
+            Write-Warn ".venv exists but does not work (moved or copied from another PC?). Creating it again."
+            & $uv venv --clear --python $Python .venv
+            Assert-LastExit "Re-creating .venv"
+            $makeVenv = $false
+        }
+    }
+    if ($makeVenv) {
+        & $uv venv --python $Python .venv
+        Assert-LastExit "Creating .venv"
+    }
 }
 
 # ---- 3. GPU -> PyTorch build -----------------------------------------------------------------
@@ -373,47 +470,132 @@ if ($Cpu) {
     }
 }
 
-# Keep a CUDA PyTorch that is already installed and works with this driver (no 2.5 GB re-download).
+$idealVariant = $variant                                # what a FRESH install would pick here, before "keep" below
+
+# A re-run never switches PyTorch builds on its own - CPU stays CPU, a CUDA build stays that CUDA build - even
+# if auto-detection would now pick a different one: an update must never start an unasked multi-GB download.
+# "GPU always, CPU only as a fallback" is a downstream installer's own job: it explicitly asks for it
+# (-Cuda <build>) on a box it knows has a capable GPU; install.ps1 itself stays conservative by default.
+# -Cpu / -Cuda <build> are the explicit asks that can still change the installed build.
 $script:TorchInstalled = ""
 $haveTag = Get-TorchTag
 $reinstall = $false
+$torchAction = "install"                               # for -Plan: install (nothing there yet) | keep | reinstall
+$torchReason = "no PyTorch installed yet"
+$explicitAsk = $Cpu -or $Cuda -ne "auto"
+if ($explicitAsk) { $variant = if ($Cpu) { "cpu" } else { $Cuda } }
 if ($haveTag) {
     if ($haveTag -eq $variant) {
         Write-Info "PyTorch $($script:TorchInstalled) is already installed."
+        $torchAction = "keep"; $torchReason = "already the build that would be chosen"
+    } elseif ($explicitAsk) {
+        $why = if ($Cpu) { "-Cpu given" } else { "-Cuda $Cuda given" }
+        Write-Info "Replacing PyTorch $($script:TorchInstalled) with the $variant build ($why)."
+        $reinstall = $true
+        $torchAction = "reinstall"; $torchReason = $why
     } else {
-        $haveCuda = ConvertTo-CudaVersion $haveTag
-        $keep = $false
-        if ($Cuda -eq "auto" -and -not $Cpu -and $variant -ne "cpu" -and $haveCuda -and $driverCuda) {
-            $fitsDriver = $haveCuda -le $driverCuda
-            $fitsGpu = -not ($minCap -and $minCap -lt [version]"7.5" -and $haveCuda -ge [version]"13.0")
-            $keep = $fitsDriver -and $fitsGpu
-        }
-        if ($keep) {
-            Write-Info "Keeping the installed PyTorch $($script:TorchInstalled): it works with this driver ($variant would be the first choice for a new install)."
-            $variant = $haveTag
-        } else {
-            Write-Info "Replacing PyTorch $($script:TorchInstalled) with the $variant build."
-            $reinstall = $true
-        }
+        # auto, no explicit ask: keep whatever is installed, CPU or GPU, even if a different build would now
+        # be the first choice for a fresh install. A CUDA build runs fine on CPU anyway (engine/hw.py picks
+        # the device at runtime), so there is nothing to fix here even on a box with no GPU.
+        Write-Info "Keeping the installed PyTorch $($script:TorchInstalled) ($variant would be the first choice for a new install; -Cuda $variant switches to it)."
+        $variant = $haveTag
+        $torchAction = "keep"; $torchReason = "a re-run keeps the installed build unless asked to switch"
     }
+} elseif ($variant -eq "cpu") {
+    $torchReason = "no capable NVIDIA GPU or driver found"
 }
 Write-Info "PyTorch build: $variant"
 
+if ($Plan) {
+    $prefetchInfo = $null
+    if ($Prefetch) {
+        $st = Get-PrefetchStatus $Prefetch $variant
+        $prefetchInfo = [ordered]@{ dir = $Prefetch; exists = $st.exists; complete = $st.complete; variant_matches = $st.variant_matches }
+    }
+    # The chosen build's real wheels (name/url/sha256/bytes), so a caller (e.g. an explicit -Cuda <build> -Plan,
+    # to learn what that build needs without installing it) can prefetch them with its own downloader.
+    $pyTag = "cp" + (& $VenvPy -c "import sys; print('%d%d' % sys.version_info[:2])" 2>$null)
+    # NOT $wheels: that's the same (case-insensitive) variable as the -Wheels parameter, which is typed [string]
+    # and would silently stringify an array assigned to it.
+    $torchWheels = @("torch", "torchvision") | ForEach-Object { Get-WheelInfo $variant $_ $pyTag } | Where-Object { $_ }
+    [ordered]@{
+        ok = $true
+        torch = [ordered]@{
+            installed_build = $(if ($script:TorchInstalled) { $haveTag } else { $null })
+            installed_version = $(if ($script:TorchInstalled) { $script:TorchInstalled } else { $null })
+            chosen_build = $variant
+            ideal_build = $idealVariant
+            action = $torchAction
+            reason = $torchReason
+            approx_bytes = $(if ($torchAction -eq "keep") { 0 } elseif ($variant -eq "cpu") { 220MB } else { 2.5GB })
+            wheels = $torchWheels
+        }
+        prefetch = $prefetchInfo
+        steps = $script:PlanLog
+    } | ConvertTo-Json -Depth 6
+    exit 0
+}
+
+# ---- 3b. -Prefetch: download torch/torchvision into a folder, .venv untouched, then exit --------------------
+if ($Prefetch) {
+    Write-Step "Prefetch: downloading PyTorch ($variant) into $Prefetch"
+    New-Item -ItemType Directory -Force -Path $Prefetch | Out-Null
+    $jsonPath = Join-Path $Prefetch "prefetch.json"
+    Write-Utf8NoBom $jsonPath (([ordered]@{ variant = $variant; torch = ""; files = @(); complete = $false } | ConvertTo-Json))
+    & $uv pip install pip --python $VenvPy --quiet               # uv has no "download" subcommand; pip does
+    Assert-LastExit "Installing pip (needed to download, not to use)"
+    $indexUrl = "https://download.pytorch.org/whl/$variant"
+    $maxTries = 5
+    for ($try = 1; $try -le $maxTries; $try++) {
+        & $VenvPy -m pip download --no-deps --dest $Prefetch torch torchvision --index-url $indexUrl
+        if ($LASTEXITCODE -eq 0) { break }
+        if ($try -eq $maxTries) {
+            Stop-Install "Downloading PyTorch ($variant) failed after $maxTries tries." "Check the internet connection and run -Prefetch again: whole files already downloaded are kept, only what's missing is retried."
+        }
+        Write-Warn "Download attempt $try of $maxTries failed; retrying (whole files already downloaded are kept)..."
+    }
+    $files = @(Get-ChildItem -LiteralPath $Prefetch -Filter "*.whl" | ForEach-Object {
+        [ordered]@{ name = $_.Name; url = "$indexUrl/$($_.Name)"; bytes = $_.Length
+                    sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLower() }
+    })
+    $torchFile = $files | Where-Object { $_.name -match "^torch-([\d.]+)\+" } | Select-Object -First 1
+    $torchVersion = if ($torchFile) { ([regex]::Match($torchFile.name, "^torch-([\d.]+)\+")).Groups[1].Value } else { "" }
+    Write-Utf8NoBom $jsonPath (([ordered]@{ variant = $variant; torch = $torchVersion; files = $files; complete = $true } | ConvertTo-Json -Depth 4))
+    Write-Host ""
+    Write-Host "Prefetch complete: $($files.Count) file(s) in $Prefetch." -ForegroundColor Green
+    exit 0
+}
+
 # ---- 4. PyTorch ------------------------------------------------------------------------------
-Write-Step "PyTorch ($variant) - the first install downloads about 2.5 GB"
+$useWheels = [bool]$Wheels -and $torchAction -ne "keep"
+if ($useWheels) {
+    $st = Get-PrefetchStatus $Wheels $variant
+    if (-not $st.exists) {
+        Stop-Install "$Wheels has no prefetch.json." "Run -Prefetch $Wheels first, or drop -Wheels to download now."
+    } elseif (-not $st.complete) {
+        Stop-Install "The prefetch in $Wheels is not complete yet." "Wait for -Prefetch $Wheels to finish, or drop -Wheels to download now."
+    } elseif (-not $st.variant_matches) {
+        Stop-Install "The prefetch in $Wheels is for $($st.json.variant), not $variant (this machine's build)." "Run -Prefetch $Wheels again for $variant, or drop -Wheels to download now."
+    }
+}
+Write-Step $(if ($useWheels) { "PyTorch ($variant) - installing offline from $Wheels" } else { "PyTorch ($variant) - the first install downloads about 2.5 GB" })
 if (Test-VcRuntime) {
     Write-Info "Microsoft Visual C++ runtime: present."
 } else {
     Write-Info "PyTorch needs the Microsoft Visual C++ runtime (2015-2022, x64, 14.40 or newer); this PC has none or an older one."
     Install-VcRuntime
 }
-$indexUrl = "https://download.pytorch.org/whl/$variant"
-$torchArgs = @("pip", "install", "--python", $VenvPy, "torch", "torchvision", "--index-url", $indexUrl)
+if ($useWheels) {
+    $torchArgs = @("pip", "install", "--python", $VenvPy, "torch", "torchvision", "--no-index", "--find-links", $Wheels)
+} else {
+    $indexUrl = "https://download.pytorch.org/whl/$variant"
+    $torchArgs = @("pip", "install", "--python", $VenvPy, "torch", "torchvision", "--index-url", $indexUrl)
+}
 if ($reinstall) {
     $torchArgs += @("--reinstall-package", "torch", "--reinstall-package", "torchvision")
 }
 & $uv @torchArgs
-Assert-LastExit "Installing PyTorch" "Check your internet connection and run the installer again (finished downloads are kept). If it keeps failing, try -Cpu."
+Assert-LastExit "Installing PyTorch" $(if ($useWheels) { "Check $Wheels has valid torch/torchvision wheels for $variant and run the installer again." } else { "Check your internet connection and run the installer again (finished downloads are kept). If it keeps failing, try -Cpu." })
 
 # ---- 5. PartLabeler --------------------------------------------------------------------------
 $extras = @()
@@ -443,19 +625,25 @@ if ($NoModels) {
 }
 
 # ---- 7. Self-check ---------------------------------------------------------------------------
-Write-Step "Self-check"
-$check = "import torch, engine.hw as hw, engine.project, transformers, anywidget, fastapi; " +
-         "print('      torch', torch.__version__, '| CUDA available:', torch.cuda.is_available()); " +
-         "print('      device:', hw.describe())"
-$checkOut = & $VenvPy -c $check
-$checkCode = $LASTEXITCODE
-$checkOut | ForEach-Object { Write-Host $_ }
-if ($checkCode -ne 0) {
-    Stop-Install "The self-check failed: PartLabeler cannot be imported." "Run the installer again; if it still fails, send the messages above to the team."
-}
-if ($variant -ne "cpu" -and -not (($checkOut -join " ") -match "CUDA available: True")) {
-    Write-Warn "PyTorch was installed for CUDA but cannot use the GPU. Restart the PC after a driver update,"
-    Write-Warn "or run the installer with -Cpu. PartLabeler still works on the CPU, only slower."
+if ($NoSelfCheck) {
+    Write-Step "Self-check (skipped: -NoSelfCheck)"
+} else {
+    Write-Step "Self-check"
+    # A CUDA build runs fine with no GPU present (engine/hw.py picks cpu at runtime; the UI shows which):
+    # that is not a failure, so only an actual import error is checked here. 2>&1: the traceback of an import
+    # error (e.g. a blocked DLL) is on stderr, and must be in $out for the pattern checks below to see it.
+    $check = "import torch, engine.hw as hw, engine.project, transformers, anywidget, fastapi; " +
+             "print('      torch', torch.__version__, '| CUDA available:', torch.cuda.is_available()); " +
+             "print('      device:', hw.describe())"
+    $out = & $VenvPy -c $check 2>&1
+    $out | ForEach-Object { Write-Host $_ }
+    if ($LASTEXITCODE -ne 0) {
+        $text = $out -join " "
+        if ($text -match "WinError 4551|Application Control policy") {
+            Stop-Install "Windows' app control (Smart App Control) on this PC blocks PyTorch's files; PartLabeler cannot run on this PC." "Turning Smart App Control off will not help: once a PC has it on, Windows cannot turn it back on without a full reset. Try another PC, or ask whoever manages this one about an exception for PartLabeler."
+        }
+        Stop-Install "The self-check failed: PartLabeler cannot be imported." "Run the installer again; if it still fails, send the messages above to the team."
+    }
 }
 if (-not $NoTeach) {
     & $VenvPy -c "import importlib.util as u, sys; sys.exit(0 if u.find_spec('rfdetr') else 1)"

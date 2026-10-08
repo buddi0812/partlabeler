@@ -31,6 +31,18 @@
   with `UV_OFFLINE`/`HF_HUB_OFFLINE` + the uv on PATH; `engine.models` (`SAM3`, `DINOV3`, `SAM31`, `fetch`); the
   service command `engine.cli app --no-browser --host --port --home`; the ONNX export format. Announce changes to
   those first. `.gitattributes` export-ignore keeps notes, spikes, videos and samples out of release zips.
+  install.ps1 (2026-10-08): a re-run never switches an already-installed PyTorch build on its own (CPU stays
+  CPU, a CUDA build stays that CUDA build) — only `-Cpu`/`-Cuda <build>` do that; no unasked multi-GB download.
+  "GPU always" is a downstream installer's own job (it knows a box has a capable GPU and asks for `-Cuda <build>`
+  explicitly) — a CUDA build runs fine with no GPU anyway (`engine/hw.py` picks the device at runtime; the start
+  screen's device chip shows which). `-Plan` prints the decision as JSON (`installed_build`, `chosen_build`,
+  `ideal_build`, `action`, `reason`, `approx_bytes`, `wheels`: real name/url/sha256/bytes for `chosen_build`'s
+  torch+torchvision from the package index) and changes nothing on disk. `-Prefetch <dir>` downloads those
+  wheels (plain `pip download` — uv has no `pip download` subcommand — into `<dir>\prefetch.json`, resumable at
+  the whole-file level); `-Wheels <dir>` installs from one offline, refusing unless it's complete and matches.
+  `-NoSelfCheck` skips step 7 (for a build machine that only collects packages, e.g. a USB stick, and never
+  runs them); otherwise an import failure naming Windows' app control (WinError 4551) gets a specific message,
+  never advice to turn that off (it cannot be turned back on without a reset). Tests in `tests/test_install_ps1.py`.
 - Updates (`engine/update.py`, start-screen button, `update_windows.bat`, `partlabeler update`): only the app's own
   files change; projects/, data/, .venv and models never; labels are backed up first. Keep it that way.
 - Accounts (`engine/accounts.py`): local only, `~/.partlabeler/accounts.json` (scrypt hashes; PARTLABELER_CONFIG moves it);
