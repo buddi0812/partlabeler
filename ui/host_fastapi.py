@@ -896,6 +896,39 @@ async def ws(sock: WebSocket, name: str):
         state["clients"][key].discard(q)
 
 
+@app.get("/recordings", response_class=HTMLResponse)
+def recordings_page() -> str:
+    """Browse the box's cycle recordings by station/camera (engine/recordings.py) and start labeling from them."""
+    return _page("Recordings", view="recordings")
+
+
+@app.get("/api/recordings")
+def api_recordings(station_id: str | None = None, camera_id: str | None = None, limit: int = 100) -> dict:
+    from engine import recordings
+    return recordings.list_all(station_id, camera_id, limit)
+
+
+@app.get("/api/recordings/thumb")
+def api_recordings_thumb(id: str, at: float = 0):
+    from engine import recordings
+    p = recordings.resolve(id)
+    if not p:
+        raise HTTPException(404)
+    thumb = recordings.thumbnail(p, home() / ".partlabeler" / "thumbs", at)
+    return FileResponse(thumb, media_type="image/jpeg", headers={"Cache-Control": "max-age=3600"})
+
+
+@app.get("/api/recordings/video")
+def api_recordings_video(id: str):
+    """The recording's own file, range-requests supported (FileResponse): the <video> preview seeks without
+    downloading the whole clip."""
+    from engine import recordings
+    p = recordings.resolve(id)
+    if not p:
+        raise HTTPException(404)
+    return FileResponse(p)
+
+
 @app.get("/api/info")
 def info() -> dict:
     from engine import hw, update
@@ -1191,6 +1224,48 @@ def transfer(body: dict = Body(...)) -> dict:
     return {"job": start_job("transfer", job, done, "Transfer failed")}
 
 
+@app.post("/api/export-model")
+def export_model(body: dict = Body(...)) -> dict:
+    """A finished Teach run's model as ONNX for production, with model.json and a parity check (engine/detector.py
+    export_onnx): into <run>/export/ by default. batch: a fixed batch size (e.g. 2 for two cameras seen together)."""
+    from engine.detector import export_onnx
+    run = runs_dir() / safe_name(body.get("run", ""))
+    if not (run / "settings.json").exists() or "checkpoint" not in json.loads((run / "settings.json").read_text(encoding="utf-8")):
+        raise HTTPException(400, "Pick a finished Teach run")
+    out = Path(body["out"]) if body.get("out") else None
+    batch = int(body.get("batch") or 1)
+
+    def job(progress, should_stop):
+        return export_onnx(run, out, batch=batch)
+
+    def done(res):
+        p = (res or {}).get("parity") or {}
+        folder = Path((res or {}).get("path") or run).resolve().parent
+        note("success", f"Exported {run.name} for production",
+             f"Checked on {p.get('frames', 0)} held-out frames: {p.get('missing', 0)} missing, "
+             f"largest box difference {p.get('worst_px', '?')} px.",
+             action={"type": "folder", "path": str(folder), "label": "Open folder"})
+
+    return {"job": start_job("export", job, done, f"Exporting {run.name} failed")}
+
+
+@app.get("/api/exports")
+def list_exports() -> list:
+    """Every model exported for production so far (engine/detector.py export_onnx), across all Teach runs."""
+    out = []
+    for d in sorted(runs_dir().glob("*/export")) if runs_dir().exists() else []:
+        mf = d / "model.json"
+        if not mf.exists():
+            continue
+        try:
+            m = json.loads(mf.read_text(encoding="utf-8"))
+        except ValueError:
+            continue
+        out.append({"run": d.parent.name, "path": str(d.resolve()), "created": time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(mf.stat().st_mtime)),
+                    "classes": m.get("classes"), "threshold": m.get("threshold"), "resolution": m.get("resolution"), "parity": m.get("parity")})
+    return out
+
+
 @app.post("/api/quick")
 def quick(body: dict = Body(...)) -> dict:
     """Quick transfer, no training: match a labeled dataset's examples in other videos or folders."""
@@ -1325,10 +1400,20 @@ def open_folder(body: dict = Body(...)) -> dict:
     return {"ok": True}
 
 
-# ---- Rivet, the helper (engine/assistant.py) --------------------------------------------------
+# ---- Rivet, the helper (engine/assistant.py; on a local model instead, ui/rivet_tools.py) --------------------
+def _ndjson(events) -> StreamingResponse:
+    return StreamingResponse((json.dumps(e) + "\n" for e in events), media_type="application/x-ndjson",
+                             headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})
+
+
 @app.get("/api/assistant")
 def assistant_info() -> dict:
-    return assistant.info()
+    from ui import rivet_tools
+    url = rivet_tools.base_url()
+    if url:
+        model = rivet_tools.model_id(url)
+        return {**assistant.info(), "ready": bool(model), "source": "local", "local_model": model}
+    return {**assistant.info(), "source": "gemini", "local_model": None}
 
 
 @app.post("/api/assistant/key")
@@ -1340,15 +1425,30 @@ def assistant_key(body: dict = Body(...)) -> dict:
         raise HTTPException(400, str(e))
     except Exception as e:
         raise HTTPException(502, f"Could not check the key with Gemini ({type(e).__name__}). Check the internet connection.")
-    return assistant.info()
+    return assistant_info()
 
 
 @app.post("/api/assistant/chat")
 def assistant_chat(body: dict = Body(...)):
-    """One answer, streamed as JSON lines: {"model"} or {"offline"}, {"text"}..., {"done"} (or {"error"})."""
-    events = assistant.reply(body.get("messages"), body.get("context"), body.get("actions"))
-    return StreamingResponse((json.dumps(e) + "\n" for e in events), media_type="application/x-ndjson",
-                             headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})
+    """One answer, streamed as JSON lines: {"model"} or {"offline"}, {"text"}..., {"done"} (or {"error"}); on a
+    local model (ui/rivet_tools.py) also {"confirm": {...}} when it wants to run a destructive tool."""
+    from ui import rivet_tools
+    if rivet_tools.base_url():
+        return _ndjson(rivet_tools.reply(body.get("messages"), body.get("context"), actor=ACTOR.get()))
+    return _ndjson(assistant.reply(body.get("messages"), body.get("context"), body.get("actions")))
+
+
+@app.post("/api/assistant/confirm")
+def assistant_confirm(body: dict = Body(...)):
+    """Run a tool call Rivet proposed (ui/rivet_tools.py reply()'s {"confirm"}) and let it phrase the result."""
+    from ui import rivet_tools
+    return _ndjson(rivet_tools.resume(str(body.get("id", "")), actor=ACTOR.get()))
+
+
+@app.post("/api/assistant/cancel")
+def assistant_cancel(body: dict = Body(...)) -> dict:
+    from ui import rivet_tools
+    return {"ok": rivet_tools.cancel(str(body.get("id", "")), actor=ACTOR.get())}
 
 
 # ---- entry points -------------------------------------------------------------------------
@@ -1400,6 +1500,8 @@ from ui import mcp as _mcp                                   # noqa: E402  (/mcp
 _mcp.mount(app, sys.modules[__name__])
 from ui import v1 as _v1                                     # noqa: E402  (the integration API and the network guard)
 _v1.mount(app, sys.modules[__name__])
+from ui import rivet_tools as _rivet_tools                   # noqa: E402  (Rivet on a local model, via _mcp above)
+_rivet_tools.mount(sys.modules[__name__])
 
 if __name__ == "__main__":
     main()

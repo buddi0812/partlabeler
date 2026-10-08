@@ -301,7 +301,7 @@ export const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)"
 
 // The top bar of every page: logo, Projects / Tasks / Jobs (as CVAT's), update button, device, bell.
 export function header(active) {
-  const nav = [["/", "Projects", "projects"], ["/tasks", "Tasks", "tasks"], ["/jobs", "Jobs", "jobs"]]
+  const nav = [["/", "Projects", "projects"], ["/recordings", "Recordings", "recordings"], ["/tasks", "Tasks", "tasks"], ["/jobs", "Jobs", "jobs"]]
     .map(([href, text, id]) => `<a href="${href}"${id === active ? ' aria-current="page"' : ""}>${text}</a>`).join("");
   return `<header class="h-top"><div class="h-top-in">
     <a class="h-logo" href="/">${ICON.logo}<span>PartLabeler</span></a><nav class="h-nav" aria-label="Main">${nav}</nav>
@@ -626,6 +626,9 @@ export default function home(root) {
   newForm.frames.value = prefs().frames || "video";                   // Settings: frame storage for new projects
   let task = "detect", sources = [], projects = [], info = {}, seen = null;
 
+  { const q = new URLSearchParams(location.search), name = q.get("new");             // came from Recordings
+    if (name) { newForm.name.value = name; requestAnimationFrame(() => lockOn($(".h-newpanel"))); } }
+
   heroDemo($(".h-demo"));
   const top = $(".h-top");
   const onScroll = () => top.classList.toggle("scrolled", window.scrollY > 8);
@@ -828,7 +831,9 @@ export default function home(root) {
     f.querySelectorAll("button[type=submit]").forEach((b) => (b.disabled = true));
     try {
       const r = await api("/api/projects", { name: f.name.value.trim(), task, labels, frame_format: f.frames.value });
-      if (open) location.href = `/projects/${encodeURIComponent(r.name)}`;
+      const back = new URLSearchParams(location.search).get("return");    // came from Recordings: go back there
+      if (back) location.href = `${back}${back.includes("?") ? "&" : "?"}project=${encodeURIComponent(r.name)}`;
+      else if (open) location.href = `/projects/${encodeURIComponent(r.name)}`;
       else { f.name.value = ""; labelsEd.set([]); msg.textContent = `Created ${r.name}.`; loadProjects(); pollNotes(); }
     } catch (err) { msg.innerHTML = `<span class="h-err">${esc(err.message)}</span>`; }
     f.querySelectorAll("button[type=submit]").forEach((b) => (b.disabled = false));

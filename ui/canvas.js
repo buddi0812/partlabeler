@@ -420,6 +420,10 @@ const RIVET_CSS = `
 .rv-msg h4 { margin:2px 0 4px; font-size:14px; }
 .rv-note { font-size:11.5px; color:var(--rv-muted); margin-top:6px; }
 .rv-dos { display:flex; gap:6px; flex-wrap:wrap; margin-top:9px; }
+.rv-confirm { margin-top:9px; padding:10px 12px; border:1px solid var(--rv-teal); border-radius:10px; background:var(--c-accent-soft,#e1f0ef); }
+.rv-confirm ul { margin:0 0 8px; padding-left:18px; font-size:13px; }
+.rv-confirm .h-row { display:flex; gap:6px; }
+.rv-panel .rv-do.rv-cancel { border-color:var(--rv-muted); color:var(--rv-muted); font-weight:500; }
 .rv-panel .rv-do { border-color:var(--rv-teal); color:var(--rv-teal-deep); font-weight:600; }
 .rv-panel .rv-do:hover { background:var(--c-accent-soft,#e1f0ef); }
 .rv-typing { display:inline-flex; gap:4px; padding:4px 0; } .rv-typing i { width:7px; height:7px; border-radius:50%; background:#8a9aa3; animation:rv-dot 1s ease-in-out infinite; }
@@ -482,26 +486,30 @@ function md(src) {
 // Transports: the web app asks the server over HTTP; a notebook widget asks through its message channel.
 export function webAssistant(base = "/") {
   const post = (path, body, signal) => fetch(`${base}${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), signal });
+  async function ndjson(path, body, onEvent, signal) {
+    const r = await post(path, body, signal);
+    if (!r.ok || !r.body) throw new Error(`The helper is not available right now (${r.status}). Reload the page.`);
+    const reader = r.body.getReader(), dec = new TextDecoder();
+    let buf = "";
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let i;
+      while ((i = buf.indexOf("\n")) >= 0) { const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1); if (line) onEvent(JSON.parse(line)); }
+    }
+    if (buf.trim()) onEvent(JSON.parse(buf));
+  }
   return {
     info: () => fetch(`${base}api/assistant`).then((r) => (r.ok ? r.json() : null)),
     async saveKey(key) {
       const r = await post("api/assistant/key", { key }); const d = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(d.detail || r.statusText); return d;
     },
-    async chat(payload, onEvent, signal) {
-      const r = await post("api/assistant/chat", payload, signal);
-      if (!r.ok || !r.body) throw new Error(`The helper is not available right now (${r.status}). Reload the page.`);
-      const reader = r.body.getReader(), dec = new TextDecoder();
-      let buf = "";
-      for (;;) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        buf += dec.decode(value, { stream: true });
-        let i;
-        while ((i = buf.indexOf("\n")) >= 0) { const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1); if (line) onEvent(JSON.parse(line)); }
-      }
-      if (buf.trim()) onEvent(JSON.parse(buf));
-    },
+    chat: (payload, onEvent, signal) => ndjson("api/assistant/chat", payload, onEvent, signal),
+    // Rivet on a local model (ui/rivet_tools.py) only: run (or drop) a tool call it proposed and paused on.
+    confirmTool: (id, onEvent, signal) => ndjson("api/assistant/confirm", { id }, onEvent, signal),
+    cancelTool: (id) => post("api/assistant/cancel", { id }).then((r) => r.json()).catch(() => ({})),
   };
 }
 function widgetAssistant(model) {
@@ -568,17 +576,26 @@ export function assistant({ mount, transport, variant = "fab", context = () => (
   function save() { store("pl-rivet-chat", JSON.stringify(S.msgs.filter((m) => !m.pending).slice(-30))); }
   function renderTips() { const b = $('[data-r="tips"]'); b.setAttribute("aria-pressed", String(S.tipsOn)); b.textContent = S.tipsOn ? "Tips on" : "Tips off"; }
   function renderStatus() {
-    $(".rv-status").textContent = S.busy ? "Thinking…" : S.info?.ready ? "Powered by Gemini Flash-Lite" : S.info ? "Answering from the built-in guide" : "Ask me anything about PartLabeler";
-    $(".rv-keybox").hidden = !(S.info && !S.info.ready && S.info.can_save);
+    $(".rv-status").textContent = S.busy ? "Thinking…"
+      : S.info?.source === "local" ? (S.info.ready ? `Powered by ${S.info.local_model || "the local model"}` : "The local model is not answering right now")
+      : S.info?.ready ? "Powered by Gemini Flash-Lite" : S.info ? "Answering from the built-in guide" : "Ask me anything about PartLabeler";
+    $(".rv-keybox").hidden = !(S.info && S.info.source !== "local" && !S.info.ready && S.info.can_save);
   }
   const doButtons = (names) => names.filter((n) => actions[n]).map((n) => `<button type="button" class="rv-do" data-do="${esc(n)}">${esc(actions[n].label)}</button>`).join("");
+  // A destructive tool call Rivet (on a local model) paused on: shown until the person confirms or cancels it.
+  function confirmHtml(m) {
+    return `<div class="rv-confirm"><ul>${m.confirm.actions.map((a) => `<li>${esc(a.summary)}</li>`).join("")}</ul>
+      <div class="h-row"><button type="button" class="rv-do" data-confirm="${esc(m.confirm.id)}"${m.confirmBusy ? " disabled" : ""}>${m.confirmBusy ? "Working…" : "Confirm"}</button>
+      <button type="button" class="rv-do rv-cancel" data-cancel="${esc(m.confirm.id)}"${m.confirmBusy ? " disabled" : ""}>Cancel</button></div></div>`;
+  }
   function msgHtml(m) {
     if (m.role === "user") return `<div class="rv-msg me">${esc(m.text)}</div>`;
-    if (m.pending && !m.text) return `<div class="rv-msg bot"><span class="rv-typing" aria-label="Rivet is typing"><i></i><i></i><i></i></span></div>`;
-    let text = m.text.replace(/\[\[do:[a-z-]*\]?\]?/g, "").trim();
+    if (m.pending && !m.text && !m.confirm) return `<div class="rv-msg bot"><span class="rv-typing" aria-label="Rivet is typing"><i></i><i></i><i></i></span></div>`;
+    let text = (m.text || "").replace(/\[\[do:[a-z-]*\]?\]?/g, "").trim();
     if (m.pending) text = text.replace(/\[\[?[a-z:-]*$/, "");      // a button marker still arriving
-    return `<div class="rv-msg bot${m.error ? " err" : ""}">${m.error ? esc(text) : md(text)}
-      ${m.offline ? `<div class="rv-note">${m.offline === "down" ? "Gemini could not be reached, so this answer is from the built-in guide." : "Answer from the built-in guide."}</div>` : ""}
+    return `<div class="rv-msg bot${m.error ? " err" : ""}">${text ? (m.error ? esc(text) : md(text)) : ""}
+      ${m.offline ? `<div class="rv-note">${m.offline === "down" ? "The model could not be reached, so this answer is from the built-in guide." : "Answer from the built-in guide."}</div>` : ""}
+      ${m.confirm ? confirmHtml(m) : ""}
       ${m.dos?.length ? `<div class="rv-dos">${doButtons(m.dos)}</div>` : ""}</div>`;
   }
   function renderLog() {
@@ -619,6 +636,7 @@ export function assistant({ mount, transport, variant = "fab", context = () => (
         if (ev.offline) m.offline = ev.reason === "no_key" ? "no_key" : "down";
         if (ev.text) { m.text += ev.text; if (root.dataset.state !== "talking") mood("talking"); renderSoon(); }
         if (ev.error) { m.text = ev.error; m.error = true; }
+        if (ev.confirm) { m.confirm = ev.confirm; renderSoon(); }
       }, ctrl.signal);
     } catch (err) {
       if (err.name === "AbortError") m.text += m.text ? "\n\n_(stopped)_" : "_(stopped)_";
@@ -627,10 +645,27 @@ export function assistant({ mount, transport, variant = "fab", context = () => (
     clearTimeout(slow);
     m.pending = false;
     m.dos = [...m.text.matchAll(/\[\[do:([a-z-]+)\]\]/g)].map((x) => x[1]).filter((n, i, a) => a.indexOf(n) === i);
-    if (!m.text.trim()) { m.text = "I didn't get an answer. Try asking again."; m.error = true; }
+    if (!m.text.trim() && !m.confirm) { m.text = "I didn't get an answer. Try asking again."; m.error = true; }
     if (S.busy === ctrl) setBusy(null);
     save(); renderLog();
     mood(m.error ? "sad" : "happy", m.error ? 2500 : 1400);
+  }
+
+  // Confirm or cancel a destructive tool call Rivet (on a local model) proposed and paused on.
+  async function confirmPending(id) {
+    const m = S.msgs.find((x) => x.confirm?.id === id); if (!m || !transport.confirmTool) return;
+    m.confirmBusy = true; renderLog(); mood("thinking");
+    let text = "", error = false;
+    try { await transport.confirmTool(id, (ev) => { if (ev.text) text = ev.text; if (ev.error) { text = ev.error; error = true; } }); }
+    catch (err) { text = String(err.message || err); error = true; }
+    m.confirm = null; m.confirmBusy = false; m.text = text || "Done."; m.error = error;
+    save(); renderLog(); mood(error ? "sad" : "happy", error ? 2500 : 1400);
+  }
+  async function cancelPending(id) {
+    const m = S.msgs.find((x) => x.confirm?.id === id); if (!m) return;
+    await transport.cancelTool?.(id).catch(() => {});
+    m.confirm = null; m.text = "Not done.";
+    save(); renderLog();
   }
 
   function open(focus = true) {
@@ -696,6 +731,8 @@ export function assistant({ mount, transport, variant = "fab", context = () => (
       if (window.innerWidth <= 600 || variant !== "fab") close();
       actions[t.dataset.do].run();
     }
+    else if (t.dataset.confirm) confirmPending(t.dataset.confirm);
+    else if (t.dataset.cancel) cancelPending(t.dataset.cancel);
   });
   const ta = $("textarea");
   const grow = () => { ta.style.height = "auto"; ta.style.height = `${Math.min(120, ta.scrollHeight + 2)}px`; };

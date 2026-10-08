@@ -562,6 +562,21 @@ def list_runs(args):
     return {"runs": out}
 
 
+@tool("Export a finished Teach run's model as ONNX for production (model.json + a check against the trained model "
+      "on held-out frames); a TensorRT engine is then built on the production machine. Only when the user asked "
+      "for it. Takes a few minutes; check with get_job.", ["run"], run=S("Teach run name (list_runs)"),
+      batch=I("Fixed batch size, e.g. 2 for two cameras seen together (default 1)", minimum=1), wait_s=WAIT)
+def export_model(args):
+    res = H.export_model({"run": args["run"], "batch": args.get("batch")})
+    return _wait(res["job"], float(args.get("wait_s") or 0))
+
+
+@tool("Models already exported for production (export_model), across every Teach run: where each one is, its "
+      "classes and the parity check against the trained model.")
+def list_exports(args):
+    return {"exports": H.list_exports()}
+
+
 @tool("Label tasks with a finished Teach run: the model's parts (outlines in segmentation projects) on every frame "
       "nobody labeled or confirmed, as parts to check (source 'imported', score = confidence). Undoable.",
       ["project", "run", "tasks"], project=PROJECT, run=S("Teach run name (list_runs)"),

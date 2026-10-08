@@ -115,6 +115,13 @@ const PAGE_CSS = `
 @media (max-width: 900px) {
   .pg-task { grid-template-columns:110px minmax(0,1fr); } .pg-thumb { width:110px; height:70px; }
   .pg-task .pg-progcol, .pg-task .pg-btns { grid-column:1 / -1; } .pg-top { grid-template-columns:minmax(0,1fr); } }
+.rc-created { background:var(--ok-soft); color:var(--ok-ink); border-radius:10px; padding:8px 14px; margin:0; }
+.rc-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(230px, 1fr)); gap:12px; }
+.rc-card { display:grid; gap:4px; background:var(--paper); border:1px solid var(--line); border-radius:12px; padding:10px; cursor:pointer; position:relative; }
+.rc-card:hover { border-color:var(--line-hi); box-shadow:0 8px 22px rgba(31,42,48,.08); }
+.rc-card input.rc-pick { position:absolute; top:10px; right:10px; width:18px; height:18px; z-index:1; }
+.rc-thumb { width:100%; height:130px; border-radius:8px; background-color:var(--alu-2); background-size:cover; background-position:center; position:relative; overflow:hidden; }
+.rc-thumb video { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
 `;
 
 const enc = encodeURIComponent;
@@ -215,7 +222,7 @@ function loginPage(root, args) {
 export function page(root, args) {
   document.head.appendChild(Object.assign(document.createElement("style"), { textContent: CSS + PAGE_CSS }));
   if (args.view === "login") return loginPage(root, args);
-  const active = { tasks: "tasks", jobs: "jobs", settings: "" }[args.view] ?? "projects";
+  const active = { tasks: "tasks", jobs: "jobs", settings: "", recordings: "recordings" }[args.view] ?? "projects";
   root.innerHTML = `${header(active)}<main class="pg"><p class="pg-meta">Loading…</p></main><div class="h-toasts" aria-live="polite"></div>
     <dialog class="h-confirm pg-dlg pg-ask"><h2></h2><p class="pg-ask-text"></p><div class="b-foot"><button type="button" data-a="no">Cancel</button><button type="button" class="danger" data-a="yes">OK</button></div></dialog>`;
   const $ = (s) => root.querySelector(s), main = $(".pg"), pick = fileBrowser();
@@ -445,6 +452,105 @@ export function page(root, args) {
         try { d = await api(`/api/projects/${enc(name)}`, { labels }, "PATCH"); editing = null; render(); toast({ level: "success", title: "Labels saved" }); }
         catch (err) { $(".pg-labmsg").innerHTML = `<span class="h-err">${esc(err.message)}</span>`; }
       }
+    });
+  }
+
+  // ---- recordings: browse the box's cycle recordings and start labeling from them (engine/recordings.py) ----
+  async function recordingsPage() {
+    const q = new URLSearchParams(location.search);
+    let stationId = q.get("station") || "", cameraId = q.get("camera") || "", recs = [], projects = [];
+    const selected = new Set(), justCreated = q.get("project") || "";
+    main.innerHTML = `<div class="pg-title"><h1>Recordings</h1></div>
+      <p class="pg-meta">What the box's cameras recorded, by station and camera. Start a project straight from them.</p>
+      ${justCreated ? `<p class="rc-created">Created <b>${esc(justCreated)}</b> — pick recordings below, then Add as tasks.</p>` : ""}
+      <div class="pg-tools">
+        <label class="h-field" style="width:auto"><span>Station</span><select class="rc-station"><option value="">All</option></select></label>
+        <label class="h-field" style="width:auto"><span>Camera</span><select class="rc-camera" disabled><option value="">All</option></select></label>
+        <span class="pg-sp"></span><button type="button" class="rc-start" hidden>Start a project for this camera</button>
+      </div>
+      <div class="rc-grid"><p class="pg-empty">Loading…</p></div>
+      <div class="pg-tools rc-addbar" hidden>
+        <label class="h-field" style="width:auto"><span>Add to project</span><select class="rc-project"></select></label>
+        <span class="rc-count h-sub"></span><span class="pg-sp"></span>
+        <button type="button" class="rc-add primary" disabled>Add selected as tasks</button></div>
+      <details class="h-panel h-more rc-opts" hidden><summary>Advanced configuration</summary><div class="pg-two" style="margin-top:14px">
+        <label class="h-field"><span>Frame step</span><input type="number" class="rc-every" min="1" value="${prefs().every || 5}"><small>Keep every Nth frame.</small></label>
+        <label class="h-field"><span>Start (seconds, optional)</span><input type="number" class="rc-start-s" min="0" step="0.1"><small>Applied using the first selected recording's frame rate.</small></label>
+        <label class="h-field"><span>Stop (seconds, optional)</span><input type="number" class="rc-stop-s" min="0" step="0.1"></label>
+        <label class="h-field"><span>Subset</span><input type="text" class="rc-subset" placeholder="Optional: Train, Test, Validation…"></label>
+      </div></details>
+      <div class="rc-job"></div>`;
+
+    function setQuery() {
+      const p = new URLSearchParams(); if (stationId) p.set("station", stationId); if (cameraId) p.set("camera", cameraId);
+      history.replaceState(null, "", p.size ? `?${p}` : location.pathname);
+    }
+    function renderGrid() {
+      main.querySelector(".rc-grid").innerHTML = recs.map((r) => `
+        <label class="rc-card"><input type="checkbox" class="rc-pick" value="${esc(r.id)}"${selected.has(r.id) ? " checked" : ""}>
+          <span class="rc-thumb" data-id="${esc(r.id)}" style="background-image:url('/api/recordings/thumb?id=${enc(r.id)}')"></span>
+          <b>${esc(r.station_id)} / ${esc(r.camera_id)}</b>
+          <span class="h-sub">${esc(r.started_at)} · ${r.duration_s}s · ${r.width}×${r.height} · ${esc(r.codec)}</span>
+          ${r.cycles?.length ? `<span class="h-sub">${r.cycles.length} cycle${r.cycles.length === 1 ? "" : "s"} marked</span>` : ""}</label>`).join("")
+        || `<p class="pg-empty">No recordings ${stationId ? "here yet." : "found. Set recordings_dir (or recordings_api) in ~/.partlabeler/app.json."}</p>`;
+      updateBar();
+    }
+    function updateBar() {
+      main.querySelector(".rc-addbar").hidden = selected.size === 0;
+      main.querySelector(".rc-opts").hidden = selected.size === 0;
+      main.querySelector(".rc-count").textContent = `${selected.size} selected`;
+      main.querySelector(".rc-add").disabled = !main.querySelector(".rc-project").value;
+    }
+    async function load() {
+      const d = await api(`/api/recordings${stationId ? `?station_id=${enc(stationId)}` : ""}`).catch((e) => { toast({ level: "error", title: "Could not read recordings", detail: e.message }); return { stations: [], recordings: [] }; });
+      const stSel = main.querySelector(".rc-station"), camSel = main.querySelector(".rc-camera");
+      stSel.innerHTML = `<option value="">All</option>` + d.stations.map((s) => `<option value="${esc(s.id)}"${s.id === stationId ? " selected" : ""}>${esc(s.name)}</option>`).join("");
+      const cams = d.stations.find((s) => s.id === stationId)?.cameras || [];
+      camSel.innerHTML = `<option value="">All</option>` + cams.map((c) => `<option value="${esc(c.id)}"${c.id === cameraId ? " selected" : ""}>${esc(c.name)}</option>`).join("");
+      camSel.disabled = !stationId;
+      main.querySelector(".rc-start").hidden = !(stationId && cameraId);
+      recs = stationId
+        ? (await api(`/api/recordings?station_id=${enc(stationId)}${cameraId ? `&camera_id=${enc(cameraId)}` : ""}`).catch(() => ({ recordings: [] }))).recordings
+        : d.recordings;
+      renderGrid();
+    }
+    projects = (await api("/api/projects").catch(() => [])).map((p) => p.name);
+    main.querySelector(".rc-project").innerHTML = `<option value="">Choose a project…</option>` + projects.map((p) => `<option${p === justCreated ? " selected" : ""}>${esc(p)}</option>`).join("");
+    await load();
+
+    main.addEventListener("change", (e) => {
+      if (e.target.matches(".rc-station")) { stationId = e.target.value; cameraId = ""; setQuery(); load(); }
+      else if (e.target.matches(".rc-camera")) { cameraId = e.target.value; setQuery(); load(); }
+      else if (e.target.matches(".rc-pick")) { e.target.checked ? selected.add(e.target.value) : selected.delete(e.target.value); updateBar(); }
+      else if (e.target.matches(".rc-project")) updateBar();
+    });
+    main.addEventListener("mouseover", (e) => {
+      const t = e.target.closest(".rc-thumb"); if (!t || t.querySelector("video")) return;
+      const v = document.createElement("video");
+      v.muted = true; v.loop = true; v.autoplay = true; v.playsInline = true;
+      v.src = `/api/recordings/video?id=${enc(t.dataset.id)}#t=0,6`;
+      v.onerror = () => v.remove();
+      t.appendChild(v);
+    });
+    main.addEventListener("mouseout", (e) => { const t = e.target.closest(".rc-thumb"); if (t && !t.contains(e.relatedTarget)) t.querySelector("video")?.remove(); });
+    main.querySelector(".rc-start").addEventListener("click", () => {
+      const ret = `${location.pathname}?station=${enc(stationId)}&camera=${enc(cameraId)}`;
+      location.href = `/?new=${enc(`${stationId} ${cameraId}`)}&return=${enc(ret)}`;
+    });
+    main.querySelector(".rc-add").addEventListener("click", async (e) => {
+      const btn = e.currentTarget, name = main.querySelector(".rc-project").value; if (!name) return;
+      const chosen = recs.filter((r) => selected.has(r.id));
+      const everyV = +main.querySelector(".rc-every").value || 5, fps = chosen[0]?.fps || 25;
+      const startS = main.querySelector(".rc-start-s").value, stopS = main.querySelector(".rc-stop-s").value;
+      btn.disabled = true;
+      try {
+        const { job } = await api(`/api/projects/${enc(name)}/tasks`, {
+          sources: chosen.map((r) => r.path), every: everyV, subset: main.querySelector(".rc-subset").value.trim(),
+          start: startS ? Math.round(startS * fps) : undefined, stop: stopS ? Math.round(stopS * fps) : undefined,
+        });
+        followJob(job, main.querySelector(".rc-job"), { onEnd: () => { selected.clear(); renderGrid(); } });
+      } catch (err) { toast({ level: "error", title: "Could not add tasks", detail: err.message }); }
+      btn.disabled = false;
     });
   }
 
@@ -791,7 +897,7 @@ export function page(root, args) {
   }
 
   ({ project: () => projectPage(args.project), "create-task": () => createTaskPage(args.project), task: () => taskPage(args.project, args.task),
-     tasks: tasksPage, jobs: jobsPage, settings: settingsPage })[args.view]?.();
+     tasks: tasksPage, jobs: jobsPage, settings: settingsPage, recordings: recordingsPage })[args.view]?.();
 }
 
 const FORMAT_NAMES = { yolo: "YOLO (Ultralytics)", coco: "COCO 1.0", cvat: "CVAT for images 1.1", voc: "Pascal VOC", labelstudio: "Label Studio",

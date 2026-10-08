@@ -27,6 +27,7 @@ STRONG = {
     "ToGray": {"p": 0.1},
     "GaussianBlur": {"blur_limit": 3, "p": 0.2},
     "GaussNoise": {"std_range": (0.01, 0.05), "p": 0.2},
+    "RandomGamma": {"gamma_limit": (80, 120), "p": 0.3},    # exposure
     "Affine": {"scale": (0.85, 1.15), "translate_percent": (-0.05, 0.05), "rotate": (-7, 7), "shear": (-5, 5), "p": 0.5},
 }
 MEDIUM = {

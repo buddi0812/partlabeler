@@ -19,6 +19,10 @@
 - Rivet, the in-app helper (`engine/assistant.py`, UI in `ui/canvas.js`): Gemini Flash-Lite, answers from `docs/GUIDE.md`
   (keep the guide accurate when features change). The API key comes only from `GEMINI_API_KEY` or `~/.partlabeler/assistant.json`:
   never write a key into the repo, and scan for `AIza` before any public push. Tips and the pros are fixed text, not model calls.
+  app.json `"assistant_llm"` (a local OpenAI-compatible URL) switches Rivet to `ui/rivet_tools.py` instead: it drives
+  PartLabeler through a small, fixed subset of `ui/mcp.py`'s tools, pauses on destructive ones (`{"confirm": ...}`)
+  until a person clicks Confirm, and logs every tool call to `<projects>/.partlabeler/assistant-actions.jsonl`. The
+  model id is read from `GET <url>/v1/models` at each chat, never hardcoded.
 - Label types (project.json `task`): detect (boxes), segment (outlines: masks as COCO RLE, box = mask box,
   polygons only at export, `engine/masks.py`) and classify (image classes on a grid). Smart sorting
   (`engine/sort.py`: grouping, suggestions, wrong-label check; S10) also drives "Sort parts" in box/outline projects.
