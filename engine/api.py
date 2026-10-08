@@ -38,6 +38,7 @@ Models load on first use and are shared by every open project (one copy in GPU m
 """
 import base64
 import io
+import os
 import re
 import threading
 import time
@@ -150,8 +151,28 @@ class Session:
         self._thumbs, self._frames, self._frame_lock = {}, {}, threading.Lock()
 
     def _model(self, name):
-        return model(name, lambda n: self.send({"type": "toast",
-                                                "text": f"Loading the {MODEL_NAMES[n]} model (first use only)…"}))
+        """The shared model; while it loads (up to a minute when its file is not in the disk cache yet) the screen
+        shows a lasting status, as the tab's next messages wait until it is ready."""
+        if name in _MODELS:
+            return _MODELS[name]
+        self.send({"type": "loading", "text": f"Getting the {MODEL_NAMES[name]} model ready (first use after a start: up to a minute)…"})
+        try:
+            return model(name)
+        finally:
+            self.send({"type": "loading", "text": ""})
+
+    def _warm_up(self):
+        """Load the click model in the background as soon as a project opens, so the first click does not wait
+        for it (PARTLABELER_WARMUP=0: off, as in the tests). Failures are left for that first click to report."""
+        if self.p.task == "classify" or "seg" in _MODELS or os.environ.get("PARTLABELER_WARMUP", "1") == "0":
+            return
+
+        def run():
+            try:
+                self._model("seg")
+            except Exception:
+                pass
+        threading.Thread(target=run, daemon=True).start()
 
     def notify(self, level: str, title: str, detail: str = "", action=None, key=None, plural=None) -> dict:
         return self.notes.add(level, title, detail, project=self.p.meta["name"], action=action, key=key, plural=plural)
@@ -266,6 +287,7 @@ class Session:
         self.send(self.status_msg())
         self.send(self.item_msg(max(0, min(msg.get("item", 0), len(self.p.items) - 1))))
         self.send({"type": "notifications", **self.notes.snapshot()})
+        self._warm_up()
 
     def on_notifications_read(self, msg):
         self.notes.mark_read()

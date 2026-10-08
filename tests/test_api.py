@@ -1,4 +1,7 @@
 """The annotator's message flow, end to end, without any model (box tool, relabel, delete, review, export)."""
+import threading
+
+from engine import api
 from engine.api import Session
 from engine.project import Project, read_classes
 from tests.test_project import CLASSES, video  # noqa: F401  (fixture)
@@ -156,3 +159,28 @@ def test_colab_run_keeps_the_cell_running_until_the_annotator_sits_idle(tmp_path
     monkeypatch.setattr("IPython.display.display", lambda *a, **k: None)
     w.run(idle_minutes=10)
     assert len(calls) == 3 + 10                     # 10 idle minutes after the last real action, then it returns
+
+
+def test_opening_a_project_warms_up_the_click_model(tmp_path, video, monkeypatch):
+    loaded = threading.Event()
+
+    def fake_model(name, announce=None):
+        api._MODELS[name] = object()
+        loaded.set()
+        return api._MODELS[name]
+    monkeypatch.setattr(api, "model", fake_model)
+    monkeypatch.setattr(api, "_MODELS", {})
+    monkeypatch.setenv("PARTLABELER_WARMUP", "1")
+    msgs = []
+    s = Session(Project.create(tmp_path / "proj", CLASSES, video=video), msgs.append)
+    s.handle({"type": "ready"})
+    assert loaded.wait(5) and "seg" in api._MODELS          # loaded in the background, before any click
+    for _ in range(50):
+        if [m for m in msgs if m["type"] == "loading"][-1:] == [{"type": "loading", "text": ""}]:
+            break
+        threading.Event().wait(0.02)
+    shown = [m["text"] for m in msgs if m["type"] == "loading"]
+    assert shown[0].startswith("Getting the outline model ready") and shown[-1] == ""   # a lasting status, then cleared
+    msgs.clear()
+    s.handle({"type": "ready"})                                # already loaded: nothing more to say
+    assert [m for m in msgs if m["type"] == "loading"] == []

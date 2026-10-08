@@ -259,6 +259,14 @@ sharp, for exact edge work.
 Press **B** (or choose **Draw box** under Tool) and drag. With a box selected, dragging redraws that box.
 Press **C** to go back to click-to-outline. Hand-drawn boxes are useful for parts SAM cannot separate.
 
+**Adjust a box** (object detection projects): select it (Ctrl+click it, or click it under Boxes on this frame), then
+drag one of its eight white handles to resize it, or drag inside it to move it. It stays the same part with the same
+class, becomes yours (manual), and Ctrl+Z undoes it.
+
+When a project opens, PartLabeler loads the outline model in the background; the bottom line says "Getting the
+outline model ready…" until it is done (the first time after a start this can take up to a minute). Clicks made
+meanwhile wait for it and then go through.
+
 ## Track through a video
 
 Label every part on one frame, then press **T** (or **Ahead ▶**) to track those boxes ahead by the number of

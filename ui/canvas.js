@@ -83,6 +83,9 @@ const CSS = `
 .pl-bottom { display:grid; gap:5px; }
 .pl-strip { width:100%; height:28px; display:block; cursor:pointer; border-radius:5px; background:var(--st0); }
 .pl-foot { display:flex; gap:14px; align-items:center; color:var(--muted); font-variant-numeric:tabular-nums; min-height:18px; flex-wrap:wrap; font-size:13px; }
+.pl-loading { color:var(--ink); font-weight:600; } .pl-loading::before { content:""; display:inline-block; width:8px; height:8px; margin-right:7px; border-radius:50%; background:var(--accent); animation:pl-pulse 1s ease-in-out infinite alternate; }
+@keyframes pl-pulse { from { opacity:.25; } to { opacity:1; } }
+@media (prefers-reduced-motion: reduce) { .pl-loading::before { animation:none; } }
 .pl-bar { flex:0 0 160px; height:6px; background:var(--st0); border-radius:3px; overflow:hidden; }
 .pl-bar i { display:block; height:100%; background:var(--accent); width:0; }
 .pl-legend { display:flex; gap:12px; flex-wrap:wrap; } .pl-legend span { display:inline-flex; gap:5px; align-items:center; }
@@ -880,7 +883,7 @@ function render({ model, el }) {
     </div>
     <div class="pl-bottom">
       <canvas class="pl-strip" role="img" aria-label="Timeline of every frame; click to jump" title="Every frame; click to jump"></canvas>
-      <div class="pl-foot"><span class="pl-counts"></span><span class="pl-bar" aria-hidden="true"><i></i></span><span class="pl-prog" role="status" aria-live="polite"></span>
+      <div class="pl-foot"><span class="pl-counts"></span><span class="pl-bar" aria-hidden="true"><i></i></span><span class="pl-prog" role="status" aria-live="polite"></span><span class="pl-loading" role="status" aria-live="polite" hidden></span>
         <span class="pl-sp"></span><span class="pl-legend"></span></div>
     </div>
     <div class="pl-toasts" aria-live="polite" aria-relevant="additions"></div>
@@ -893,6 +896,7 @@ function render({ model, el }) {
         <div><span>Grow / shrink the selected part</span><span><kbd>Shift</kbd>/<kbd>Alt</kbd> + click</span></div>
         <div><span>Select a box</span><span><kbd>Ctrl</kbd> + click</span></div>
         <div><span>Draw a box (redraws the selected one)</span><span><kbd>B</kbd> then drag</span></div>
+        <div><span>Resize / move the selected box (object detection)</span><span>drag a handle / drag inside it</span></div>
         <div><span>Back to click-to-outline</span><kbd>C</kbd></div>
         <div><span>Pick class (re-labels the selected box)</span><span><kbd>1</kbd>–<kbd>9</kbd>, <kbd>0</kbd>, <kbd>[</kbd> <kbd>]</kbd></span></div>
         <div><span>Delete the selected box</span><kbd>Del</kbd></div>
@@ -1053,7 +1057,17 @@ function render({ model, el }) {
       ctx.fillStyle = col; ctx.fillRect(x1, ty, tw, fs * 1.35);
       ctx.fillStyle = "#fff"; ctx.fillText(label, x1 + fs * 0.3, ty + fs * 1.05);
     }
-    if (S.drag?.moved && S.tool === "box") {
+    const sb = selBox();
+    if (sb) {                                  // the selected box's handles (and where a drag puts it)
+      const d = S.drag, [x1, y1, x2, y2] = d?.grip && d.moved ? gripBox(d.grip, d.box, d.x1 - d.x0, d.y1 - d.y0) : sb.box;
+      if (d?.grip && d.moved) { ctx.setLineDash([lw * 3, lw * 2]); ctx.lineWidth = lw; ctx.strokeStyle = "#fff"; ctx.strokeRect(x1, y1, x2 - x1, y2 - y1); ctx.setLineDash([]); }
+      const h = lw * 4, mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+      ctx.fillStyle = "#fff"; ctx.strokeStyle = colorOf(sb.cls); ctx.lineWidth = lw;
+      for (const [hx, hy] of [[x1, y1], [mx, y1], [x2, y1], [x2, my], [x2, y2], [mx, y2], [x1, y2], [x1, my]]) {
+        ctx.fillRect(hx - h / 2, hy - h / 2, h, h); ctx.strokeRect(hx - h / 2, hy - h / 2, h, h);
+      }
+    }
+    if (S.drag?.moved && S.tool === "box" && !S.drag.grip) {
       const d = S.drag; ctx.setLineDash([lw * 3, lw * 2]); ctx.lineWidth = lw; ctx.strokeStyle = "#fff";
       ctx.strokeRect(Math.min(d.x0, d.x1), Math.min(d.y0, d.y1), Math.abs(d.x1 - d.x0), Math.abs(d.y1 - d.y0));
       ctx.setLineDash([]);
@@ -1648,6 +1662,27 @@ function render({ model, el }) {
 
   // ---- mouse on the image ----------------------------------------------------------------
   const toImage = (e) => { const r = cv.getBoundingClientRect(); return [(e.clientX - r.left) * cv.width / r.width, (e.clientY - r.top) * cv.height / r.height]; };
+  // ---- adjust the selected box (object detection): drag a handle to resize it, drag inside it to move it ----------
+  const GRIP_CURSORS = { n: "ns-resize", s: "ns-resize", e: "ew-resize", w: "ew-resize", nw: "nwse-resize", se: "nwse-resize",
+                         ne: "nesw-resize", sw: "nesw-resize", move: "move" };
+  function selBox() { return !seg() && S.sel != null ? (S.data?.boxes || []).find((b) => b.obj === S.sel) : null; }
+  function boxGrip(x, y) {                     // the part of the selected box under (x, y): a side or corner, "move" or null
+    const b = selBox(); if (!b) return null;
+    const [x1, y1, x2, y2] = b.box, r = cv.getBoundingClientRect(), tol = 7 * cv.width / r.width;
+    if (x < x1 - tol || x > x2 + tol || y < y1 - tol || y > y2 + tol) return null;
+    const g = (Math.abs(y - y1) <= tol ? "n" : Math.abs(y - y2) <= tol ? "s" : "") + (Math.abs(x - x1) <= tol ? "w" : Math.abs(x - x2) <= tol ? "e" : "");
+    return g || (x > x1 && x < x2 && y > y1 && y < y2 ? "move" : null);
+  }
+  function gripBox(g, box, dx, dy) {           // the box after dragging grip g by (dx, dy) image pixels, inside the frame
+    let [x1, y1, x2, y2] = box;
+    if (g === "move") {
+      dx = Math.max(-x1, Math.min(cv.width - x2, dx)); dy = Math.max(-y1, Math.min(cv.height - y2, dy));
+      return [x1 + dx, y1 + dy, x2 + dx, y2 + dy];
+    }
+    if (g.includes("w")) x1 += dx; if (g.includes("e")) x2 += dx; if (g.includes("n")) y1 += dy; if (g.includes("s")) y2 += dy;
+    const cx = (v) => Math.max(0, Math.min(cv.width, v)), cy = (v) => Math.max(0, Math.min(cv.height, v));
+    return [cx(Math.min(x1, x2)), cy(Math.min(y1, y2)), cx(Math.max(x1, x2)), cy(Math.max(y1, y2))];
+  }
   function boxAt(x, y) {
     const size = (b) => (b.box[2] - b.box[0]) * (b.box[3] - b.box[1]);
     if (seg()) { const m = (S.data?.boxes || []).filter((b) => inMask(b, x, y)).sort((a, b) => size(a) - size(b))[0]; if (m) return m.obj; }
@@ -1772,12 +1807,14 @@ function render({ model, el }) {
     }
     const [x, y] = toImage(e); el.focus();
     if (painting() && !(e.ctrlKey || e.metaKey) && e.button === 0) { startPaint(x, y); return; }
-    S.drag = { x0: x, y0: y, x1: x, y1: y, moved: false, e };
+    const grip = e.button === 0 && !(e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) ? boxGrip(x, y) : null;
+    S.drag = { x0: x, y0: y, x1: x, y1: y, moved: false, e, grip, box: grip ? [...selBox().box] : null };
   });
   cv.addEventListener("mousemove", (e) => {
     if (S.paint) { const [x, y] = toImage(e); strokeTo(x, y); return; }
     if (painting() && !S.drag) { S.hover = toImage(e); if (!hoverRaf) hoverRaf = requestAnimationFrame(() => { hoverRaf = 0; draw(); }); return; }
-    if (!S.drag) return; const [x, y] = toImage(e); S.drag.x1 = x; S.drag.y1 = y;
+    if (!S.drag) { const g = !S.space && !S.panning && boxGrip(...toImage(e)); cv.style.cursor = g ? GRIP_CURSORS[g] : ""; return; }
+    const [x, y] = toImage(e); S.drag.x1 = x; S.drag.y1 = y;
     const r = cv.getBoundingClientRect(), px = cv.width / r.width;
     S.drag.moved ||= Math.hypot(x - S.drag.x0, y - S.drag.y0) > 5 * px; if (S.drag.moved) draw();
   });
@@ -1785,6 +1822,11 @@ function render({ model, el }) {
     if (S.panning) { S.panning = null; $(".pl-stage").classList.remove("panning"); return; }
     if (S.paint) { finishPaint(); return; }
     const d = S.drag; if (!d) return; S.drag = null;
+    if (d.grip && d.moved) {                  // a selected box resized or moved: same part, same class, undoable
+      const b = selBox();
+      if (b) send({ type: "box", item: S.item, cls: b.cls, box: gripBox(d.grip, d.box, d.x1 - d.x0, d.y1 - d.y0), obj: b.obj });
+      draw(); return;
+    }
     if (e.ctrlKey || e.metaKey) { S.sel = boxAt(d.x0, d.y0); renderSide(); draw(); return; }
     if (S.tool === "box") {
       if (d.moved) {
@@ -1898,6 +1940,7 @@ function render({ model, el }) {
       $(".pl-prog").textContent = m.finished ? "" : `${m.task} ${m.done} of ${m.total}${m.rate ? `, ${m.rate} frames/s` : ""}`;
       S.busy = !m.finished; renderTop();
     }
+    else if (m.type === "loading") { const l = $(".pl-loading"); l.textContent = m.text; l.hidden = !m.text; }
     else if (m.type === "pong") S.pong = Date.now();
     else if (m.type === "notifications") center.set(m.items, m.unread);
     else if (m.type === "notify") {
