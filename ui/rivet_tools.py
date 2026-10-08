@@ -16,13 +16,12 @@ deltas - simpler, and the text answer is still sent to the browser in one piece 
 Upgrade to streamed deltas if the box's answers feel too slow to start.
 """
 import json
-import os
 import time
 import uuid
 
 import httpx
 
-from engine.accounts import app_config
+from engine import assistant
 from ui import mcp
 
 H = None                              # the host module (ui/host_fastapi.py), set by mount()
@@ -41,9 +40,10 @@ def mount(host) -> None:
     H = host
 
 
+# engine/assistant.py's local_url()/cloud_disabled()/backend() are the one shared decision every caller (this
+# module, ui/host_fastapi.py's REST routes, engine/api.py's websocket handlers) must use, so they can't drift.
 def base_url() -> str | None:
-    """app.json "assistant_llm" (or PARTLABELER_ASSISTANT_LLM), e.g. "http://127.0.0.1:8081"; None: use Gemini."""
-    return os.environ.get("PARTLABELER_ASSISTANT_LLM") or app_config().get("assistant_llm") or None
+    return assistant.local_url()
 
 
 def model_id(url: str, client: httpx.Client | None = None) -> str | None:

@@ -111,6 +111,36 @@ def _read_config() -> dict:
         return {}
 
 
+# ---- which backend Rivet uses: the one place every caller (REST in ui/host_fastapi.py, the websocket's
+# on_assistant* in engine/api.py, the notebook widget) must check, so none of them can drift and quietly reach
+# Gemini when they should not. Reads app.json/the env var fresh every call: never cached, so a setting change
+# or a restart aren't needed to take effect (confirmed to setup, 2026-10-08).
+def local_url() -> str | None:
+    """app.json "assistant_llm" (or PARTLABELER_ASSISTANT_LLM), e.g. "http://127.0.0.1:8081"; None if unset."""
+    from engine.accounts import app_config
+    return os.environ.get("PARTLABELER_ASSISTANT_LLM") or app_config().get("assistant_llm") or None
+
+
+def cloud_disabled() -> bool:
+    """app.json "assistant_cloud": false - never offer Gemini (or any other cloud model), even with no local
+    model configured either. For a machine that must never reach the internet for this."""
+    from engine.accounts import app_config
+    return app_config().get("assistant_cloud") is False
+
+
+def backend() -> str:
+    """"local" (ui/rivet_tools.py drives it through PartLabeler's own tools), "none" (say NOT_INSTALLED, never
+    Gemini), or "gemini" (this module)."""
+    if local_url():
+        return "local"
+    if cloud_disabled():
+        return "none"
+    return "gemini"
+
+
+NOT_INSTALLED = "No assistant is installed on this computer."
+
+
 def api_key() -> tuple[str | None, str]:
     """(key, where it came from: env / file / colab / none)."""
     for var in ("GEMINI_API_KEY", "GOOGLE_API_KEY"):

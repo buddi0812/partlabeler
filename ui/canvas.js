@@ -578,8 +578,9 @@ export function assistant({ mount, transport, variant = "fab", context = () => (
   function renderStatus() {
     $(".rv-status").textContent = S.busy ? "Thinking…"
       : S.info?.source === "local" ? (S.info.ready ? `Powered by ${S.info.local_model || "the local model"}` : "The local model is not answering right now")
+      : S.info?.source === "none" ? "No assistant is installed on this computer"
       : S.info?.ready ? "Powered by Gemini Flash-Lite" : S.info ? "Answering from the built-in guide" : "Ask me anything about PartLabeler";
-    $(".rv-keybox").hidden = !(S.info && S.info.source !== "local" && !S.info.ready && S.info.can_save);
+    $(".rv-keybox").hidden = !(S.info && S.info.source !== "local" && S.info.source !== "none" && !S.info.ready && S.info.can_save);
   }
   const doButtons = (names) => names.filter((n) => actions[n]).map((n) => `<button type="button" class="rv-do" data-do="${esc(n)}">${esc(actions[n].label)}</button>`).join("");
   // A destructive tool call Rivet (on a local model) paused on: shown until the person confirms or cancels it.

@@ -22,7 +22,12 @@
   app.json `"assistant_llm"` (a local OpenAI-compatible URL) switches Rivet to `ui/rivet_tools.py` instead: it drives
   PartLabeler through a small, fixed subset of `ui/mcp.py`'s tools, pauses on destructive ones (`{"confirm": ...}`)
   until a person clicks Confirm, and logs every tool call to `<projects>/.partlabeler/assistant-actions.jsonl`. The
-  model id is read from `GET <url>/v1/models` at each chat, never hardcoded.
+  model id is read from `GET <url>/v1/models` at each chat, never hardcoded. app.json `"assistant_cloud": false`
+  makes Rivet say "No assistant is installed on this computer" instead of ever offering Gemini. `engine/assistant.py`'s
+  `backend()` ("local" | "none" | "gemini", reading `assistant_llm`/`assistant_cloud` fresh every call) is the one
+  decision every entry point shares — both REST (`ui/host_fastapi.py`) and the websocket's `on_assistant*`
+  (`engine/api.py`, used by the main app too, not just notebooks) — so a box set up for a local model or with
+  the cloud switched off can't be reached by Gemini through either path. Keep new entry points on `backend()`.
 - Label types (project.json `task`): detect (boxes), segment (outlines: masks as COCO RLE, box = mask box,
   polygons only at export, `engine/masks.py`) and classify (image classes on a grid). Smart sorting
   (`engine/sort.py`: grouping, suggestions, wrong-label check; S10) also drives "Sort parts" in box/outline projects.

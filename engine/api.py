@@ -305,12 +305,26 @@ class Session:
         self.notes.clear()
 
     # Rivet, the helper (engine/assistant.py). The web page asks the server over HTTP; notebooks ask here.
+    # assistant.backend() is the one decision ui/host_fastapi.py's REST routes share: on a machine set up for a
+    # local model or with the cloud switched off, these must behave the same way, never falling through to
+    # Gemini just because they came in over the websocket instead.
     def on_assistant_info(self, msg):
         from engine import assistant
+        b = assistant.backend()
+        if b != "gemini":
+            self.send({"type": "assistant_info", "name": assistant.NAME, "ready": False, "source": b,
+                      "local_model": None, "can_save": False, "tips": [], "pros": ""})
+            return
         self.send({"type": "assistant_info", **assistant.info()})
 
     def on_assistant(self, msg):
         from engine import assistant
+        b = assistant.backend()
+        if b != "gemini":
+            text = assistant.NOT_INSTALLED if b == "none" else \
+                "Ask from the app's web page: the local assistant is not available over this connection yet."
+            self.send({"type": "assistant", "id": msg.get("id"), "error": text})
+            return
 
         def run():
             try:
@@ -322,6 +336,11 @@ class Session:
 
     def on_assistant_key(self, msg):
         from engine import assistant
+        if assistant.backend() != "gemini":
+            self.send({"type": "assistant_info", "name": assistant.NAME, "ready": False, "source": assistant.backend(),
+                      "local_model": None, "can_save": False, "tips": [], "pros": "",
+                      "key_error": "A Gemini key cannot be used: this computer is set up to use a different assistant."})
+            return
         try:
             assistant.save_key(msg.get("key", ""))
             self.send({"type": "assistant_info", **assistant.info()})

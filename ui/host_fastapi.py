@@ -1408,17 +1408,26 @@ def _ndjson(events) -> StreamingResponse:
 
 @app.get("/api/assistant")
 def assistant_info() -> dict:
-    from ui import rivet_tools
-    url = rivet_tools.base_url()
-    if url:
+    """"backend" is engine/assistant.py's backend(): the one decision every caller (this, assistant_chat/key
+    below, and engine/api.py's websocket on_assistant*) shares, so none of them can drift and reach Gemini
+    when they should not."""
+    b = assistant.backend()
+    if b == "local":
+        from ui import rivet_tools
+        url = rivet_tools.base_url()
         model = rivet_tools.model_id(url)
         return {**assistant.info(), "ready": bool(model), "source": "local", "local_model": model}
+    if b == "none":
+        return {"name": assistant.NAME, "ready": False, "source": "none", "local_model": None,
+                "can_save": False, "tips": assistant.info()["tips"], "pros": assistant.info()["pros"]}
     return {**assistant.info(), "source": "gemini", "local_model": None}
 
 
 @app.post("/api/assistant/key")
 def assistant_key(body: dict = Body(...)) -> dict:
     """Save (or with an empty key, remove) the Gemini key in ~/.partlabeler; the key never comes back out."""
+    if assistant.backend() != "gemini":
+        raise HTTPException(400, "A Gemini key cannot be used: this computer is set up to use a different assistant.")
     try:
         assistant.save_key(body.get("key", ""))
     except ValueError as e:
@@ -1432,9 +1441,12 @@ def assistant_key(body: dict = Body(...)) -> dict:
 def assistant_chat(body: dict = Body(...)):
     """One answer, streamed as JSON lines: {"model"} or {"offline"}, {"text"}..., {"done"} (or {"error"}); on a
     local model (ui/rivet_tools.py) also {"confirm": {...}} when it wants to run a destructive tool."""
-    from ui import rivet_tools
-    if rivet_tools.base_url():
+    b = assistant.backend()
+    if b == "local":
+        from ui import rivet_tools
         return _ndjson(rivet_tools.reply(body.get("messages"), body.get("context"), actor=ACTOR.get()))
+    if b == "none":
+        return _ndjson([{"error": assistant.NOT_INSTALLED}])
     return _ndjson(assistant.reply(body.get("messages"), body.get("context"), body.get("actions")))
 
 
