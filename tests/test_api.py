@@ -174,6 +174,8 @@ def test_opening_a_project_warms_up_the_click_model(tmp_path, video, monkeypatch
     msgs = []
     s = Session(Project.create(tmp_path / "proj", CLASSES, video=video), msgs.append)
     s.handle({"type": "ready"})
+    assert not loaded.wait(0.3)                                # the first frame goes out before any loading starts
+    s.handle({"type": "warm_up"})                              # the page has drawn that frame
     assert loaded.wait(5) and "seg" in api._MODELS          # loaded in the background, before any click
     for _ in range(50):
         if [m for m in msgs if m["type"] == "loading"][-1:] == [{"type": "loading", "text": ""}]:
@@ -182,5 +184,5 @@ def test_opening_a_project_warms_up_the_click_model(tmp_path, video, monkeypatch
     shown = [m["text"] for m in msgs if m["type"] == "loading"]
     assert shown[0].startswith("Getting the outline model ready") and shown[-1] == ""   # a lasting status, then cleared
     msgs.clear()
-    s.handle({"type": "ready"})                                # already loaded: nothing more to say
+    s.handle({"type": "warm_up"})                              # already loaded: nothing more to say
     assert [m for m in msgs if m["type"] == "loading"] == []

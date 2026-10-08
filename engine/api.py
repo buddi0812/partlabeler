@@ -162,8 +162,8 @@ class Session:
             self.send({"type": "loading", "text": ""})
 
     def _warm_up(self):
-        """Load the click model in the background as soon as a project opens, so the first click does not wait
-        for it (PARTLABELER_WARMUP=0: off, as in the tests). Failures are left for that first click to report."""
+        """Load the click model in the background once the page shows its first frame, so the first click does not
+        wait for it (PARTLABELER_WARMUP=0: off, as in the tests). Failures are left for that first click to report."""
         if self.p.task == "classify" or "seg" in _MODELS or os.environ.get("PARTLABELER_WARMUP", "1") == "0":
             return
 
@@ -287,6 +287,10 @@ class Session:
         self.send(self.status_msg())
         self.send(self.item_msg(max(0, min(msg.get("item", 0), len(self.p.items) - 1))))
         self.send({"type": "notifications", **self.notes.snapshot()})
+
+    def on_warm_up(self, msg):
+        """The page shows its first frame: now load the click model in the background (loading it during the
+        first frame's delivery held that frame back by the whole load on a busy PC)."""
         self._warm_up()
 
     def on_notifications_read(self, msg):

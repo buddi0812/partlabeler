@@ -256,14 +256,16 @@ sharp, for exact edge work.
 
 ## Draw a box by hand
 
-Press **B** (or choose **Draw box** under Tool) and drag. With a box selected, dragging redraws that box.
+Press **B** (or choose **Draw box** under Tool) and drag: every drag adds a new box of the current class (to change an
+existing box, use its handles, below). Picking a class re-labels a box only when you selected that box yourself
+(Ctrl+click, a click in the list, or a click with Draw box); the part you just made stays highlighted but keeps its class.
 Press **C** to go back to click-to-outline. Hand-drawn boxes are useful for parts SAM cannot separate.
 
 **Adjust a box** (object detection projects): select it (Ctrl+click it, or click it under Boxes on this frame), then
 drag one of its eight white handles to resize it, or drag inside it to move it. It stays the same part with the same
 class, becomes yours (manual), and Ctrl+Z undoes it.
 
-When a project opens, PartLabeler loads the outline model in the background; the bottom line says "Getting the
+Once a project's first frame shows, PartLabeler loads the outline model in the background; the bottom line says "Getting the
 outline model ready…" until it is done (the first time after a start this can take up to a minute). Clicks made
 meanwhile wait for it and then go through.
 

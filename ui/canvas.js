@@ -895,10 +895,10 @@ function render({ model, el }) {
         <div><span>Next larger outline for it</span><kbd>M</kbd></div>
         <div><span>Grow / shrink the selected part</span><span><kbd>Shift</kbd>/<kbd>Alt</kbd> + click</span></div>
         <div><span>Select a box</span><span><kbd>Ctrl</kbd> + click</span></div>
-        <div><span>Draw a box (redraws the selected one)</span><span><kbd>B</kbd> then drag</span></div>
+        <div><span>Draw a new box</span><span><kbd>B</kbd> then drag</span></div>
         <div><span>Resize / move the selected box (object detection)</span><span>drag a handle / drag inside it</span></div>
         <div><span>Back to click-to-outline</span><kbd>C</kbd></div>
-        <div><span>Pick class (re-labels the selected box)</span><span><kbd>1</kbd>–<kbd>9</kbd>, <kbd>0</kbd>, <kbd>[</kbd> <kbd>]</kbd></span></div>
+        <div><span>Pick class (re-labels a box you selected)</span><span><kbd>1</kbd>–<kbd>9</kbd>, <kbd>0</kbd>, <kbd>[</kbd> <kbd>]</kbd></span></div>
         <div><span>Delete the selected box</span><kbd>Del</kbd></div>
         <div><span>Deselect</span><kbd>Esc</kbd></div>
         <div><span>Undo</span><span><kbd>Ctrl</kbd> + <kbd>Z</kbd></span></div>
@@ -1307,7 +1307,9 @@ function render({ model, el }) {
     if (!S.project || i < 0 || i >= S.project.classes.length) return;
     S.cls = i;
     if (S.grid) { tagSelected(i); renderSide(); return; }
-    if (S.sel != null) send({ type: "set_class", obj: S.sel, cls: i, item: S.item });
+    // Only a box the person selected is re-labeled: a part just created stays selected (for M and Shift/Alt clicks),
+    // and picking the class for the next part must not quietly change it.
+    if (S.sel != null && S.picked) send({ type: "set_class", obj: S.sel, cls: i, item: S.item });
     renderSide();
   }
   const trackN = () => Math.max(1, parseInt($(".pl-n").value, 10) || 20);
@@ -1375,7 +1377,7 @@ function render({ model, el }) {
     if (t.dataset.del) { send({ type: "delete", item: S.item, obj: +t.dataset.del }); if (S.sel === +t.dataset.del) S.sel = null; }
     else if (t.dataset.tool) { S.tool = t.dataset.tool; renderSide(); }
     else if (t.dataset.cls) setClass(+t.dataset.cls);
-    else if (t.dataset.obj) { S.sel = +t.dataset.obj; renderSide(); draw(); }
+    else if (t.dataset.obj) { S.sel = +t.dataset.obj; S.picked = true; renderSide(); draw(); }
   });
   $(".pl-filter").addEventListener("input", (e) => { S.filter = e.target.value; renderSide(); });
   $(".pl-after").addEventListener("toggle", (e) => {
@@ -1827,12 +1829,12 @@ function render({ model, el }) {
       if (b) send({ type: "box", item: S.item, cls: b.cls, box: gripBox(d.grip, d.box, d.x1 - d.x0, d.y1 - d.y0), obj: b.obj });
       draw(); return;
     }
-    if (e.ctrlKey || e.metaKey) { S.sel = boxAt(d.x0, d.y0); renderSide(); draw(); return; }
+    if (e.ctrlKey || e.metaKey) { S.sel = boxAt(d.x0, d.y0); S.picked = S.sel != null; renderSide(); draw(); return; }
     if (S.tool === "box") {
-      if (d.moved) {
+      if (d.moved) {                          // always a new box: the selected one is adjusted with its handles
         const box = [Math.min(d.x0, d.x1), Math.min(d.y0, d.y1), Math.max(d.x0, d.x1), Math.max(d.y0, d.y1)];
-        send({ type: "box", item: S.item, cls: S.cls, box, obj: S.sel ?? undefined });
-      } else { S.sel = boxAt(d.x0, d.y0); renderSide(); draw(); }
+        send({ type: "box", item: S.item, cls: S.cls, box });
+      } else { S.sel = boxAt(d.x0, d.y0); S.picked = S.sel != null; renderSide(); draw(); }
       return;
     }
     if (d.moved) { draw(); return; }
@@ -1906,7 +1908,7 @@ function render({ model, el }) {
         el.querySelectorAll(`.pl-grid img[data-need="${k}"]`).forEach((img) => { img.src = src; img.removeAttribute("data-need"); });
       }
     }
-    else if (m.type === "select") { S.sel = m.obj; }
+    else if (m.type === "select") { S.sel = m.obj; S.picked = false; }
     else if (m.type === "status") {
       Object.assign(S, { statuses: m.statuses, flags: m.flags, busy: m.busy, gpu: m.gpu, undo: m.undo });
       if (S.saving) { S.saving = false; S.savedAt = Date.now(); }
@@ -1921,15 +1923,16 @@ function render({ model, el }) {
         S.item = m.item; S.data = m; S.img = img;
         if (cv.width !== m.w || cv.height !== m.h) { cv.width = m.w; cv.height = m.h; S.zoom = 1; S.pan = [0, 0]; applyZoom(); }
         if (S.sel != null && !m.boxes.some((b) => b.obj === S.sel)) S.sel = null;
-        if (S.pendingSel != null) { if (m.boxes.some((b) => b.obj === S.pendingSel)) S.sel = S.pendingSel; S.pendingSel = null; }
+        if (S.pendingSel != null) { if (m.boxes.some((b) => b.obj === S.pendingSel)) { S.sel = S.pendingSel; S.picked = true; } S.pendingSel = null; }
         if (S.grid?.peek === m.item && $(".pl-peek").open && !web) $(".pl-peek-img").src = m.src;
         draw(); renderSide(); renderTop(); drawStrip();
+        if (!S.warmed) { S.warmed = true; send({ type: "warm_up" }); }   // the model loads once the first frame shows
         playNext();
       };
       img.onerror = () => stopPlay();
       img.src = m.src;
     }
-    else if (m.type === "mask") { const img = new Image(); img.onload = () => { S.mask = img; S.maskItem = m.item; S.sel = m.obj; draw(); renderSide(); }; img.src = m.src; }
+    else if (m.type === "mask") { const img = new Image(); img.onload = () => { S.mask = img; S.maskItem = m.item; S.sel = m.obj; S.picked = false; draw(); renderSide(); }; img.src = m.src; }
     else if (m.type === "item_changed") {
       if (S.grid) send({ type: "grid", of: S.grid.of });
       else if (m.items.includes(S.target)) send({ type: "goto", item: S.target });
