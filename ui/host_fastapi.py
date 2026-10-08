@@ -36,7 +36,7 @@ from fastapi.staticfiles import StaticFiles
 
 from engine import assistant
 from engine.accounts import Accounts, default_home
-from engine.api import Session
+from engine.api import ACTOR, Session
 from engine.notify import Notifications
 from engine.project import FRAME_FORMATS, IMAGE_EXTS, Project, read_classes
 
@@ -73,7 +73,7 @@ PAGE = HEAD + """<title>{title} · PartLabeler</title>
 <script type="module">import {{ page }} from "/ui/pages.js"; page(document.getElementById("page"), {args});</script>"""
 
 state: dict = {"home": Path("projects"), "sessions": {}, "clients": {}, "jobs": {}, "update_check": None, "restart": None,
-               "notes": {}, "accounts": None}
+               "notes": {}, "accounts": None, "team": False, "failed_logins": {}}
 UPDATE_CHECK_S = 6 * 3600                                    # ask GitHub at most this often
 COOKIE = "pl_session"
 USER: contextvars.ContextVar = contextvars.ContextVar("user", default=None)   # who is signed in, per request
@@ -271,11 +271,12 @@ async def signed_in(request, call_next):
             back = path + (f"?{request.url.query}" if request.url.query else "")
             return RedirectResponse(f"/login?next={quote(back)}", status_code=303)
         return JSONResponse({"detail": "Sign in first (open the start page)"}, status_code=401)
-    token = USER.set(user)
+    token, actor = USER.set(user), ACTOR.set(user)
     try:
         return await call_next(request)
     finally:
         USER.reset(token)
+        ACTOR.reset(actor)
 
 
 def _signed_in_as(response: Response, user: str, keep: bool) -> dict:
@@ -291,12 +292,26 @@ def login_page(next: str = "/"):
     return _page("Sign in", view="login", first=not accounts().users())
 
 
+LOGIN_TRIES, LOGIN_WINDOW_S = 5, 600                        # wrong passwords per user name / address, then a pause
+
+
 @app.post("/api/auth/login")
-def login(response: Response, body: dict = Body(...)) -> dict:
-    # ponytail: no attempt limit; the server only listens on 127.0.0.1, where the files themselves are readable
+def login(request: Request, response: Response, body: dict = Body(...)) -> dict:
+    """A team server is reachable from other computers: after LOGIN_TRIES wrong passwords for a user name or from an
+    address within LOGIN_WINDOW_S, both wait until that window has passed."""
+    name = str(body.get("username", "")).strip().lower()
+    keys = [f"user:{name}", f"addr:{request.client.host if request.client else ''}"]
+    now, failed = time.time(), state["failed_logins"]
+    recent = {k: [t for t in failed.get(k, []) if now - t < LOGIN_WINDOW_S] for k in keys}
+    if any(len(v) >= LOGIN_TRIES for v in recent.values()):
+        raise HTTPException(429, f"Too many wrong passwords: wait {LOGIN_WINDOW_S // 60} minutes and try again")
     user = accounts().verify(body.get("username", ""), body.get("password", ""))
     if not user:
+        for k in keys:
+            failed[k] = recent[k] + [now]
         raise HTTPException(401, "Wrong username or password")
+    for k in keys:
+        failed.pop(k, None)
     return _signed_in_as(response, user, bool(body.get("keep")))
 
 
@@ -854,6 +869,7 @@ async def ws(sock: WebSocket, name: str):
         await sock.close()
         return
     USER.set(user)                                            # this connection's task only
+    ACTOR.set(user)                                           # whose undo and jobs (engine/api.py)
     try:
         sess = await asyncio.to_thread(session, name)
     except HTTPException as e:
@@ -1337,9 +1353,11 @@ def assistant_chat(body: dict = Body(...)):
 
 # ---- entry points -------------------------------------------------------------------------
 def serve(home: Path | None = None, port: int = 8765, open_browser: bool = True, project: str | None = None,
-          host: str = "127.0.0.1") -> None:
+          host: str = "127.0.0.1", team: bool = False) -> None:
     """host: 127.0.0.1 (this computer only), or an address of this computer for network mode (e.g. 0.0.0.0): other
-    machines then reach only /api/v1 with API tokens (put HTTPS in front, docs/INTEGRATION.md)."""
+    machines then reach only /api/v1 with API tokens (put HTTPS in front, docs/INTEGRATION.md). team: a team server,
+    where other machines (signed in) use the whole app; accounts are made on this computer (docs/GUIDE.md)."""
+    state["team"] = team
     from engine import utf8_output
     utf8_output()
     state["home"] = Path(home) if home else default_home()
@@ -1348,7 +1366,11 @@ def serve(home: Path | None = None, port: int = 8765, open_browser: bool = True,
     print(f"PartLabeler: {url}   (projects in {state['home'].resolve()}; Ctrl+C to quit)", flush=True)
     if not accounts().users():
         print("First start: the page asks you to create your account.", flush=True)
-    if host not in ("127.0.0.1", "localhost", "::1"):
+    if host not in ("127.0.0.1", "localhost", "::1") and team:
+        print(f"Team server on {host}:{port}: teammates open http://<this computer's address>:{port}/ and sign in; "
+              "make their accounts here (this computer's sign-in page or `partlabeler account add NAME`). Let only "
+              "trusted networks reach the port (e.g. Tailscale, docs/GUIDE.md).", flush=True)
+    elif host not in ("127.0.0.1", "localhost", "::1"):
         print(f"Network mode on {host}:{port}: other machines reach only the integration API (/api/v1) with API "
               "tokens; use HTTPS in front of it (docs/INTEGRATION.md).", flush=True)
     if open_browser:
@@ -1363,14 +1385,15 @@ def main():
     ap.add_argument("--port", type=int, default=8765)
     ap.add_argument("--no-browser", action="store_true")
     ap.add_argument("--host", default="127.0.0.1", help="listen address; other than 127.0.0.1: network mode (/api/v1 only from other machines)")
+    ap.add_argument("--team", action="store_true", help="team server: other machines (signed in) use the whole app")
     args = ap.parse_args()
     if args.project:
         folder = Path(args.project).resolve()
         if not (folder / "project.json").exists():
             raise SystemExit(f"{folder} is not a project; create one on the start screen or with `partlabeler new`")
-        serve(folder.parent, args.port, not args.no_browser, folder.name, args.host)
+        serve(folder.parent, args.port, not args.no_browser, folder.name, args.host, team=args.team)
     else:
-        serve(args.home and Path(args.home), args.port, not args.no_browser, host=args.host)
+        serve(args.home and Path(args.home), args.port, not args.no_browser, host=args.host, team=args.team)
 
 
 from ui import mcp as _mcp                                   # noqa: E402  (/mcp and /api/tools use the functions above)

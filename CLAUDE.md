@@ -36,6 +36,9 @@
 - Integration API (`ui/v1.py`; contract and production design guide `docs/INTEGRATION.md`; stdlib client
   `client/partlabeler_client.py`): `/api/v1`, changes only by addition (breaking = `/api/v2`). Network mode (`--host`):
   other machines and proxied requests reach only `/api/v1`; path tools (`LOCAL_ONLY_TOOLS`) are refused there.
+- Team server (`"team": true` + `"host"` in ~/.partlabeler/app.json, or `app --team`): other machines get the whole
+  app signed in; `ui/v1.py` TEAM_LOCAL_ONLY stays local (signup, open-folder, update, assistant key, projects folder);
+  login attempt limit; engine/api.py `ACTOR` (set by the host) makes undo per person and lets a teammate's job wait.
 - Annotate by text (`engine/textlabel.py`, `ConceptFinder.detect_texts`: one image encoding for all phrases): scopes
   frame / rest / task / project, finds stored as `imported` parts to check, never doubled, one undo step.
 - Layout: `engine/` (no UI code; `api.py` is the one message protocol), `ui/` (`canvas.js` annotator, `home.js` start screen, two hosts), `engine/cli.py` (`partlabeler` CLI). User data lives in `data/` and `projects/`, both gitignored: never commit them.

@@ -41,6 +41,8 @@ from ui import mcp
 H = None                                                  # the host module (ui/host_fastapi.py), set by mount()
 LOOPBACK = {"127.0.0.1", "::1", "localhost", "testclient"}
 LOCAL_ONLY_TOOLS = {"add_tasks", "import_backup", "frames_to_video"}      # they take paths on this computer
+# Team server: what other machines may not do (it acts on this computer's desktop or setup, or makes accounts).
+TEAM_LOCAL_ONLY = ("/api/auth/signup", "/api/open-folder", "/api/assistant/key", "/api/me/projects-folder")
 MAX_IMAGE = 40 * 2**20                                    # bytes, one image sent to /annotate
 router = APIRouter(prefix="/api/v1", tags=["integration v1"])
 
@@ -292,8 +294,16 @@ def mount(app, host) -> None:
 
     @app.middleware("http")
     async def network_guard(request: Request, call_next):
-        """Other machines (or anything relayed by a proxy) reach only the integration API."""
-        if remote(request) and not request.url.path.startswith("/api/v1/"):
-            return JSONResponse({"detail": "From another machine only the integration API (/api/v1) is open"},
-                                status_code=403)
+        """Other machines (or anything relayed by a proxy) reach only the integration API; on a team server (serve
+        team=True) the whole app, signed in, except what acts on this computer itself or makes accounts."""
+        if remote(request):
+            path = request.url.path
+            if H.state.get("team"):
+                if path.startswith(TEAM_LOCAL_ONLY) or (path == "/api/update" and request.method != "GET"):
+                    return JSONResponse({"detail": "Only on the server itself: ask the person who runs PartLabeler "
+                                                   "there (accounts, updates, folders and settings of that computer)"},
+                                        status_code=403)
+            elif not path.startswith("/api/v1/"):
+                return JSONResponse({"detail": "From another machine only the integration API (/api/v1) is open"},
+                                    status_code=403)
         return await call_next(request)

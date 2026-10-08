@@ -37,6 +37,24 @@ The account menu is the round button with your initials at the top right of ever
 in and has **Settings** and **Sign out**. Notebooks (Jupyter, Colab) have no sign-in: the notebook is already
 yours, and the annotator there uses the default settings.
 
+## Team server: several people on one PartLabeler
+
+One computer (with the GPU) runs PartLabeler for the whole team; everyone annotates in their own browser, at the
+same time, on different tasks or projects. Edits appear live in everyone's open tabs, Ctrl+Z takes back only your
+own changes, and a tracking job asked for while a teammate's runs in the same project waits for it, then starts.
+
+1. On the server, add to `~/.partlabeler/app.json` (make the file if it is not there):
+   `{"team": true, "host": "0.0.0.0"}`, then restart PartLabeler (close its window, run `run_windows.bat`).
+   (`partlabeler app --team --host 0.0.0.0` does the same for one start.)
+2. Make an account for each teammate **on the server**: its own sign-in page (Create an account), or
+   `partlabeler account add NAME` in the PartLabeler folder. Other computers cannot make accounts.
+3. Let only your own network reach port 8765, for example only Tailscale addresses (100.64.0.0/10) in the Windows
+   firewall; Tailscale also encrypts the traffic. Teammates open `http://<server address>:8765/` and sign in.
+
+From other computers everything works except what acts on the server itself: updating PartLabeler, opening folders
+on its desktop, the helper's key, choosing another projects folder, and making accounts. After 5 wrong passwords
+for a name (or from one computer) sign-in pauses for 10 minutes.
+
 ## Settings
 
 Open **Settings** from the account menu. Every change is saved at once ("Saved" flashes next to the title) and

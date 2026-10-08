@@ -37,6 +37,7 @@ background jobs are waited for and the hints they gave come back, while open scr
 Models load on first use and are shared by every open project (one copy in GPU memory).
 """
 import base64
+import contextvars
 import io
 import os
 import re
@@ -69,6 +70,9 @@ THUMB = 224                                               # px, longest side of 
 JOBS = {"track", "suggest", "find_all", "find_text", "outline", "sort", "suggest_tags", "odd", "export", "add_task",
         "label_tasks", "annotate_text"}
 
+# Who sends the current message (the web host sets the signed-in account): undo takes back that person's own last
+# change, and a job asked for while someone else's runs in the project waits for it instead of being refused.
+ACTOR: contextvars.ContextVar = contextvars.ContextVar("actor", default=None)
 _MODELS: dict = {}
 _LOCKS = {k: threading.Lock() for k in ("seg", "track", "suggest", "concept", "embed", "load")}
 
@@ -144,7 +148,8 @@ class Session:
         self._locks = _LOCKS
         self.points = {}                                  # (item, obj) -> [[x, y, label], ...]
         self.outlines = {}                                # (item, obj) -> ([(mask, score), ...] small->large, index)
-        self.history = []                                 # [(label, snapshot)] for undo
+        self.history = []                                 # [(label, snapshot, actor)] for undo
+        self.job_actor, self._job_lock = None, threading.Lock()
         self.job, self.running, self.stop_flag, self.error = None, False, False, None
         self.thumb_src = None                              # web host: (of, key) -> URL; notebooks ask with `thumbs`
         self.sorting = {}                                  # of -> {"keys", "vectors", "groups"}
@@ -195,7 +200,7 @@ class Session:
                 for t in self.p.sources]
 
     def _remember(self, items, label: str) -> None:
-        self.history.append((label, self.p.snapshot(items)))
+        self.history.append((label, self.p.snapshot(items), ACTOR.get()))
         del self.history[:-HISTORY]
 
     # ---- messages out --------------------------------------------------------------------
@@ -553,10 +558,12 @@ class Session:
         if self.running:
             self.send({"type": "toast", "text": "A job is running; press Stop (X) before undoing"})
             return
-        if not self.history:
+        actor = ACTOR.get()                               # a person undoes their own changes, not a teammate's
+        mine = [k for k, h in enumerate(self.history) if actor is None or h[2] == actor]
+        if not mine:
             self.send({"type": "toast", "text": "Nothing to undo"})
             return
-        label, snap = self.history.pop()
+        label, snap, _ = self.history.pop(mine[-1])
         items = self.p.restore(snap)
         self.points = {k: v for k, v in self.points.items() if k[0] not in snap["rows"]}
         self.outlines = {k: v for k, v in self.outlines.items() if k[0] not in snap["rows"]}
@@ -626,10 +633,16 @@ class Session:
 
     # ---- background jobs -----------------------------------------------------------------
     def _run(self, name, fn):
-        if self.running:
+        actor = ACTOR.get()
+        if self.running and (actor is None or self.job_actor == actor):
             self.send({"type": "toast", "text": "Busy with another job; press Stop first"})
             return
-        self.stop_flag, self.running, self.error = False, True, None
+        with self._job_lock:                              # a teammate's job: wait for it (later waiters queue here)
+            if self.running:
+                self.send({"type": "toast", "text": f"Someone else's job is running in this project; {name.lower()} starts when it ends"})
+                while self.running:
+                    self.job.join(0.5)
+            self.stop_flag, self.running, self.error, self.job_actor = False, True, None, actor
         self.send({"type": "progress", "task": name, "done": 0, "total": 1})
 
         def wrapped():

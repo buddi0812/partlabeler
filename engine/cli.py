@@ -59,13 +59,18 @@ def _classes(path: Path) -> list[str]:
 def app_cmd(home: Path = typer.Option(None, help="Folder holding the projects (default: PARTLABELER_HOME, else \"home\" in ~/.partlabeler/app.json, else projects/)."),
             port: int = typer.Option(8765, help="Local port."),
             browser: bool = typer.Option(True, "--browser/--no-browser", help="Open the page in a browser."),
-            host: str = typer.Option("127.0.0.1", help="Listen address. Anything else (e.g. 0.0.0.0) is network mode: "
-                                                        "other machines reach only the integration API /api/v1 with API tokens.")):
+            host: str = typer.Option(None, help="Listen address (default: \"host\" in ~/.partlabeler/app.json, else "
+                                                 "127.0.0.1). Anything else (e.g. 0.0.0.0) is network mode: other machines "
+                                                 "reach only the integration API /api/v1 with API tokens."),
+            team: bool = typer.Option(False, "--team", help="Team server (also \"team\": true in app.json): other "
+                                                            "machines, signed in, use the whole app.")):
     """Start the annotator (start page, projects, Teach & Transfer) at http://127.0.0.1:PORT."""
+    from engine.accounts import app_config
     from engine.update import finish_pending
     finish_pending(log=typer.echo)                             # packages an update from the start screen left for now
     from ui.host_fastapi import serve
-    serve(home, port, browser, host=host)
+    cfg = app_config()
+    serve(home, port, browser, host=host or cfg.get("host") or "127.0.0.1", team=team or bool(cfg.get("team")))
 
 
 @app.command()
@@ -260,6 +265,19 @@ def account_list():
     from engine.accounts import Accounts
     for u in Accounts().users() or [{"username": "(none yet: the app asks for one on first start)", "name": ""}]:
         typer.echo(f"{u['username']}  {u['name'] if u['name'] != u['username'] else ''}".rstrip())
+
+
+@account_app.command("add")
+def account_add(username: str = typer.Argument(..., help="The new account's username."),
+                name: str = typer.Option("", help="Display name.")):
+    """Make an account (on a team server, teammates' accounts are made on the server itself)."""
+    from engine.accounts import Accounts
+    password = typer.prompt("Password", hide_input=True, confirmation_prompt=True)
+    try:
+        Accounts().create(username, password, name)
+    except ValueError as e:
+        raise typer.BadParameter(str(e))
+    typer.echo(f"account {username} made")
 
 
 @account_app.command("reset")
