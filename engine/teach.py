@@ -713,12 +713,19 @@ def _train_step(run_dir: Path, prep: dict, size, epochs, resolution, aug, progre
 def teach(dataset_dir, run_dir, parent: str | None = None, size: str = "small", epochs: int = 30,
           resolution: int = 640, held_out: float = 0.2, aug: str = "strong", progress=None,
           should_stop=None, recolor: float = 0.0, crop_to_parent: bool = True, stage: str = "all",
-          empty_every: int = 1) -> dict:
+          empty_every: int = 1, task_cameras: dict | None = None, project: str | None = None) -> dict:
     """Analyse, prepare, train and prove; writes settings.json, report.json and report.md into run_dir and
     returns the report ({"status": "stopped", ...} when should_stop ended it early). A "seg-" size also outlines
     the parts (trained on the source's polygons/). To train on another machine (e.g. a cloud GPU): stage "prepare"
     stops once run_dir holds analysis.json and dataset/; copy run_dir there and call teach(None, run_dir, ...,
-    stage="train") with the same settings: it trains and proves from them."""
+    stage="train") with the same settings: it trains and proves from them.
+
+    `task_cameras` ({task name: {"camera_id", "crop"}}, from the tasks this run was built from, when any came
+    from the Recordings tab): carried into settings.json as-is; export_onnx() uses it to write model.json's
+    "crop", or to refuse export if one camera's tasks were cut differently.
+
+    `project` (the project this run was built from, when any - a run from a raw dataset folder has none):
+    carried into settings.json as-is; hawk-ai-internal §12.3's /api/v1/models uses it as a run's display name."""
     from engine import detector, hw
     if stage not in ("all", "prepare", "train"):
         raise ValueError(f"unknown stage {stage!r}")
@@ -789,6 +796,7 @@ def teach(dataset_dir, run_dir, parent: str | None = None, size: str = "small", 
                 "naming": sampling["naming"], "image_ext": sampling["image_ext"],
                 "presence": {n: pc["presence"] for n, pc in analysis["per_class"].items()},
                 "checkpoint": ckpt.relative_to(run_dir).as_posix(), "source": str(dataset_dir),
+                "task_cameras": task_cameras or None, "project": project,
                 "created": time.strftime("%Y-%m-%d %H:%M:%S")}
     report = {"status": "done", "run_dir": str(run_dir), "source": str(dataset_dir),
               "knowledge_score": round(100 * proof["mAP50"], 1), "passed": all(t["pass"] for t in targets.values()),

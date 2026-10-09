@@ -577,6 +577,25 @@ def list_exports(args):
     return {"exports": H.list_exports()}
 
 
+@tool("Stations known to this computer's recordings source (the Recordings tab): id and name, for picking where "
+      "to deploy an exported model (deploy_link).")
+def list_stations(args):
+    from engine import recordings
+    return {"stations": [{"id": s["id"], "name": s["name"]} for s in recordings.list_all()["stations"]]}
+
+
+@tool("A link to open on the box's own screen, to deploy a finished export to a station: the person approves there "
+      "with their own sign-in and permissions (this never deploys anything itself, and needs no PartLabeler "
+      "write access to the box - hawk-ai-internal §12.3). Station ids: list_stations.",
+      ["export", "station"], export=S("Export id (a Teach run name, list_exports)"),
+      station=S("Station id (list_stations)"))
+def deploy_link(args):
+    from urllib.parse import quote
+    from engine.accounts import app_config
+    base = (app_config().get("dashboard_url") or "http://127.0.0.1:8080").rstrip("/")
+    return {"url": f"{base}/models?deploy={quote(str(args['export']), safe='')}&station={quote(str(args['station']), safe='')}"}
+
+
 @tool("Label tasks with a finished Teach run: the model's parts (outlines in segmentation projects) on every frame "
       "nobody labeled or confirmed, as parts to check (source 'imported', score = confidence). Undoable.",
       ["project", "run", "tasks"], project=PROJECT, run=S("Teach run name (list_runs)"),

@@ -62,9 +62,26 @@
 - Integration API (`ui/v1.py`; contract and production design guide `docs/INTEGRATION.md`; stdlib client
   `client/partlabeler_client.py`): `/api/v1`, changes only by addition (breaking = `/api/v2`). Network mode (`--host`):
   other machines and proxied requests reach only `/api/v1`; path tools (`LOCAL_ONLY_TOOLS`) are refused there.
+  `GET /api/v1/models` (hawk-ai-internal §12.3) is the one exception: a service key (`X-Hawk-Token` = app.json
+  `"models_token"`, not a Bearer account token) lists every export (`ui/host_fastapi.py` `models_for_deploy`) for
+  a same-box production system's deploy picker, local-only (127.0.0.1) even with the right key since `onnx_path`
+  is an absolute path. Rivet's `deploy_link`/`list_stations` tools build the dashboard deep link
+  (`app.json "dashboard_url"`, default `http://127.0.0.1:8080`) a person opens and approves on the box's own
+  screen - PartLabeler never deploys anything itself.
 - Team server (`"team": true` + `"host"` in ~/.partlabeler/app.json, or `app --team`): other machines get the whole
   app signed in; `ui/v1.py` TEAM_LOCAL_ONLY stays local (signup, open-folder, update, assistant key, projects folder);
   login attempt limit; engine/api.py `ACTOR` (set by the host) makes undo per person and lets a teammate's job wait.
 - Annotate by text (`engine/textlabel.py`, `ConceptFinder.detect_texts`: one image encoding for all phrases): scopes
   frame / rest / task / project, finds stored as `imported` parts to check, never doubled, one undo step.
+- Cycle recordings (`engine/recordings.py`, "Recordings" tab): browse another local system's cameras/videos and add
+  them as tasks. `app.json "recordings_api"` (must be 127.0.0.1/localhost) + `"recordings_token"` (sent as header
+  `X-Hawk-Token`, read fresh per call, never logged or put in a URL - the other system regenerates it on its own
+  install/repair/update); else a plain `"recordings_dir"` folder. `resolve()` pages past the API's default
+  listing limit (a camera can keep 100+ segments/day).
+  "Crop to camera ROI" cuts every kept frame to that camera's ROI at ingest (`Project.add_source`'s `camera_id`/
+  `crop`, `engine.recordings.crop_rect`/`valid_crop` - the same floor/ceil rounding and 0..1-share validity rule
+  hawk-vision uses, so a crop drawn here lines up with what the box cuts at inference). A task's `camera_id`/
+  `crop` flow into a Teach run's settings.json `task_cameras`; `detector.crop_card` writes model.json's "crop"
+  (one rectangle per camera, only when every task of that camera used the same one) or refuses export by name
+  when one camera's tasks were cut differently (hawk-ai-internal §13.3).
 - Layout: `engine/` (no UI code; `api.py` is the one message protocol), `ui/` (`canvas.js` annotator, `home.js` start screen, two hosts), `engine/cli.py` (`partlabeler` CLI). User data lives in `data/` and `projects/`, both gitignored: never commit them.

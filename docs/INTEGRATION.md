@@ -74,6 +74,10 @@ projects folder, and route each project to one instance. Two instances must neve
 - One token per service and environment. Keep it in your secret store, never in code or images.
 - Rotate by creating the new token, deploying it, then **revoking** the old one in Settings. Revocation is immediate.
 - Missing or wrong token: **401**. Wrong place (another machine on a non-API route, or a path tool): **403**.
+- `GET /api/v1/models` is a different, narrower door, not an integration route: a service key (`X-Hawk-Token`
+  matching app.json `"models_token"`) instead of a Bearer token, and local-only (127.0.0.1) even with the right
+  key. It is how a same-box production system picks a PartLabeler export to deploy, not something your own
+  integration should call.
 
 ## 4. Conventions
 
@@ -225,6 +229,18 @@ with `POST /tools/stop {"project": name}`.
 JSON body, for example `POST /tools/confirm_frames {"project": "yard-cams", "items": [4, 5]}` or
 `POST /tools/track {"project": "yard-cams", "task": 1, "frame": 1, "frames": 50}`. Tool errors use the status codes
 below.
+
+### `GET /models`: exports for a deploy picker (not for integrations - see §3 below)
+
+```json
+{"models": [{"id": "run_1", "name": "yard-cams", "created": "2026-10-09T18:04:11+05:30", "classes": ["bolt"],
+             "crop": {"cam1": [0.1, 0.1, 0.5, 0.5]}, "parent": null, "resolution": 640, "threshold": 0.42,
+             "passed": true, "knowledge_score": 94.2, "frames": {"train": 180, "held_out": 45},
+             "parity": {"frames": 20, "boxes": 31, "missing": 0, "worst_px": 1.1},
+             "onnx_path": "D:\\labeling\\_teach\\run_1\\export\\model.onnx"}]}
+```
+Newest first. This route does not take a Bearer token at all (see §3) - it exists for a same-box production
+system (hawk-ai-internal §12.3) to list PartLabeler's exports for a deploy picker, never for a pipeline.
 
 ## 6. Jobs, concurrency and long work
 

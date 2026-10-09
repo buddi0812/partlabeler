@@ -203,14 +203,27 @@ class Project:
     def add_source(self, video=None, images=None, every: int = 5, progress=None, name: str | None = None,
                    subset: str = "", start: int | None = None, stop: int | None = None, quality: int = 95,
                    lossless: bool | None = None, sorting: str = "lexicographical", segment_size: int = 0,
-                   frames: str | None = None) -> dict:
+                   frames: str | None = None, camera_id: str | None = None,
+                   crop: list[float] | None = None) -> dict:
         """Add a task (CVAT's "Create a new task"): a video, of which every `every`-th frame from `start` to `stop`
         is kept (`frames`: "video" = read from the video itself, no image files; "jpg" of `quality`; "webp"
         lossless; default: the project's choice), or an image folder read in place,
         in `sorting` order. The task is split into jobs of `segment_size` items (0 = one job). Returns the task;
-        items already in the project keep their numbers."""
+        items already in the project keep their numbers.
+
+        `camera_id` + `crop` (shares [x, y, w, h] of the full frame, e.g. a Recordings-tab camera's ROI): every
+        kept frame is cut to that rectangle before it is stored, so annotation and Teach & Transfer see only the
+        crop - needs stored frame images (`frames` "jpg"/"webp", not "video"). `export_onnx` later writes this
+        into model.json's "crop" (engine.recordings.crop_rect/valid_crop: the same rule hawk-vision applies)."""
         if not (video or images) or (video and images):
             raise ValueError("give a video or an image folder")
+        if crop is not None:
+            from engine.recordings import valid_crop
+            if not video:
+                raise ValueError("crop only applies to a video task")
+            if not valid_crop(crop):
+                raise ValueError(f"invalid crop {crop!r}: need [x, y, w, h] shares with x,y >= 0, w,h > 0, "
+                                 "x+w <= 1, y+h <= 1")
         path = Path(video or images).resolve()
         if not path.exists():
             raise FileNotFoundError(path)
@@ -227,17 +240,28 @@ class Project:
             raise ValueError(f"unknown frame storage {fmt!r}; choose one of {', '.join(FRAME_FORMATS)}")
         if sorting not in SORTING:
             raise ValueError(f"unknown sorting {sorting!r}; choose one of {', '.join(SORTING)}")
+        if crop is not None and fmt == "video":
+            raise ValueError('crop needs stored frame images: choose frame storage "jpg" or "webp", not "video"')
         t = {"id": tid, "name": name, "kind": "video" if video else "images", "source": str(path),
              "every": max(1, int(every)) if video else 1, "frames": "frames" if tid == 0 else f"frames/t{tid}",
              "format": fmt, "quality": int(quality), "subset": (subset or "").strip(), "created": _now(),
              "segment_size": max(0, int(segment_size or 0))}
+        if camera_id:
+            t["camera_id"] = camera_id
         if video:
             t.update(start=start, stop=stop)
             t["info"] = probe_video(path)
+            crop_px = None
+            if crop is not None:
+                from engine.recordings import crop_rect
+                crop_px = crop_rect(crop, t["info"]["width"], t["info"]["height"])
+                t["crop"] = list(crop)
             kept, stored = (index_video(path, self.folder / t["frames"], t["every"], progress, start=start, stop=stop)
                             if fmt == "video" else
                             extract_frames(path, self.folder / t["frames"], t["every"], fmt, progress,
-                                           start=start, stop=stop, quality=int(quality)))
+                                           start=start, stop=stop, quality=int(quality), crop_px=crop_px))
+            if crop_px:
+                t["info"]["width"], t["info"]["height"] = crop_px[2] - crop_px[0], crop_px[3] - crop_px[1]
             t["info"].update(kept=kept, stored=stored)
         else:
             t["sorting"] = sorting
@@ -1421,10 +1445,12 @@ def index_video(video: Path, out: Path, every: int, progress=None, start: int | 
 
 
 def extract_frames(video: Path, out: Path, every: int, fmt: str = "jpg", progress=None, start: int | None = None,
-                   stop: int | None = None, quality: int = 95) -> tuple[int, int]:
+                   stop: int | None = None, quality: int = 95,
+                   crop_px: tuple[int, int, int, int] | None = None) -> tuple[int, int]:
     """Store every `every`-th frame from `start` to `stop` (inclusive; None = the ends) in `out`
     (f<frame number>.<fmt>, JPEG of `quality`); returns (frames, bytes). Frames are encoded on every core while
-    the next ones decode."""
+    the next ones decode. `crop_px` (x1, y1, x2, y2): cut every frame to that rectangle before saving (a fixed
+    camera ROI, e.g. from the Recordings tab) - the stored frame IS the crop, so annotation and training see it."""
     from concurrent.futures import ThreadPoolExecutor
     out.mkdir(parents=True, exist_ok=True)
     ext = ".webp" if fmt == "webp" else ".jpg"
@@ -1437,7 +1463,10 @@ def extract_frames(video: Path, out: Path, every: int, fmt: str = "jpg", progres
             if stop is not None and i > stop:
                 break
             if i >= first and (i - first) % every == 0:
-                pending.append(pool.submit(_save_frame, fr.to_image(), out / f"f{i:06d}{ext}", fmt, quality))
+                img = fr.to_image()
+                if crop_px:
+                    img = img.crop(crop_px)
+                pending.append(pool.submit(_save_frame, img, out / f"f{i:06d}{ext}", fmt, quality))
                 kept += 1
                 while len(pending) > 2 * workers:         # bounded: decoded frames are large
                     pending.pop(0).result()

@@ -521,6 +521,17 @@ product variants (e.g. a small separate lamp on one trim, a long strip on anothe
 `variant` label on its measured values); the check picks the variant nearest to the part's position after taking off
 how far the whole object stands from its usual place (`shift`, e.g. from its other parts in the same picture).
 
+## Cycle recordings
+
+The **Recordings** tab browses another local system's cameras and videos (a Hawk-AI box's own recordings), by
+station then camera, and starts a project or adds tasks straight from them - no need to know where the files
+live on disk. Set `recordings_api` (and `recordings_token`) or a plain `recordings_dir` folder in
+`~/.partlabeler/app.json` to point it at a source; hover a recording to preview it, and any marked cycles show
+on its card. Tick **Crop to each camera's ROI** in Advanced configuration before adding tasks whose camera has
+a known ROI: every kept frame is cut to that rectangle as it is stored, so training and the model see only the
+ROI - this is what later lets a finished model's export carry a `crop` so a production box only runs it on
+that part of the frame, instead of the whole camera view.
+
 ## Teach & Transfer: how it works
 
 Teach & Transfer is for when one video is already labeled and you want similar videos labeled the same way.
@@ -602,6 +613,12 @@ judged while a car drives in), and steady faults wait a settle time after a func
 A parent object can be given in Teach too; the model then looks only inside it. If a run stops, starting it
 again resumes from the last epoch. If Teach & Transfer is greyed out, it was not installed: run the
 installer again without `-NoTeach`.
+
+**Deploy to a Hawk-AI station.** Ask Rivet to deploy a finished export to a station by name; it replies with a
+link (`http://127.0.0.1:8080/models?...`, Hawk-AI's own dashboard) to open on the box's screen, where a person
+approves with their own sign-in. Rivet never deploys anything itself - PartLabeler has no write access to the
+box. The box discovers exports through its own, separate key (`models_token` in app.json), set up once by the
+box's installer.
 
 ## Notifications
 

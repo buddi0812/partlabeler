@@ -25,6 +25,7 @@ import time
 import traceback
 import uuid
 import webbrowser
+from datetime import datetime
 from urllib.parse import quote
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -253,7 +254,7 @@ async def revalidate_ui(request, call_next):
     return response
 
 
-OPEN = ("/login", "/api/auth/", "/ui/", "/api/v1/health")  # reachable before signing in
+OPEN = ("/login", "/api/auth/", "/ui/", "/api/v1/health", "/api/v1/models")  # reachable before signing in
 
 
 @app.middleware("http")
@@ -516,6 +517,7 @@ def task_summary(p: Project, t: dict, jobs: list[dict], statuses: list[int]) -> 
             "quality": t.get("quality", 95), "format": t.get("format", "jpg"), "sorting": t.get("sorting"),
             "segment_size": t.get("segment_size", 0), "labeled": sum(x >= 2 for x in part),
             "confirmed": sum(x == 4 for x in part), "jobs": jobs, **Project.task_status(jobs),
+            "camera_id": t.get("camera_id"), "crop": t.get("crop"),
             "preview": f"/previews/{quote(p.meta['name'])}/{t['id']}.jpg"}
 
 
@@ -569,7 +571,12 @@ def create_tasks(name: str, body: dict = Body(...)) -> dict:
     """CVAT's "Create a new task" (one path) or "Create multi tasks" (several: one task each, named after the
     file unless a name template with {{file_name}} / {{index}} is given)."""
     project_dir(name)
-    paths = [str(x).strip().strip('"') for x in (body.get("sources") or []) if str(x).strip()]
+    # a source is a plain path, or {"path", "camera_id", "crop"} (the Recordings tab, cropping to a camera's ROI).
+    srcs = [{"path": str(s).strip().strip('"')} if isinstance(s, str) else
+            {"path": str(s.get("path", "")).strip().strip('"'), "camera_id": s.get("camera_id"), "crop": s.get("crop")}
+            for s in (body.get("sources") or []) if s]
+    srcs = [s for s in srcs if s["path"]]
+    paths = [s["path"] for s in srcs]
     if not paths:
         raise HTTPException(400, "Select a video or an image folder")
     missing = [x for x in paths if not Path(x).exists()]
@@ -584,14 +591,16 @@ def create_tasks(name: str, body: dict = Body(...)) -> dict:
 
     def job(progress, should_stop):
         p, made = project(name), []
-        for i, src in enumerate(paths):
+        for i, s in enumerate(srcs):
             if should_stop():
                 break
+            src = s["path"]
             nm = (template.replace("{{file_name}}", Path(src).stem).replace("{{index}}", str(i + 1))
                   if template and (len(paths) == 1 or "{{" in template) else None)
             progress(i, len(paths), f"Task {i + 1} of {len(paths)}: {Path(src).name}")
             t = p.add_source(video=src if Path(src).is_file() else None, images=None if Path(src).is_file() else src,
-                             progress=lambda d, n, text: progress(d, n, f"{Path(src).name}: {text}"), name=nm, **opts)
+                             progress=lambda d, n, text: progress(d, n, f"{Path(src).name}: {text}"), name=nm,
+                             camera_id=s.get("camera_id"), crop=s.get("crop"), **opts)
             made.append(t["id"])
         refresh(name)
         return {"project": name, "tasks": made, "first_job": p.jobs(made[0])[0]["id"] if made and p.jobs(made[0]) else None}
@@ -1178,6 +1187,10 @@ def teach(body: dict = Body(...)) -> dict:
     parent = (body.get("parent") or "").strip() or None
     recolor = min(1.0, max(0.0, float(body.get("recolor") or 0)))
     crop = body.get("crop", True) is not False                # False: whole frames (the parent only for recolouring)
+    sources_by_id = {t["id"]: t for t in p.sources} if tasks else {}
+    task_cameras = {sources_by_id[tid]["name"]: {"camera_id": sources_by_id[tid]["camera_id"],
+                                                  "crop": sources_by_id[tid].get("crop")}
+                    for tid in tasks or [] if sources_by_id[tid].get("camera_id")} or None
 
     def job(progress, should_stop):
         for t in tasks or []:
@@ -1185,7 +1198,9 @@ def teach(body: dict = Body(...)) -> dict:
             if task_dataset(p, t, dataset, progress, should_stop) is None:
                 return {"status": "stopped", "step": "source"}
         return run_teach(dataset, runs_dir() / name, parent=parent, progress=progress, should_stop=should_stop,
-                         recolor=recolor, crop_to_parent=crop, **{k: (int(v) if k != "size" else v) for k, v in kw.items()})
+                         recolor=recolor, crop_to_parent=crop, task_cameras=task_cameras,
+                         project=body.get("project") or None,
+                         **{k: (int(v) if k != "size" else v) for k, v in kw.items()})
 
     def done(res):
         res = res or {}
@@ -1263,6 +1278,40 @@ def list_exports() -> list:
             continue
         out.append({"run": d.parent.name, "path": str(d.resolve()), "created": time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(mf.stat().st_mtime)),
                     "classes": m.get("classes"), "threshold": m.get("threshold"), "resolution": m.get("resolution"), "parity": m.get("parity")})
+    return out
+
+
+def _read_json(path: Path) -> dict:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def models_for_deploy() -> list:
+    """Every model exported for production (export_model), for hawk-api's deploy picker (hawk-ai-internal
+    §12.3, GET /api/v1/models): model.json's own fields, settings.json's project name (the dataset folder's
+    name when the run has no project) and report.json's quality numbers. Newest first."""
+    out = []
+    for d in sorted(runs_dir().glob("*/export")) if runs_dir().exists() else []:
+        mf = d / "model.json"
+        if not mf.exists():
+            continue
+        m = _read_json(mf)
+        if not m:
+            continue
+        run_dir = d.parent
+        settings, report = _read_json(run_dir / "settings.json"), _read_json(run_dir / "report.json")
+        name = settings.get("project") or Path(settings.get("source") or run_dir.name).name
+        prep = report.get("prepare") or {}
+        out.append({"id": run_dir.name, "name": name,
+                    "created": datetime.fromtimestamp(mf.stat().st_mtime).astimezone().isoformat(),
+                    "classes": m.get("classes"), "crop": m.get("crop"), "parent": m.get("parent"),
+                    "resolution": m.get("resolution"), "threshold": m.get("threshold"), "parity": m.get("parity"),
+                    "passed": report.get("passed"), "knowledge_score": report.get("knowledge_score"),
+                    "frames": {"train": prep.get("train_frames"), "held_out": prep.get("held_out_frames")},
+                    "onnx_path": str((d / m["model"]).resolve()) if m.get("model") else None})
+    out.sort(key=lambda r: r["created"], reverse=True)
     return out
 
 

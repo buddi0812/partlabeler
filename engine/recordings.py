@@ -2,8 +2,10 @@
 started straight from them (no need to know where files live on disk). Read-only: PartLabeler never writes here.
 
 Two sources, picked by `~/.partlabeler/app.json`:
-- `{"recordings_api": "http://127.0.0.1:<port>"}`: another local system's recordings API (contract: GET
-  <url>/recordings?station_id=&camera_id=&limit=&before= -> {"stations": [...], "recordings": [...]}).
+- `{"recordings_api": "http://127.0.0.1:<port>", "recordings_token": "..."}`: another local system's recordings
+  API (contract: GET <url>/recordings?station_id=&camera_id=&from=&to=&before=&limit= -> {"stations": [...],
+  "recordings": [...]}), sent with header `X-Hawk-Token: <recordings_token>` (read fresh from app.json on every
+  call, never logged, never put in a URL - that system regenerates it on its own install/repair/update).
   Local only: never called when that URL is not on 127.0.0.1/localhost.
 - Otherwise, or when the API cannot be reached: a plain folder, `{"recordings_dir": "D:\\recordings"}` (default
   "recordings" next to the projects folder), laid out as `<dir>/<station>/<camera>/*.mp4` with an optional
@@ -12,6 +14,7 @@ Two sources, picked by `~/.partlabeler/app.json`:
      "recordings": {"<file name>": {"cycles": [{"t_start_s": 12.0, "t_end_s": 34.5, "verdict": "pass"}]}}}
 """
 import json
+import math
 import time
 from pathlib import Path
 
@@ -40,6 +43,33 @@ def source() -> dict:
 def _is_local(url: str) -> bool:
     from urllib.parse import urlparse
     return urlparse(url).hostname in ("127.0.0.1", "localhost", "::1")
+
+
+def valid_crop(crop) -> bool:
+    """A camera crop [x, y, w, h], shares 0..1 of its full frame: 4 numbers (not bool - True/False are ints in
+    Python but not here, matching hawk), x,y >= 0, w,h > 0, x+w <= 1, y+h <= 1 (1e-6 slack) - the same rule
+    hawk-api's model import checks (cross-checked against hawk's own crop.py, 2026-10-09: 0 mismatches over
+    200k random crops), so an export built here is never refused there."""
+    if not (isinstance(crop, (list, tuple)) and len(crop) == 4):
+        return False
+    if not all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in crop):
+        return False
+    x, y, w, h = crop
+    eps = 1e-6
+    return x >= 0 and y >= 0 and w > 0 and h > 0 and x + w <= 1 + eps and y + h <= 1 + eps
+
+
+def crop_rect(crop: list[float], w: int, h: int) -> tuple[int, int, int, int]:
+    """A valid_crop() share rectangle as pixels (x1, y1, x2, y2) of a w x h frame: floor the start, ceil the
+    end, clipped to the frame, x1/y1 clamped to w-1/h-1 so the cut is never empty - hawk-vision uses this
+    identical rule to cut and to map boxes back, so a frame cropped here lines up with what the box crops at
+    inference."""
+    x, y, cw, ch = crop
+    x1 = max(0, min(w - 1, math.floor(x * w)))
+    y1 = max(0, min(h - 1, math.floor(y * h)))
+    x2 = max(x1 + 1, min(w, math.ceil((x + cw) * w)))
+    y2 = max(y1 + 1, min(h, math.ceil((y + ch) * h)))
+    return x1, y1, x2, y2
 
 
 def probe(path: Path) -> dict:
@@ -91,7 +121,8 @@ def _dir_stations(d: Path) -> list[dict]:
     return stations
 
 
-def _dir_recordings(d: Path, station_id: str | None, camera_id: str | None, limit: int) -> list[dict]:
+def _dir_recordings(d: Path, station_id: str | None, camera_id: str | None, limit: int,
+                     from_: str | None = None, to: str | None = None, before: str | None = None) -> list[dict]:
     out = []
     for sd in ([d / station_id] if station_id else sorted(p for p in d.iterdir() if p.is_dir())) if d.is_dir() else []:
         if not sd.is_dir():
@@ -113,6 +144,12 @@ def _dir_recordings(d: Path, station_id: str | None, camera_id: str | None, limi
                 out.append({"id": f"{sd.name}/{cd.name}/{f.name}", "station_id": sd.name, "camera_id": cd.name,
                             "path": str(f), "started_at": time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(f.stat().st_mtime)),
                             "cycles": meta.get("recordings", {}).get(f.name, {}).get("cycles", []), **info})
+    if from_:
+        out = [r for r in out if r["started_at"] >= from_]
+    if to:
+        out = [r for r in out if r["started_at"] <= to]
+    if before:
+        out = [r for r in out if r["started_at"] < before]
     out.sort(key=lambda r: r["started_at"], reverse=True)
     return out[:limit]
 
@@ -133,23 +170,34 @@ def resolve(rid: str) -> Path | None:
         except ValueError:
             return None
         return p if p.is_file() else None
-    for r in list_all(sid, cid)["recordings"]:
+    # a camera can keep up to 144 segments/day: list_all's default limit (100) could miss an older one.
+    for r in list_all(sid, cid, limit=500)["recordings"]:
         if r["id"] == rid:
             return Path(r["path"])
     return None
 
 
-def list_all(station_id: str | None = None, camera_id: str | None = None, limit: int = 100) -> dict:
-    """{"stations": [...], "recordings": [...]}, from the API if configured and reachable, else the folder."""
+def list_all(station_id: str | None = None, camera_id: str | None = None, limit: int = 100,
+             from_: str | None = None, to: str | None = None, before: str | None = None) -> dict:
+    """{"stations": [...], "recordings": [...]}, from the API if configured and reachable, else the folder.
+    from_/to: recordings overlapping that ISO window. before: recordings that started earlier than that ISO
+    timestamp (for paging - pass the previous page's last item's "started_at")."""
     src = source()
     if src["mode"] == "api":
         try:
+            headers = {}
+            token = app_config().get("recordings_token")
+            if token:
+                headers["X-Hawk-Token"] = token
             with httpx.Client(timeout=5) as c:
                 r = c.get(f"{src['base_url']}/recordings",
-                          params={k: v for k, v in (("station_id", station_id), ("camera_id", camera_id), ("limit", limit)) if v})
+                          params={k: v for k, v in (("station_id", station_id), ("camera_id", camera_id),
+                                                     ("limit", limit), ("from", from_), ("to", to),
+                                                     ("before", before)) if v},
+                          headers=headers)
                 r.raise_for_status()
                 return r.json()
         except httpx.HTTPError:
             pass                                             # box's API not up right now: fall back to the folder
     d = src["dir"] if src["mode"] == "dir" else _dir()
-    return {"stations": _dir_stations(d), "recordings": _dir_recordings(d, station_id, camera_id, limit)}
+    return {"stations": _dir_stations(d), "recordings": _dir_recordings(d, station_id, camera_id, limit, from_, to, before)}

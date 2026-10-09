@@ -458,7 +458,7 @@ export function page(root, args) {
   // ---- recordings: browse the box's cycle recordings and start labeling from them (engine/recordings.py) ----
   async function recordingsPage() {
     const q = new URLSearchParams(location.search);
-    let stationId = q.get("station") || "", cameraId = q.get("camera") || "", recs = [], projects = [];
+    let stationId = q.get("station") || "", cameraId = q.get("camera") || "", recs = [], projects = [], camRois = {};
     const selected = new Set(), justCreated = q.get("project") || "";
     main.innerHTML = `<div class="pg-title"><h1>Recordings</h1></div>
       <p class="pg-meta">What the box's cameras recorded, by station and camera. Start a project straight from them.</p>
@@ -478,7 +478,10 @@ export function page(root, args) {
         <label class="h-field"><span>Start (seconds, optional)</span><input type="number" class="rc-start-s" min="0" step="0.1"><small>Applied using the first selected recording's frame rate.</small></label>
         <label class="h-field"><span>Stop (seconds, optional)</span><input type="number" class="rc-stop-s" min="0" step="0.1"></label>
         <label class="h-field"><span>Subset</span><input type="text" class="rc-subset" placeholder="Optional: Train, Test, Validation…"></label>
-      </div></details>
+      </div>
+      <label class="h-field" style="width:auto;margin-top:10px"><input type="checkbox" class="rc-crop"> Crop to each camera's ROI
+        <small>Only recordings whose camera has a set ROI are cropped; the rest are kept whole.</small></label>
+      </details>
       <div class="rc-job"></div>`;
 
     function setQuery() {
@@ -503,6 +506,8 @@ export function page(root, args) {
     }
     async function load() {
       const d = await api(`/api/recordings${stationId ? `?station_id=${enc(stationId)}` : ""}`).catch((e) => { toast({ level: "error", title: "Could not read recordings", detail: e.message }); return { stations: [], recordings: [] }; });
+      camRois = {};
+      for (const s of d.stations) for (const c of s.cameras) if (c.roi) camRois[`${s.id}/${c.id}`] = c.roi;
       const stSel = main.querySelector(".rc-station"), camSel = main.querySelector(".rc-camera");
       stSel.innerHTML = `<option value="">All</option>` + d.stations.map((s) => `<option value="${esc(s.id)}"${s.id === stationId ? " selected" : ""}>${esc(s.name)}</option>`).join("");
       const cams = d.stations.find((s) => s.id === stationId)?.cameras || [];
@@ -542,10 +547,15 @@ export function page(root, args) {
       const chosen = recs.filter((r) => selected.has(r.id));
       const everyV = +main.querySelector(".rc-every").value || 5, fps = chosen[0]?.fps || 25;
       const startS = main.querySelector(".rc-start-s").value, stopS = main.querySelector(".rc-stop-s").value;
+      const cropWanted = main.querySelector(".rc-crop").checked;
       btn.disabled = true;
       try {
         const { job } = await api(`/api/projects/${enc(name)}/tasks`, {
-          sources: chosen.map((r) => r.path), every: everyV, subset: main.querySelector(".rc-subset").value.trim(),
+          sources: chosen.map((r) => {
+            const roi = cropWanted && camRois[`${r.station_id}/${r.camera_id}`];
+            return roi ? { path: r.path, camera_id: r.camera_id, crop: roi } : r.path;
+          }),
+          every: everyV, subset: main.querySelector(".rc-subset").value.trim(),
           start: startS ? Math.round(startS * fps) : undefined, stop: stopS ? Math.round(stopS * fps) : undefined,
         });
         followJob(job, main.querySelector(".rc-job"), { onEnd: () => { selected.clear(); renderGrid(); } });

@@ -310,6 +310,21 @@ def test_teach_end_to_end_with_a_fake_detector(tmp_path, monkeypatch, fake_detec
     assert calls[-1].name == "last.ckpt" and not (run / "model/last.ckpt").exists()
 
 
+def test_task_cameras_carries_into_settings_json_for_export_onnx(tmp_path, monkeypatch, fake_detector):
+    """hawk-ai-internal §13.3: a Teach run built from Recordings-tab tasks records their camera_id/crop, so
+    export_onnx's crop_card can later write model.json's "crop" (checked directly: see test_detector_crop.py)."""
+    def fake_train(dataset_dir, out_dir, size, epochs, resolution, aug, resume, progress, should_stop):
+        (out_dir / "checkpoint_best_total.pth").write_bytes(b"x")
+        return out_dir / "checkpoint_best_total.pth"
+
+    monkeypatch.setattr(detector, "train", fake_train)
+    src, run = make_source(tmp_path / "src"), tmp_path / "run"
+    task_cameras = {"cam_task": {"camera_id": "cam1", "crop": [0.1, 0.1, 0.5, 0.5]}}
+    teach(src, run, epochs=1, resolution=320, task_cameras=task_cameras)
+    s = json.loads((run / "settings.json").read_text())
+    assert s["task_cameras"] == task_cameras
+
+
 def test_transfer_then_review_with_a_fake_detector(tmp_path, video, fake_detector):
     run = tmp_path / "run"
     run.mkdir()

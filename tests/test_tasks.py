@@ -5,6 +5,7 @@ import os
 
 import av
 import numpy as np
+import pytest
 from PIL import Image
 
 from engine.api import Session
@@ -42,6 +43,27 @@ def test_tasks_append_and_keep_item_numbers(tmp_path, video, images):
     assert Project(tmp_path / "proj").ranges == p.ranges                  # reopens identically
     again = p.add_source(video=second)                                     # same file twice: unique names
     assert again["name"] == "car_front.mp4.copy_2"
+
+
+def test_add_source_crops_every_kept_frame_to_the_cameras_roi(tmp_path, video):
+    """The Recordings tab's "Crop to camera ROI" (hawk-ai-internal §13.3): the stored frame IS the crop."""
+    p = Project.create(tmp_path / "proj", CLASSES, video=video, every=5)
+    t = p.add_source(video=make_video(tmp_path / "cam1.mp4"), every=5, camera_id="cam1", crop=[0.25, 0.0, 0.5, 1.0])
+    assert t["camera_id"] == "cam1" and t["crop"] == [0.25, 0.0, 0.5, 1.0]
+    assert (t["info"]["width"], t["info"]["height"]) == (32, 48)              # floor(16)..ceil(48): 64 -> 32 wide
+    saved = next((tmp_path / "proj" / t["frames"]).glob("f*.jpg"))
+    with Image.open(saved) as im:
+        assert im.size == (32, 48)                                            # the file on disk really is cropped
+
+
+def test_add_source_rejects_a_bad_or_unsupported_crop(tmp_path, video, images):
+    p = Project.create(tmp_path / "proj", CLASSES, video=video, every=5)
+    with pytest.raises(ValueError, match="invalid crop"):
+        p.add_source(video=make_video(tmp_path / "bad.mp4"), camera_id="cam1", crop=[0.6, 0, 0.5, 0.5])  # x+w > 1
+    with pytest.raises(ValueError, match="video"):
+        p.add_source(images=images, camera_id="cam1", crop=[0, 0, 0.5, 0.5])   # not a video task
+    with pytest.raises(ValueError, match="video"):
+        p.add_source(video=make_video(tmp_path / "novid.mp4"), frames="video", camera_id="cam1", crop=[0, 0, 0.5, 0.5])
 
 
 def test_a_project_made_before_tasks_opens_as_one_task(tmp_path, video):

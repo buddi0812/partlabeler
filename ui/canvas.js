@@ -467,7 +467,11 @@ const KEYLIKE = /^(((Ctrl|Shift|Alt|Cmd)\s?\+\s?)*(\S|F\d{1,2}|Enter|Esc|Escape|
 function md(src) {
   const inline = (s) => s.replace(/`([^`]+)`/g, "<code>$1</code>")
     .replace(/\*\*([^*]+)\*\*/g, (_, t) => (KEYLIKE.test(t.trim()) ? `<kbd>${t.trim()}</kbd>` : `<b>${t}</b>`))
-    .replace(/(^|[\s(])[*_]([^*_\n]+)[*_](?=[\s).,!?:;]|$)/g, "$1<i>$2</i>");
+    .replace(/(^|[\s(])[*_]([^*_\n]+)[*_](?=[\s).,!?:;]|$)/g, "$1<i>$2</i>")
+    .replace(/\bhttps?:\/\/[^\s<]+/g, (u) => {                      // a bare link (e.g. Rivet's deploy_link): clickable
+      const m = u.match(/^(.*?)([.,;:!?)\]]*)$/);                  // trailing sentence punctuation stays outside it
+      return `<a href="${m[1]}" target="_blank" rel="noopener">${m[1]}</a>${m[2]}`;
+    });
   const out = []; let list = null, para = [];
   const flush = () => { if (para.length) { out.push(`<p>${inline(para.join("<br>"))}</p>`); para = []; } };
   const endList = () => { if (list) { out.push(`<${list.tag}>${list.items.map((i) => `<li>${inline(i)}</li>`).join("")}</${list.tag}>`); list = null; } };

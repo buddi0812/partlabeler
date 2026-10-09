@@ -28,7 +28,7 @@ H = None                              # the host module (ui/host_fastapi.py), se
 
 TOOL_NAMES = ("list_projects", "get_project", "create_project", "add_tasks", "set_labels", "delete_task",
              "clear_parts", "confirm_frames", "get_job", "teach", "list_runs", "label_tasks", "export_model",
-             "list_exports", "undo")
+             "list_exports", "list_stations", "deploy_link", "undo")
 DESTRUCTIVE = {"delete_task", "clear_parts", "set_labels", "confirm_frames", "teach", "label_tasks", "export_model"}
 MAX_TOOL_TURNS = 6                    # tool-calling turns per message: a bound against loops
 PENDING: dict = {}                    # confirm id -> {"messages", "calls", "ts", "actor"}
@@ -67,7 +67,9 @@ def _system_prompt() -> str:
             "given, as the signed-in person. Look before you act: list_projects and get_project first. Keep "
             "replies short and concrete. Deleting, confirming frames, training and exporting are never run by "
             "you directly - the person confirms them in the app, and you only see the result afterwards. If a "
-            "tool call fails, say so plainly and stop instead of guessing.")
+            "tool call fails, say so plainly and stop instead of guessing. deploy_link does not deploy anything "
+            "itself: give the person its returned url as plain text in your reply so they can open it and approve "
+            "on the box's own screen.")
 
 
 def _summarise(name: str, args: dict) -> str:

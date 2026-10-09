@@ -7,6 +7,7 @@ class names have no left/right pairs: a mirror would swap their meaning.
 """
 import os
 import sys
+from collections import defaultdict
 from pathlib import Path
 
 from engine import hw
@@ -243,6 +244,31 @@ def onnx_masks(masks, q, width: int, height: int):
                      for i in q])
 
 
+def crop_card(task_cameras: dict | None) -> dict | None:
+    """model.json's "crop" field from a Teach run's settings.json "task_cameras" ({task name: {"camera_id",
+    "crop"}}): one rectangle per camera, shares 0..1, written only when every task of that camera used the
+    same one (or none did); None when no task carried a camera_id at all. Raises ValueError, naming the
+    camera, when its tasks were cut differently (some cropped, some not, or to different rectangles) -
+    PartLabeler's "their call" refusal for a mixed-crop run (hawk-ai-internal §13.3)."""
+    if not task_cameras:
+        return None
+    by_cam = defaultdict(set)
+    for info in task_cameras.values():
+        cid = info.get("camera_id")
+        if cid:
+            by_cam[cid].add(tuple(info["crop"]) if info.get("crop") else None)
+    crop = {}
+    for cid, vals in by_cam.items():
+        if len(vals) > 1:
+            raise ValueError(f"camera {cid!r} was cut differently across its training tasks (some cropped, some "
+                             "not, or to different rectangles): crop every task of a camera the same way before "
+                             "exporting, or leave that camera's tasks all uncropped")
+        v = next(iter(vals))
+        if v is not None:
+            crop[cid] = list(v)
+    return crop or None
+
+
 def export_onnx(run_dir, out_dir=None, check_frames: int = 40, bundle_frames: int = 20, batch: int = 1) -> dict:
     """A Teach run's model as ONNX, with model.json (classes, threshold, input/output contract) and a parity check:
     onnx_input/onnx_decode through ONNX Runtime against predict() on held-out frames. The folder is a bundle for the
@@ -320,6 +346,7 @@ def export_onnx(run_dir, out_dir=None, check_frames: int = 40, bundle_frames: in
     Q = {o.name: o.shape for o in sess.get_outputs()}["dets"][1]     # queries: 300 (detect) or 100 (seg-small)
     card = {"model": path.name, "model_fp16": fp16.name if fp16.exists() else None, "classes": s["classes"], "threshold": s["threshold"], "resolution": r,
             "parent": s.get("parent"), "parent_margin": s.get("parent_margin") if s.get("parent") else None,
+            "crop": crop_card(s.get("task_cameras")),
             "batch": batch,
             "input": {"name": "input", "shape": [batch, 3, r, r], "dtype": "float32", "layout": "NCHW, RGB",
                       "prepare": (f"the whole frame{' cut to the parent object first' if s.get('parent') else ''}, "

@@ -13,12 +13,17 @@ stable paths under /api/v1, JSON in and out. docs/INTEGRATION.md is the contract
     GET  /api/v1/projects/{name}/exports/{job}.zip        download a finished export
     GET  /api/v1/jobs/{job}    POST /api/v1/jobs/{job}/stop
     GET  /api/v1/tools         POST /api/v1/tools/{name}  every other tool (the same as /api/tools and MCP)
+    GET  /api/v1/models                                   exports for hawk-api's deploy picker - see below
 
 Every call but health needs an API token (Settings → API access, or `partlabeler account token NAME`) as
 `Authorization: Bearer <token>`. Network mode (`partlabeler app --host 0.0.0.0`): requests from other machines, or
 through a proxy (X-Forwarded-For), reach only /api/v1, never the pages, sign-in or file browser, and the tools that
 read or write paths on this computer (add_tasks, import_backup, frames_to_video) are refused there: send files with
 uploads instead.
+
+/api/v1/models is the one exception to all of the above: a same-box service (hawk-api, hawk-ai-internal §12.3)
+calls it with header `X-Hawk-Token` matching app.json "models_token" instead of an account token, and it refuses
+a remote caller even with the right token (its "onnx_path" is an absolute path on this computer).
 """
 import asyncio
 import base64
@@ -109,6 +114,21 @@ def health() -> dict:
     except Exception:
         version = ""
     return {"status": "ok", "api": "v1", "version": version}
+
+
+@router.get("/models")
+def models_for_deploy(request: Request) -> dict:
+    """Finished exports, for hawk-api's deploy picker (hawk-ai-internal §12.3) - the one /api/v1 route that
+    answers to a service key (app.json "models_token" as header X-Hawk-Token) instead of an account token, and
+    stays local-only even with the right key: onnx_path is an absolute path on this computer."""
+    import hmac
+    from engine.accounts import app_config
+    token = app_config().get("models_token")
+    if not token or not hmac.compare_digest(request.headers.get("x-hawk-token", ""), token):
+        raise HTTPException(403, "Missing or wrong X-Hawk-Token")
+    if remote(request):
+        raise HTTPException(403, "This route is local-only (127.0.0.1), even with a valid token")
+    return {"models": H.models_for_deploy()}
 
 
 def _image(data: bytes) -> Image.Image:
