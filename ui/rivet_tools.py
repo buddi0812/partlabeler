@@ -1,7 +1,9 @@
 """Rivet driving PartLabeler through its own tools (ui/mcp.py), on a local OpenAI-compatible tool-calling model
 (llama.cpp, or any such server, given in app.json "assistant_llm"). This is a separate, local-only path used
 INSTEAD of engine/assistant.py's Gemini chat when configured and reachable; Gemini users and everyone without
-"assistant_llm" set are unaffected.
+"assistant_llm" set are unaffected. app.json "assistant_llm_key" (optional) is sent as `Authorization: Bearer
+<key>` on every call to that server (e.g. a Hawk-AI box's llama-server runs with --api-key); absent, no header
+is sent, as before "assistant_llm_key" existed. Never logged.
 
 The model id is never hardcoded: read from the server's own GET /v1/models at each chat, so whatever model tier
 is running (a small 4B/16k-context model and up) needs no PartLabeler change. The tool list and prompt are
@@ -46,10 +48,18 @@ def base_url() -> str | None:
     return assistant.local_url()
 
 
+def _auth_headers() -> dict:
+    """Authorization for base_url()'s server, when app.json "assistant_llm_key" (or the env var) is set - e.g. a
+    Hawk-AI box's llama-server runs with --api-key, so every call needs a Bearer token or the server 401s and
+    Rivet looks unreachable. Absent (older boxes, or a key-less local server): no header, as before."""
+    key = assistant.local_key()
+    return {"Authorization": f"Bearer {key}"} if key else {}
+
+
 def model_id(url: str, client: httpx.Client | None = None) -> str | None:
     """The one model name the server currently serves, or None if it can't be reached."""
     try:
-        r = (client or httpx).get(f"{url.rstrip('/')}/v1/models", timeout=5)
+        r = (client or httpx).get(f"{url.rstrip('/')}/v1/models", timeout=5, headers=_auth_headers())
         r.raise_for_status()
         data = r.json().get("data") or []
         return data[0]["id"] if data else None
@@ -121,7 +131,7 @@ def _chat_once(url: str, model: str, messages: list[dict], tools: list[dict], cl
     body = {"model": model, "messages": messages, "temperature": 0.2}
     if tools:
         body["tools"], body["tool_choice"] = tools, "auto"
-    r = (client or httpx).post(f"{url.rstrip('/')}/v1/chat/completions", json=body, timeout=120)
+    r = (client or httpx).post(f"{url.rstrip('/')}/v1/chat/completions", json=body, timeout=120, headers=_auth_headers())
     r.raise_for_status()
     return r.json()["choices"][0]["message"]
 

@@ -17,8 +17,10 @@ class FakeLLM:
     def __init__(self, *replies):
         self.replies = list(replies)
         self.bodies = []
+        self.auth = []                                     # the Authorization header seen on each call, in order
 
     def _handle(self, request: httpx.Request) -> httpx.Response:
+        self.auth.append(request.headers.get("authorization"))
         if request.url.path.endswith("/v1/models"):
             return httpx.Response(200, json={"data": [{"id": "fake-7b"}]})
         if request.url.path.endswith("/v1/chat/completions"):
@@ -108,3 +110,22 @@ def test_unreachable_local_model_falls_back_offline(home):
     events = list(rivet_tools.reply([{"role": "user", "text": "hi"}], client=httpx.Client(transport=httpx.MockTransport(handler))))
     assert events[0] == {"offline": True, "reason": "local model not reachable"}
     assert events[-1] == {"done": True}
+
+
+def test_an_assistant_llm_key_is_sent_as_a_bearer_token_on_every_call(home, monkeypatch):
+    """A Hawk-AI box runs llama-server with --api-key: without this, model_id() (GET /v1/models) 401s, Rivet
+    reports "not reachable", and the local assistant never works on a real box."""
+    monkeypatch.setattr(rivet_tools.assistant, "local_key", lambda: "box-key-123")
+    llm = FakeLLM({"role": "assistant", "content": "hi there"})
+    events = list(rivet_tools.reply([{"role": "user", "text": "hi"}], client=llm.client()))
+    assert {"text": "hi there"} in events
+    assert llm.auth == ["Bearer box-key-123", "Bearer box-key-123"]     # GET /v1/models, then POST /v1/chat/completions
+
+
+def test_no_assistant_llm_key_sends_no_authorization_header(home, monkeypatch):
+    """Older boxes (and any local server with no key) behave exactly as before "assistant_llm_key" existed."""
+    monkeypatch.setattr(rivet_tools.assistant, "local_key", lambda: None)
+    llm = FakeLLM({"role": "assistant", "content": "hi there"})
+    events = list(rivet_tools.reply([{"role": "user", "text": "hi"}], client=llm.client()))
+    assert {"text": "hi there"} in events
+    assert llm.auth == [None, None]

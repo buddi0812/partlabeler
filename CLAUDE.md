@@ -22,7 +22,10 @@
   app.json `"assistant_llm"` (a local OpenAI-compatible URL) switches Rivet to `ui/rivet_tools.py` instead: it drives
   PartLabeler through a small, fixed subset of `ui/mcp.py`'s tools, pauses on destructive ones (`{"confirm": ...}`)
   until a person clicks Confirm, and logs every tool call to `<projects>/.partlabeler/assistant-actions.jsonl`. The
-  model id is read from `GET <url>/v1/models` at each chat, never hardcoded. app.json `"assistant_cloud": false`
+  model id is read from `GET <url>/v1/models` at each chat, never hardcoded. app.json `"assistant_llm_key"`
+  (optional, e.g. for a Hawk-AI box's llama-server running with `--api-key`) is sent as `Authorization: Bearer
+  <key>` on every call to that server; absent, no header is sent (older boxes, or a key-less server) - never
+  logged. app.json `"assistant_cloud": false`
   makes Rivet say "No assistant is installed on this computer" instead of ever offering Gemini. `engine/assistant.py`'s
   `backend()` ("local" | "none" | "gemini", reading `assistant_llm`/`assistant_cloud` fresh every call) is the one
   decision every entry point shares — both REST (`ui/host_fastapi.py`) and the websocket's `on_assistant*`

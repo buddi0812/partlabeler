@@ -121,6 +121,14 @@ def local_url() -> str | None:
     return os.environ.get("PARTLABELER_ASSISTANT_LLM") or app_config().get("assistant_llm") or None
 
 
+def local_key() -> str | None:
+    """app.json "assistant_llm_key" (or PARTLABELER_ASSISTANT_LLM_KEY): sent as `Authorization: Bearer <key>` to
+    local_url() when the server behind it needs one (e.g. llama-server --api-key on a Hawk-AI box); None on an
+    older box with no key configured, where no header is sent at all, as before. Never logged."""
+    from engine.accounts import app_config
+    return os.environ.get("PARTLABELER_ASSISTANT_LLM_KEY") or app_config().get("assistant_llm_key") or None
+
+
 def cloud_disabled() -> bool:
     """app.json "assistant_cloud": false - never offer Gemini (or any other cloud model), even with no local
     model configured either. For a machine that must never reach the internet for this."""
