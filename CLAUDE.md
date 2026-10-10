@@ -4,6 +4,12 @@
 - Dev machine: Windows 11, RTX 3060 12 GB, 16 GB RAM. Phase A targets only this machine; keep all device/dtype logic in `engine/hw.py` so Phase B is a local change.
 - Scope: a general-purpose industrial annotation tool (any product, any part list). The car-lamp example data is only an example application: no car-specific defaults in engine, UI or docs (parent-object crop is an optional per-project setting; left/right handling only when class names form left_/right_ pairs).
 - Core principle: the output is the annotated dataset. Interactive annotation must work with no model training; the in-tool detector ("Boost") is opt-in, off by default, never auto-started. Ask before any training run outside Teach & Transfer.
+- Annotating needs a laptop or desktop (`ui/responsive.js` `tooSmallForAnnotating`, `tests/test_responsive.py`):
+  below 900px wide, the web annotator (`ui/canvas.js`) shows a plain notice instead of the canvas - mouse-drag
+  boxes and keyboard shortcuts don't work well narrower than that. Width only, never a touch/device check: a
+  tablet in landscape (typically 1024px+) is allowed the same as a laptop; a notebook/anywidget view is never
+  gated (no `model.homeUrl`, a different situation from a phone). Read-only pages (start screen, Recordings,
+  Tasks, Jobs) are unaffected and stay usable narrow.
 - Key constraints from research:
   - Use SAM 3 via Hugging Face `transformers` (`Sam3TrackerVideoModel`, `Sam3Model`), not Meta's repo (Windows/T4 problems). SAM 3 exemplar boxes only work on the frame they're drawn on — cross-frame discovery is DINOv3-based.
   - SAM 3.1 Object Multiplex (`Tracker31`) is an opt-in tracker ("tracker": "sam3.1" in app.json) through

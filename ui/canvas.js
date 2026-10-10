@@ -2,6 +2,7 @@
 // (anywidget). `model` only needs send(msg) and on("msg:custom", fn); the web host also sets
 // model.homeUrl (link back to the start screen and REST helpers) and model.startItem. Protocol: engine/api.py.
 // Also exports notificationCenter(), shared with the start screen (ui/home.js).
+import { tooSmallForAnnotating } from "/ui/responsive.js";
 
 const CSS = `
 .pl { --bg:var(--c-bg,#eef1f4); --panel:var(--c-panel,#fff); --ink:var(--c-ink,#15202b); --muted:var(--c-muted,#56636f);
@@ -11,6 +12,11 @@ const CSS = `
   display:grid; grid-template-rows:auto auto minmax(0,1fr) auto; gap:8px; padding:0 12px 10px; outline:none; position:relative;
   -webkit-tap-highlight-color:transparent; }
 .pl.web { min-height:100vh; }
+.pl-toosmall { box-sizing:border-box; display:flex; align-items:center; justify-content:center; min-height:100vh; text-align:center; padding:32px; }
+.pl-toosmall-card { max-width:360px; }
+.pl-toosmall-card h1 { font-size:17px; margin:0 0 8px; }
+.pl-toosmall-card p { color:var(--muted); margin:0 0 16px; }
+.pl-toosmall-card .pl-back { display:inline-block; border:1px solid var(--line); background:var(--panel); }
 .pl:fullscreen { overflow:auto; }
 .pl.big { height:var(--plh); }
 .pl.big .pl-stage canvas { max-height:calc(var(--plh) - 230px); }
@@ -774,6 +780,14 @@ function render({ model, el }) {
     document.head.appendChild(Object.assign(document.createElement("style"), { id: "pl-css", textContent: CSS }));
   }
   const web = Boolean(model.homeUrl);                                // running in the web app (REST helpers available)
+  if (tooSmallForAnnotating(web, window.innerWidth)) {
+    el.className = "pl pl-toosmall";
+    el.innerHTML = `<div class="pl-toosmall-card">
+      <h1>Labelling needs a bigger screen</h1>
+      <p>It uses mouse clicks and drags to draw boxes, and keyboard shortcuts - open this project on a laptop or desktop computer instead.</p>
+      <a class="pl-back" href="/">← Back to projects</a></div>`;
+    return;
+  }
   el.className = web ? "pl web" : "pl";
   el.tabIndex = 0;
   el.innerHTML = `
