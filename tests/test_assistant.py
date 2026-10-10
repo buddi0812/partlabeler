@@ -97,6 +97,23 @@ def test_key_file_and_http_endpoints(no_key, tmp_path, monkeypatch):
         assert c.post("/api/assistant/key", json={"key": "nope"}).status_code == 400
 
 
+def test_box_managed_hides_the_local_models_name(no_key, tmp_path, monkeypatch):
+    """app.json "box_managed": true (a Hawk-AI box, or any product PartLabeler is embedded in): the box's
+    operator is not PartLabeler's own developer, so the local model's internal name is not their business."""
+    import engine.accounts as accounts_mod
+    from ui import rivet_tools
+    from tests.test_host import app_client
+    monkeypatch.setattr(assistant, "local_url", lambda: "http://fake-llm")
+    monkeypatch.setattr(rivet_tools, "model_id", lambda url, client=None: "qwen3.5-4b-q4km")
+    with app_client(tmp_path) as c:
+        info = c.get("/api/assistant").json()
+        assert info["ready"] is True and info["local_model"] == "qwen3.5-4b-q4km" and info["box_managed"] is False
+
+        monkeypatch.setattr(accounts_mod, "app_config", lambda: {"box_managed": True})
+        info = c.get("/api/assistant").json()
+        assert info["ready"] is True and info["local_model"] is None and info["box_managed"] is True
+
+
 @pytest.fixture
 def no_google_network(monkeypatch):
     """Fails the test (not just the call) the instant anything tries to reach Google's API, through every
@@ -138,7 +155,7 @@ def test_cloud_disabled_never_reaches_google_from_any_entry_point(no_key, no_goo
     with app_client(tmp_path) as c:
         info = c.get("/api/assistant").json()
         assert info == {"name": "Rivet", "ready": False, "source": "none", "local_model": None,
-                        "can_save": False, "tips": info["tips"], "pros": info["pros"]}
+                        "can_save": False, "tips": info["tips"], "pros": info["pros"], "box_managed": False}
         r = c.post("/api/assistant/chat", json={"messages": [{"role": "user", "text": "hi"}], "context": {"page": "home"}})
         assert [json.loads(x) for x in r.text.splitlines()] == [{"error": assistant.NOT_INSTALLED}]
         assert c.post("/api/assistant/key", json={"key": "AIza-whatever"}).status_code == 400
@@ -146,7 +163,7 @@ def test_cloud_disabled_never_reaches_google_from_any_entry_point(no_key, no_goo
     s, msgs = _session(tmp_path)
     s.handle({"type": "assistant_info"})
     assert msgs[-1] == {"type": "assistant_info", "name": "Rivet", "ready": False, "source": "none",
-                        "local_model": None, "can_save": False, "tips": [], "pros": ""}
+                        "local_model": None, "can_save": False, "tips": [], "pros": "", "box_managed": False}
     s.handle({"type": "assistant", "id": "q1", "messages": [{"role": "user", "text": "hi"}]})
     assert msgs[-1] == {"type": "assistant", "id": "q1", "error": assistant.NOT_INSTALLED}
     s.handle({"type": "assistant_key", "key": "AIza-whatever"})

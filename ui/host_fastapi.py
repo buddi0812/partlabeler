@@ -36,7 +36,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.staticfiles import StaticFiles
 
 from engine import assistant
-from engine.accounts import Accounts, default_home
+from engine.accounts import Accounts, box_managed, default_home
 from engine.api import ACTOR, Session
 from engine.notify import Notifications
 from engine.project import FRAME_FORMATS, IMAGE_EXTS, Project, read_classes
@@ -946,7 +946,7 @@ def info() -> dict:
     except Exception:
         version = ""
     return {"home": str(home().resolve()), "device": hw.describe(), "gpu": hw.memory(),
-            "teach": _has_teach(), "version": version, "restart": state["restart"]}
+            "teach": _has_teach(), "version": version, "restart": state["restart"], "box_managed": box_managed()}
 
 
 # ---- updates (engine/update.py) --------------------------------------------------------------
@@ -971,6 +971,8 @@ def update_check(force: bool = False) -> dict:
 def update_now() -> dict:
     """Update the app files now; Python packages, if they changed, at the next start. Needs a restart after."""
     from engine import update
+    if box_managed():
+        raise HTTPException(403, "This computer is managed by the product it's embedded in: updated there, not here.")
     if any(not j["finished"] for j in state["jobs"].values()) or any(s.running for s in state["sessions"].values()):
         raise HTTPException(409, "A job is running (tracking, Teach, Transfer…). Let it finish or stop it, then update.")
 
@@ -1465,11 +1467,13 @@ def assistant_info() -> dict:
         from ui import rivet_tools
         url = rivet_tools.base_url()
         model = rivet_tools.model_id(url)
-        return {**assistant.info(), "ready": bool(model), "source": "local", "local_model": model}
+        return {**assistant.info(), "ready": bool(model), "source": "local",
+                "local_model": None if box_managed() else model, "box_managed": box_managed()}
     if b == "none":
         return {"name": assistant.NAME, "ready": False, "source": "none", "local_model": None,
-                "can_save": False, "tips": assistant.info()["tips"], "pros": assistant.info()["pros"]}
-    return {**assistant.info(), "source": "gemini", "local_model": None}
+                "can_save": False, "tips": assistant.info()["tips"], "pros": assistant.info()["pros"],
+                "box_managed": box_managed()}
+    return {**assistant.info(), "source": "gemini", "local_model": None, "box_managed": box_managed()}
 
 
 @app.post("/api/assistant/key")

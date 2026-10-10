@@ -310,12 +310,13 @@ class Session:
     # Gemini just because they came in over the websocket instead.
     def on_assistant_info(self, msg):
         from engine import assistant
+        from engine.accounts import box_managed
         b = assistant.backend()
         if b != "gemini":
             self.send({"type": "assistant_info", "name": assistant.NAME, "ready": False, "source": b,
-                      "local_model": None, "can_save": False, "tips": [], "pros": ""})
+                      "local_model": None, "can_save": False, "tips": [], "pros": "", "box_managed": box_managed()})
             return
-        self.send({"type": "assistant_info", **assistant.info()})
+        self.send({"type": "assistant_info", **assistant.info(), "box_managed": box_managed()})
 
     def on_assistant(self, msg):
         from engine import assistant
@@ -336,9 +337,10 @@ class Session:
 
     def on_assistant_key(self, msg):
         from engine import assistant
+        from engine.accounts import box_managed
         if assistant.backend() != "gemini":
             self.send({"type": "assistant_info", "name": assistant.NAME, "ready": False, "source": assistant.backend(),
-                      "local_model": None, "can_save": False, "tips": [], "pros": "",
+                      "local_model": None, "can_save": False, "tips": [], "pros": "", "box_managed": box_managed(),
                       "key_error": "A Gemini key cannot be used: this computer is set up to use a different assistant."})
             return
         try:

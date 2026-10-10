@@ -578,7 +578,8 @@ def list_exports(args):
 
 
 @tool("Stations known to this computer's recordings source (the Recordings tab): id and name, for picking where "
-      "to deploy an exported model (deploy_link).")
+      "to deploy an exported model (deploy_link). The id is only for that next call - tell the person the name, "
+      "never the id.")
 def list_stations(args):
     from engine import recordings
     return {"stations": [{"id": s["id"], "name": s["name"]} for s in recordings.list_all()["stations"]]}

@@ -64,6 +64,14 @@ def default_home() -> Path:
     return Path(os.environ.get("PARTLABELER_HOME") or app_config().get("home") or "projects")
 
 
+def box_managed() -> bool:
+    """app.json "box_managed": true - this PartLabeler is embedded in someone else's product (e.g. a Hawk-AI
+    box) and signed in as its operator, not its own developer: UI that only makes sense for a developer
+    (the local model's own name, this computer's storage path, PartLabeler's own update check - that product
+    updates it) is hidden rather than shown. Off by default; set only by the embedding product's own installer."""
+    return app_config().get("box_managed") is True
+
+
 def _hash(password: str, salt: bytes) -> str:
     return hashlib.scrypt(password.encode(), salt=salt, n=2 ** 14, r=8, p=1, dklen=32).hex()
 

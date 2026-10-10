@@ -129,3 +129,11 @@ def test_no_assistant_llm_key_sends_no_authorization_header(home, monkeypatch):
     events = list(rivet_tools.reply([{"role": "user", "text": "hi"}], client=llm.client()))
     assert {"text": "hi there"} in events
     assert llm.auth == [None, None]
+
+
+def test_system_prompt_tells_the_model_never_to_name_tools_or_ids():
+    """Hawk-AI orchestrator review (2026-10-10): a customer on a box saw "run teach"/"door-trim" in Rivet's
+    replies - internal tool names and ids, not anything they could click or that matched their own labels."""
+    prompt = rivet_tools._system_prompt()
+    assert "tool's name" in prompt and "never" in prompt
+    assert "technical ids" in prompt

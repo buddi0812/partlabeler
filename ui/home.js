@@ -977,13 +977,14 @@ export default function home(root) {
   // ---- start ---------------------------------------------------------------------------------
   api("/api/info").then((i) => {
     info = i;
-    $(".h-home").textContent = `Projects are saved in ${i.home}`;
+    $(".h-home").textContent = i.box_managed ? "" : `Projects are saved in ${i.home}`;
     const dev = $(".h-device"); dev.hidden = false; dev.title = i.device;
     dev.querySelector("span").textContent = i.device; dev.classList.toggle("cpu", !/cuda|gpu|nvidia|rtx|gtx|tesla/i.test(i.device));
     $(".h-teach-off").hidden = i.teach;
     teachForm.querySelector("button[type=submit]").disabled = !i.teach;
     if (!i.teach) { transferForm.run.value = QUICK; showQuick(); }                // quick transfer needs no Teach extras
-    if (i.restart) showRestart(i.restart);
+    if (i.box_managed) { /* updated by the product this is embedded in: never check or offer to update here */ }
+    else if (i.restart) showRestart(i.restart);
     else if (prefs().update_check === false && location.hash !== "#update") renderUpd("quiet", "Check for updates", "Automatic checks are off in Settings. Click to check now.");
     else checkUpdate(location.hash === "#update").then(() => { if (location.hash === "#update" && (upd?.available || upd?.can_update === false)) $(".h-upd").click(); });
   }).catch(() => ($(".h-home").textContent = "Can't reach the PartLabeler server. Restart the app (run_windows.bat) and reload this page."));

@@ -410,9 +410,56 @@ def test_training_halves_the_batch_when_the_gpu_runs_out_of_memory(tmp_path, mon
         raise torch.OutOfMemoryError("CUDA out of memory")
     monkeypatch.setattr(FakeModel, "train", always_oom)
     calls.clear()
-    with pytest.raises(torch.OutOfMemoryError):
-        detector.train(ds, tmp_path / "out2", "small", epochs=1)
+    with pytest.raises(RuntimeError, match="doesn't have enough free memory"):   # batch 1 still OOMs: plain
+        detector.train(ds, tmp_path / "out2", "small", epochs=1)                 # message, not the raw CUDA error
     assert calls == [(4, 4), (2, 8), (1, 16)]                         # down to batch 1, then gives up
+
+
+def test_vram_shortfall_message_mentions_the_box_or_general_desktop_use(monkeypatch):
+    import engine.accounts as accounts_mod
+    monkeypatch.setattr(accounts_mod, "app_config", lambda: {})
+    general = detector.vram_shortfall_message("nano", 320, 1.0)
+    assert "2." in general and "1.0 GB free" in general and "Close other programs" in general
+
+    monkeypatch.setattr(accounts_mod, "app_config", lambda: {"box_managed": True})
+    boxed = detector.vram_shortfall_message("nano", 320, 1.0)
+    assert "Ask Hawk's model and the live inspection" in boxed and "Close other programs" not in boxed
+
+
+def test_gpu_resource_error_recognises_the_wddm_unknown_error():
+    import torch
+    assert detector._gpu_resource_error(torch.OutOfMemoryError("CUDA out of memory"))
+    assert detector._gpu_resource_error(RuntimeError("CUDA error: unknown error\nSearch for `cudaErrorUnknown`..."))
+    assert not detector._gpu_resource_error(ValueError("some unrelated training error"))
+
+
+def test_box_managed_refuses_to_train_on_a_too_small_gpu_instead_of_falling_back_to_cpu(tmp_path, monkeypatch):
+    """A box's CPU is too slow for Teach to be a real fallback - and its operator can't "close other programs":
+    the plain message names what's really using the card (hawk-ai-internal, the GPU-preflight follow-up)."""
+    import engine.accounts as accounts_mod
+    ds = tmp_path / "ds"
+    for split in ("train", "valid"):
+        (ds / split / "images").mkdir(parents=True)
+        Image.new("RGB", (32, 32)).save(ds / split / "images" / "f0.jpg")
+    (ds / "data.yaml").write_text("names: [bolt]\n")
+    monkeypatch.setattr(hw, "device", lambda: "cuda")
+    monkeypatch.setattr(hw, "free_memory_gb", lambda: 1.0)              # not enough for anything
+    monkeypatch.setattr(accounts_mod, "app_config", lambda: {"box_managed": True})
+    with pytest.raises(RuntimeError, match="Ask Hawk's model and the live inspection"):
+        detector.train(ds, tmp_path / "out", "nano", epochs=1, resolution=320)
+
+    monkeypatch.setattr(accounts_mod, "app_config", lambda: {})        # off: today's CPU fallback, unchanged
+    msgs = []
+    monkeypatch.setattr(detector, "_model_class", lambda size: type("M", (), {
+        "__init__": lambda self, device: None,
+        "train": lambda self, batch_size, grad_accum_steps, **kw: (
+            Path(kw["output_dir"]).mkdir(parents=True, exist_ok=True),
+            (Path(kw["output_dir"]) / "checkpoint_best_total.pth").write_bytes(b"x"))}))
+    from pathlib import Path
+    out = detector.train(ds, tmp_path / "out2", "nano", epochs=1, resolution=320,
+                         progress=lambda d, t, text="": msgs.append(text))
+    assert out.name == "checkpoint_best_total.pth"
+    assert any("training on the CPU" in m for m in msgs)
 
 
 def test_onnx_decode_scores_each_class_and_drops_background():

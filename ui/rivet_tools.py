@@ -79,7 +79,13 @@ def _system_prompt() -> str:
             "you directly - the person confirms them in the app, and you only see the result afterwards. If a "
             "tool call fails, say so plainly and stop instead of guessing. deploy_link does not deploy anything "
             "itself: give the person its returned url as plain text in your reply so they can open it and approve "
-            "on the box's own screen.")
+            "on the box's own screen.\n\n"
+            "Never say a tool's name, or any other internal detail, to the person - describe what they would "
+            "click or see in the app instead. Say 'Teach & Transfer, then Train' or 'train it', never 'run "
+            "teach' or 'call the teach tool'; say 'Export' or 'export the model', never 'call export_model'; "
+            "say 'the Projects page', never 'list_projects'. The same goes for technical ids: a tool like "
+            "list_stations gives you an id (e.g. 'door-trim') only so you can pass it to your NEXT tool call - "
+            "the person only ever sees the name they gave that thing (e.g. 'Door trim L2-S4'), never its id.")
 
 
 def _summarise(name: str, args: dict) -> str:

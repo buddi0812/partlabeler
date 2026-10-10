@@ -146,6 +146,18 @@ def test_update_check_is_cached_and_update_waits_for_jobs(client, monkeypatch):
     assert "version" in client.get("/api/info").json()
 
 
+def test_box_managed_hides_the_raw_path_and_refuses_self_update(client, monkeypatch):
+    """app.json "box_managed": true (set by the product PartLabeler is embedded in, e.g. a Hawk-AI box): /api/info
+    says so, and /api/update refuses - that product updates it, not PartLabeler's own update check."""
+    import engine.accounts as accounts_mod
+    assert client.get("/api/info").json()["box_managed"] is False        # off by default
+
+    monkeypatch.setattr(accounts_mod, "app_config", lambda: {"box_managed": True})
+    assert client.get("/api/info").json()["box_managed"] is True
+    r = client.post("/api/update")
+    assert r.status_code == 403 and "embedded" in r.json()["detail"]
+
+
 def test_cvat_style_project_task_job_flow(client, tmp_path, video):
     r = client.post("/api/projects", json={"name": "line", "task": "detect",
                                            "labels": [{"name": "bolt", "color": "#ff0000"}, {"name": "nut", "color": None}]})

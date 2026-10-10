@@ -53,6 +53,18 @@
   never advice to turn that off (it cannot be turned back on without a reset). Tests in `tests/test_install_ps1.py`.
 - Updates (`engine/update.py`, start-screen button, `update_windows.bat`, `partlabeler update`): only the app's own
   files change; projects/, data/, .venv and models never; labels are backed up first. Keep it that way.
+- Teach's GPU memory (`engine/detector.py` `_vram_needed_gb`/`batch_plan`/`fits_gpu`): `_VRAM_CAL` holds real
+  measured peaks (`docs/VRAM_CALIBRATION.md`, `tests/test_vram_calibration.py`) per size at 320px - nano and
+  small only so far; other sizes fall back to the older `_GB_BASE`/`_GB_PER_IMAGE` guess until measured too.
+  `batch_plan()` picks the largest batch whose own (not the previous batch's) predicted peak fits free GPU
+  memory minus `VRAM_MARGIN_GB` (1 GB headroom for whatever else is using the card). Add new sizes/resolutions
+  to the doc and the test fixture together, from a real measurement, never a guess.
+- Embedded in another product (`engine.accounts.box_managed()`, app.json `"box_managed": true`, set only by that
+  product's own installer, e.g. Hawk-AI): developer-only UI is hidden from its operator - no raw storage path on
+  the start screen, `/api/update` refuses (that product updates PartLabeler, not this), and Rivet's local-model
+  name is not reported (`/api/assistant`, the websocket's `assistant_info`). Separately, and for every Rivet
+  caller regardless of box_managed: the system prompt (`ui/rivet_tools.py`) never lets the model name a tool or
+  show a technical id to the person - plain English and the names they gave things, always.
 - Accounts (`engine/accounts.py`): local only, `~/.partlabeler/accounts.json` (scrypt hashes; PARTLABELER_CONFIG moves it);
   every page and API call of the local host needs a sign-in (/login); per-account prefs are applied server-side
   (`themed()`: data-theme/-accent on <html>, `window.PL`) and each account may pick its own projects folder
