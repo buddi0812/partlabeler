@@ -1,6 +1,7 @@
 """The start screen's JSON API and the annotator's WebSocket, through FastAPI's test client (no models)."""
 import time
 from contextlib import contextmanager
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -155,6 +156,27 @@ def test_box_managed_hides_the_raw_path_and_refuses_self_update(client, monkeypa
     monkeypatch.setattr(accounts_mod, "app_config", lambda: {"box_managed": True})
     assert client.get("/api/info").json()["box_managed"] is True
     r = client.post("/api/update")
+    assert r.status_code == 403 and "embedded" in r.json()["detail"]
+
+
+def test_box_managed_hides_paths_from_backup_export_and_open_folder(client, monkeypatch, images):
+    """The orchestrator's path-leak report: backup/export job notifications must not show this computer's
+    filesystem on a box, in text or as an openable folder - and /api/open-folder itself must refuse."""
+    import engine.accounts as accounts_mod
+    assert client.post("/api/projects", json={"name": "line", "labels": [{"name": "bolt"}]}).status_code == 200
+    assert wait(client, client.post("/api/projects/line/tasks", json={"sources": [str(images)]}).json()["job"])["error"] is None
+
+    monkeypatch.setattr(accounts_mod, "app_config", lambda: {"box_managed": True})
+    ex = wait(client, client.post("/api/projects/line/export", json={"format": "yolo"}).json()["job"])
+    bk = wait(client, client.post("/api/projects/line/backup").json()["job"])
+    folder = str(Path(bk["result"]["file"]).parent)
+
+    items = client.get("/api/notifications").json()["items"]
+    exported, backed_up = items[1], items[0]
+    assert exported["action"] is None and folder not in exported["detail"] and ex["result"]["folder"] not in exported["detail"]
+    assert backed_up["action"] is None and folder not in backed_up["detail"]
+
+    r = client.post("/api/open-folder", json={"path": folder})
     assert r.status_code == 403 and "embedded" in r.json()["detail"]
 
 

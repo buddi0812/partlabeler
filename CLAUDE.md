@@ -68,7 +68,12 @@
 - Embedded in another product (`engine.accounts.box_managed()`, app.json `"box_managed": true`, set only by that
   product's own installer, e.g. Hawk-AI): developer-only UI is hidden from its operator - no raw storage path on
   the start screen, `/api/update` refuses (that product updates PartLabeler, not this), and Rivet's local-model
-  name is not reported (`/api/assistant`, the websocket's `assistant_info`). Separately, and for every Rivet
+  name is not reported (`/api/assistant`, the websocket's `assistant_info`). No screen shows this computer's
+  filesystem either: the task page's Source row is dropped, every job-done notification (export, backup, Teach,
+  Transfer, move-folder) omits the path from its text via `folder_action()` (`ui/host_fastapi.py`) instead of
+  building `{"type": "folder", "path": ...}` inline, the "Show in folder" buttons don't render, and
+  `/api/open-folder` itself refuses regardless of who calls it. Add any new job-done notification through
+  `folder_action()`, never a literal folder action dict, so this stays covered. Separately, and for every Rivet
   caller regardless of box_managed: the system prompt (`ui/rivet_tools.py`) never lets the model name a tool or
   show a technical id to the person - plain English and the names they gave things, always.
 - Accounts (`engine/accounts.py`): local only, `~/.partlabeler/accounts.json` (scrypt hashes; PARTLABELER_CONFIG moves it);

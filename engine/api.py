@@ -1196,6 +1196,7 @@ class Session:
         return cls if abs(cx - a) <= abs(cx - b) else other
 
     def on_export(self, msg):
+        from engine.accounts import box_managed
         fmt, reviewed_only, tasks = msg.get("format", "yolo"), msg.get("reviewed_only", False), msg.get("tasks") or None
         jobs = msg.get("jobs") or None
         names = [t["name"] for t in self.p.sources if t["id"] in (tasks or [])]
@@ -1209,7 +1210,8 @@ class Session:
             detail = f"{res['images']} images" + (f", {res['boxes']} {what}" if what else "")
             if res.get("no_outline"):
                 detail += f" ({res['no_outline']} boxes without an outline left out: use Outline boxes)"
-            self.notify("success", f"Exported {FORMAT_NAMES.get(fmt, fmt)} dataset", f"{detail}. {out}",
-                        {"type": "folder", "path": str(out), "label": "Open folder"})
+            self.notify("success", f"Exported {FORMAT_NAMES.get(fmt, fmt)} dataset",
+                        detail if box_managed() else f"{detail}. {out}",
+                        None if box_managed() else {"type": "folder", "path": str(out), "label": "Open folder"})
 
         self._run("Exporting", job)

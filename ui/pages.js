@@ -292,7 +292,9 @@ export function page(root, args) {
           reviewed_only: f.confirmed.checked, name: f.name.value.trim(), ...scope });
         followJob(job, d.querySelector(".pg-dlgjob"), { onDone: (res) => {
           d.querySelector('[data-a="ok"]').hidden = true; d.querySelector('[data-a="cancel"]').textContent = "Close";
-          d.querySelector(".pg-dlgjob").insertAdjacentHTML("beforeend", `<p class="h-sub" style="margin:8px 0">${res.images} images in ${esc(res.folder)}
+          d.querySelector(".pg-dlgjob").insertAdjacentHTML("beforeend", window.PL?.box_managed
+            ? `<p class="h-sub" style="margin:8px 0">${res.images} images exported.</p>`
+            : `<p class="h-sub" style="margin:8px 0">${res.images} images in ${esc(res.folder)}
             <button type="button" data-open="${esc(res.folder)}">Open folder</button></p>`);
           pollNotes(); } });
       } catch (err) { d.querySelector(".pg-dlgjob").innerHTML = `<div class="h-err">${esc(err.message)}</div>`; e.target.disabled = false; }
@@ -377,7 +379,7 @@ export function page(root, args) {
       main.innerHTML = `<div class="pg-bar"><a class="pg-back" href="/">‹ Back to projects</a><span class="pg-sp"></span>
           <details class="h-menu" style="position:relative;top:auto;right:auto"><summary style="width:auto;padding:0 12px;border:1px solid var(--line);background:var(--paper)">Actions ▾</summary><div class="h-menu-list">
             <button type="button" data-pa="export">Export dataset</button><button type="button" data-pa="backup">Backup project</button>
-            <button type="button" data-pa="folder">Show in folder</button>
+            ${window.PL?.box_managed ? "" : `<button type="button" data-pa="folder">Show in folder</button>`}
             ${stored ? `<button type="button" data-pa="to-video">Read frames from the videos (frees ${esc(size(stored))})…</button>` : ""}
             <button type="button" class="danger" data-pa="trash">Move to trash…</button></div></details></div>
         <div><div class="pg-title"><h1 translate="no">${esc(d.name)}</h1><span class="h-chip">${esc(TASKS[d.task] || d.task)}</span></div>
@@ -638,13 +640,14 @@ export function page(root, args) {
     try { await load(); } catch (err) { main.innerHTML = `<p class="h-err">${esc(err.message)}</p>`; return; }
     const render = () => {
       const i = t.info || {}, d = i.duration;
-      const rows = t.kind === "video" ? [["Source", t.source], ["Resolution", i.width ? `${i.width} × ${i.height}` : "?"], ["Frame rate", i.fps ? `${+i.fps.toFixed(3)} fps` : "?"],
+      const rows = (t.kind === "video" ? [["Source", t.source], ["Resolution", i.width ? `${i.width} × ${i.height}` : "?"], ["Frame rate", i.fps ? `${+i.fps.toFixed(3)} fps` : "?"],
         ["Duration", d ? `${Math.floor(d / 60)}:${String(Math.floor(d % 60)).padStart(2, "0")}` : "?"], ["Codec", i.codec ? i.codec.toUpperCase() : "?"],
         ["File size", mb(i.size) || "?"], ["Frames in the video", i.frames ?? "?"], ["Frame step", `every ${t.every}`],
         ["Start / stop frame", `${t.start ?? "first"} / ${t.stop ?? "last"}`], ["Frames kept", t.frames],
         ["Stored as", t.format === "video" ? `read from the video (${mb(i.stored)}, no image files)` : t.format === "webp" ? `lossless WebP, ${mb(i.stored)}` : `JPEG quality ${t.quality}, ${mb(i.stored)}`]]
         : [["Source", t.source], ["Resolution", i.width ? `${i.width} × ${i.height}${i.mixed_sizes ? " (mixed sizes)" : ""}` : "?"], ["Images", t.frames],
-           ["Size", mb(i.size) || "?"], ["Sorting method", t.sorting || "lexicographical"]];
+           ["Size", mb(i.size) || "?"], ["Sorting method", t.sorting || "lexicographical"]])
+        .filter(([label]) => label !== "Source" || !window.PL?.box_managed);  // the local file path is nobody's business but ours
       main.innerHTML = `<div class="pg-bar"><a class="pg-back" href="/projects/${enc(name)}">‹ Back to project</a><span class="pg-sp"></span>
           <details class="h-menu" style="position:relative;top:auto;right:auto"><summary style="width:auto;padding:0 12px;border:1px solid var(--line);background:var(--paper)">Actions ▾</summary><div class="h-menu-list">
             <button type="button" data-t-upload="${t.id}" data-p="${esc(name)}">Upload annotations</button>

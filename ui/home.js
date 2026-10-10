@@ -659,7 +659,7 @@ export default function home(root) {
         <a href="${href}">Open</a>
         <a href="${href}#export">Export dataset</a>
         <button type="button" data-backup="${esc(p.name)}">Backup project</button>
-        <button type="button" data-folder="${esc(p.name)}">Show in folder</button>
+        ${window.PL?.box_managed ? "" : `<button type="button" data-folder="${esc(p.name)}">Show in folder</button>`}
         <button type="button" class="danger" data-trash="${esc(p.name)}">Move to trash…</button></div></details></article>`;
   }
   function renderProjects() {

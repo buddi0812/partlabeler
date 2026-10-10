@@ -99,7 +99,8 @@ def themed(html: str) -> str:
     prefs = accounts().prefs(user)
     attrs = f' data-theme="{prefs["theme"]}" data-accent="{prefs["accent"]}"' + ("" if prefs["motion"] else ' data-motion="off"')
     data = json.dumps({"prefs": {k: v for k, v in prefs.items() if k != "projects"},
-                       "user": accounts().profile(user) if user else None}).replace("<", "\\u003c")
+                       "user": accounts().profile(user) if user else None,
+                       "box_managed": box_managed()}).replace("<", "\\u003c")
     return html.replace("%%THEME%%", attrs, 1).replace("%%PREFS%%", f"<script>window.PL = {data};</script>", 1)
 
 
@@ -137,6 +138,12 @@ def note(level: str, title: str, detail: str = "", project: str | None = None, a
 
 def open_action(name: str) -> dict:
     return {"type": "open", "project": name, "label": "Open project"}
+
+
+def folder_action(path, label: str = "Open folder") -> dict | None:
+    """A notification's "Open folder" button: never offered on a box (box_managed()) - this computer's
+    filesystem, and the path itself once Explorer opens on it, is not the operator's business there."""
+    return None if box_managed() else {"type": "folder", "path": str(path), "label": label}
 
 
 def project(name: str) -> Project:
@@ -443,9 +450,10 @@ def set_projects_folder(body: dict = Body(...)) -> dict:
 
     def done(res):
         n = len(res['moved'])
-        note("success", f"Moved {n} item{'' if n == 1 else 's'} to {res['home']}",
-             f"Already there, so left in {old}: {', '.join(res['skipped'])}" if res["skipped"] else "The projects folder is now there.",
-             action={"type": "folder", "path": res["home"], "label": "Open folder"})
+        title = f"Moved {n} item{'' if n == 1 else 's'}" + ("" if box_managed() else f" to {res['home']}")
+        detail = ("Some items were already there and were left behind." if res["skipped"] else "The projects folder is now there.") if box_managed() \
+            else (f"Already there, so left in {old}: {', '.join(res['skipped'])}" if res["skipped"] else "The projects folder is now there.")
+        note("success", title, detail, action=folder_action(res["home"]))
 
     return {"home": str(new), "job": start_job("move", job, done, f"Could not move everything out of {old}; the rest is still there")}
 
@@ -695,8 +703,9 @@ def export_dataset(name: str, body: dict = Body(...)) -> dict:
         return {**res, "folder": str(out)}
 
     def done(res):
-        note("success", f"Exported {name} as {fmt.upper()}", f"{res['images']} images. {res['folder']}", name,
-             {"type": "folder", "path": res["folder"], "label": "Open folder"})
+        note("success", f"Exported {name} as {fmt.upper()}",
+             f"{res['images']} images." if box_managed() else f"{res['images']} images. {res['folder']}", name,
+             folder_action(res["folder"]))
 
     return {"job": start_job("export", job, done, f"Could not export {name}")}
 
@@ -727,9 +736,10 @@ def frames_to_video(name: str) -> dict:
         return {"tasks": done, "freed": freed, "old": str(out)}
 
     def done(res):
+        freed = f"{res['tasks']} tasks. {res['freed'] / 2**30:.1f} GB of old frame files can go"
         note("success", f"{name} now reads its frames from the videos",
-             f"{res['tasks']} tasks. {res['freed'] / 2**30:.1f} GB of old frame files can go: delete {res['old']}", name,
-             {"type": "folder", "path": res["old"], "label": "Open folder"})
+             freed if box_managed() else f"{freed}: delete {res['old']}", name,
+             folder_action(res["old"]))
 
     return {"job": start_job("frames to video", job, done, f"Could not switch {name} to its videos")}
 
@@ -745,8 +755,9 @@ def backup(name: str) -> dict:
         return backup_project(home() / name, out)
 
     def done(res):
-        note("success", f"Backed up {name}", f"{res['items']} frames or images, {res['size'] / 2**20:.1f} MB. {res['file']}", name,
-             {"type": "folder", "path": str(Path(res["file"]).parent), "label": "Open folder"})
+        size = f"{res['items']} frames or images, {res['size'] / 2**20:.1f} MB."
+        note("success", f"Backed up {name}", size if box_managed() else f"{size} {res['file']}", name,
+             folder_action(Path(res["file"]).parent))
 
     return {"job": start_job("backup", job, done, f"Could not back up {name}")}
 
@@ -766,8 +777,9 @@ def backup_task(name: str, tid: int) -> dict:
         return backup_project(folder, out, tasks=[tid])
 
     def done(res):
-        note("success", f"Backed up task {t['name']}", f"{res['items']} frames or images, {res['size'] / 2**20:.1f} MB. {res['file']}", name,
-             {"type": "folder", "path": str(Path(res["file"]).parent), "label": "Open folder"})
+        size = f"{res['items']} frames or images, {res['size'] / 2**20:.1f} MB."
+        note("success", f"Backed up task {t['name']}", size if box_managed() else f"{size} {res['file']}", name,
+             folder_action(Path(res["file"]).parent))
 
     return {"job": start_job("backup", job, done, f"Could not back up task {t['name']}")}
 
@@ -808,7 +820,7 @@ def restore(body: dict = Body(...)) -> dict:
         return {"name": dest.name}
 
     def done(res):
-        note("success", f"Created {res['name']} from a backup", str(path), res["name"], open_action(res["name"]))
+        note("success", f"Created {res['name']} from a backup", "" if box_managed() else str(path), res["name"], open_action(res["name"]))
 
     return {"job": start_job("restore", job, done, "Could not restore the backup")}
 
@@ -1212,7 +1224,7 @@ def teach(body: dict = Body(...)) -> dict:
         held = (res.get("held_out") or {}).get("mAP50")
         note("success" if res.get("passed", True) else "warning", f"Teach run {name} finished",
              (f"Held-out mAP50 {held:.2f}. " if isinstance(held, (int, float)) else "") + "Next: Transfer it to similar videos.",
-             action={"type": "folder", "path": str((runs_dir() / name).resolve()), "label": "Open folder"})
+             action=folder_action((runs_dir() / name).resolve()))
 
     return {"job": start_job("teach", job, done, f"Teach run {name} failed"), "run": name}
 
@@ -1236,7 +1248,7 @@ def transfer(body: dict = Body(...)) -> dict:
         n = len((res or {}).get("sources", {})) or len(sources)
         note("success", f"Transfer finished: {n} source{'s' if n != 1 else ''} labeled",
              "Review them in the annotator from the Teach & Transfer panel",
-             action={"type": "folder", "path": str((run / "labels").resolve()), "label": "Open folder"})
+             action=folder_action((run / "labels").resolve()))
 
     return {"job": start_job("transfer", job, done, "Transfer failed")}
 
@@ -1261,7 +1273,7 @@ def export_model(body: dict = Body(...)) -> dict:
         note("success", f"Exported {run.name} for production",
              f"Checked on {p.get('frames', 0)} held-out frames: {p.get('missing', 0)} missing, "
              f"largest box difference {p.get('worst_px', '?')} px.",
-             action={"type": "folder", "path": str(folder), "label": "Open folder"})
+             action=folder_action(folder))
 
     return {"job": start_job("export", job, done, f"Exporting {run.name} failed")}
 
@@ -1339,7 +1351,7 @@ def quick(body: dict = Body(...)) -> dict:
         n = len((res or {}).get("sources", {})) or len(sources)
         note("success", f"Quick transfer finished: {n} source{'s' if n != 1 else ''} labeled (no training)",
              "A preview: check every frame in the annotator (Review in annotator)",
-             action={"type": "folder", "path": str((runs_dir() / name / "labels").resolve()), "label": "Open folder"})
+             action=folder_action((runs_dir() / name / "labels").resolve()))
 
     return {"job": start_job("quick", job, done, "Quick transfer failed"), "run": name}
 
@@ -1440,6 +1452,8 @@ def restore_project(entry: str) -> dict:
 @app.post("/api/open-folder")
 def open_folder(body: dict = Body(...)) -> dict:
     """Show a folder in the file manager; only folders inside the projects folder."""
+    if box_managed():
+        raise HTTPException(403, "This computer is managed by the product it's embedded in: its filesystem isn't shown here.")
     path = Path(body.get("path", "")).resolve()
     h = home().resolve()
     if not path.is_dir() or (path != h and h not in path.parents):
