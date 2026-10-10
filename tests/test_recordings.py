@@ -179,6 +179,21 @@ def test_list_all_without_a_token_sends_no_header(monkeypatch, fake_recordings_a
     assert "X-Hawk-Token" not in fake_recordings_api["headers"]
 
 
+def test_box_managed_never_falls_back_to_folder_names_when_the_api_is_unreachable(monkeypatch, rec_dir):
+    """The orchestrator's report: a box must never let a Hawk-AI blip surface this computer's own folder names
+    (station1/cam1/cam2 here - a real box's folder can be named after camera ids) as if they were the real
+    station registry. box_managed(): list_all() raises a plain message instead of scanning rec_dir. Standalone
+    (not box_managed): the folder fallback is still useful and must keep working (unchanged from before)."""
+    monkeypatch.setattr(R, "app_config", lambda: {"recordings_api": "http://127.0.0.1:1", "recordings_dir": str(rec_dir)})
+
+    monkeypatch.setattr(R, "box_managed", lambda: False)
+    assert [s["id"] for s in R.list_all()["stations"]] == ["station1"]            # unaffected: folder fallback kept
+
+    monkeypatch.setattr(R, "box_managed", lambda: True)
+    with pytest.raises(RuntimeError, match="isn't answering"):
+        R.list_all()
+
+
 @pytest.mark.parametrize("crop, ok", [
     ([0.1, 0.2, 0.5, 0.6], True), ([0, 0, 1, 1], True),               # the whole frame is a valid crop
     ([-0.01, 0.2, 0.5, 0.6], False),                                  # x < 0

@@ -76,6 +76,12 @@
   `folder_action()`, never a literal folder action dict, so this stays covered. Separately, and for every Rivet
   caller regardless of box_managed: the system prompt (`ui/rivet_tools.py`) never lets the model name a tool or
   show a technical id to the person - plain English and the names they gave things, always.
+- Recordings (`engine/recordings.py` `list_all()`, behind `list_stations`/`deploy_link` and `/api/recordings`):
+  station/camera names come from the box's own recordings API when configured, else a local folder scan. On a
+  box (`box_managed()`) an unreachable API never falls back to that folder: its names are this computer's own
+  (a stray fixture can even be camera ids, not station names), so Rivet would otherwise answer confidently with
+  wrong internal identifiers. Instead it raises a plain "Hawk-AI isn't answering right now" for every caller to
+  show as-is. Standalone, the folder fallback is kept (genuinely useful with no API configured at all).
 - Accounts (`engine/accounts.py`): local only, `~/.partlabeler/accounts.json` (scrypt hashes; PARTLABELER_CONFIG moves it);
   every page and API call of the local host needs a sign-in (/login); per-account prefs are applied server-side
   (`themed()`: data-theme/-accent on <html>, `window.PL`) and each account may pick its own projects folder

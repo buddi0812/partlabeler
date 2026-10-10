@@ -21,7 +21,7 @@ from pathlib import Path
 import av
 import httpx
 
-from engine.accounts import app_config, default_home
+from engine.accounts import app_config, box_managed, default_home
 
 VIDEO_EXTS = {".mp4", ".avi", ".mov", ".mkv", ".webm", ".m4v"}
 _PROBE_CACHE: dict[str, tuple[float, dict]] = {}             # path -> (mtime, probe result)
@@ -181,7 +181,12 @@ def list_all(station_id: str | None = None, camera_id: str | None = None, limit:
              from_: str | None = None, to: str | None = None, before: str | None = None) -> dict:
     """{"stations": [...], "recordings": [...]}, from the API if configured and reachable, else the folder.
     from_/to: recordings overlapping that ISO window. before: recordings that started earlier than that ISO
-    timestamp (for paging - pass the previous page's last item's "started_at")."""
+    timestamp (for paging - pass the previous page's last item's "started_at").
+
+    On a box (box_managed()) an unreachable API never falls back to the folder: the folder's names are this
+    computer's own, not the real station registry (a stray one can even be named after camera ids), so
+    silently reading it would show a customer internal identifiers that happen to look plausible but are
+    wrong. Standalone, the folder fallback stays (genuinely useful there)."""
     src = source()
     if src["mode"] == "api":
         try:
@@ -198,6 +203,8 @@ def list_all(station_id: str | None = None, camera_id: str | None = None, limit:
                 r.raise_for_status()
                 return r.json()
         except httpx.HTTPError:
-            pass                                             # box's API not up right now: fall back to the folder
+            if box_managed():
+                raise RuntimeError("Hawk-AI isn't answering right now - try again in a moment.") from None
+            # standalone, box's API not up right now: fall back to the folder
     d = src["dir"] if src["mode"] == "dir" else _dir()
     return {"stations": _dir_stations(d), "recordings": _dir_recordings(d, station_id, camera_id, limit, from_, to, before)}

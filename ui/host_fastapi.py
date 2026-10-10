@@ -926,7 +926,10 @@ def recordings_page() -> str:
 @app.get("/api/recordings")
 def api_recordings(station_id: str | None = None, camera_id: str | None = None, limit: int = 100) -> dict:
     from engine import recordings
-    return recordings.list_all(station_id, camera_id, limit)
+    try:
+        return recordings.list_all(station_id, camera_id, limit)
+    except RuntimeError as e:
+        raise HTTPException(503, str(e))
 
 
 @app.get("/api/recordings/thumb")
