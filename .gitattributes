@@ -15,6 +15,9 @@
 /spikes         export-ignore
 /videos         export-ignore
 /samples        export-ignore
+/PRODUCT.md     export-ignore
+/DESIGN.md      export-ignore
+/.impeccable    export-ignore
 
 # Notebooks are JSON text
 *.ipynb  text

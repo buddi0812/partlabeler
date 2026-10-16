@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Rail and inspector</title>
+<style>
+*{box-sizing:border-box;margin:0}
+body{width:1440px;height:900px;overflow:hidden;font:13px/1.4 "Segoe UI",system-ui,sans-serif;color:#15202b;background:#eef1f4;display:grid;grid-template-rows:48px 1fr 112px}
+header{display:flex;align-items:center;gap:14px;padding:0 16px;background:#fff;border-bottom:1px solid #d5dbe1}
+.back{color:#075e5b;font-weight:600}.title{font-size:16px;font-weight:600}
+.chip{font-size:12px;font-weight:600;padding:2px 9px;border-radius:99px;background:#e1f0ef;color:#075e5b}
+.chip.warn{background:#fbecd3;color:#8a5304}.sp{flex:1}.muted{color:#56636f}
+.btn{border:1px solid #d5dbe1;border-radius:7px;padding:5px 11px;background:#fff;white-space:nowrap}
+.primary{background:#0a7c78;border-color:#0a7c78;color:#fff;font-weight:600}.danger{border-color:#e9b5ac;color:#a5321f}
+.work{display:grid;grid-template-columns:200px 1fr 320px;min-height:0}
+.rail{background:#fff;border-right:1px solid #d5dbe1;padding:12px 10px;display:flex;flex-direction:column;gap:4px}
+.rail h4{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#56636f;margin:10px 4px 4px}
+.tool{display:grid;grid-template-columns:22px 1fr auto;gap:8px;align-items:center;padding:6px 8px;border-radius:7px}
+.tool i{width:20px;height:20px;border-radius:5px;background:#dfe4e9;display:block}.tool kbd{font-size:11px;color:#56636f}
+.tool.on{background:#15202b;color:#fff}.tool.on i{background:#2bb3a9}
+.center{display:grid;grid-template-rows:40px 1fr;min-width:0}
+.opts{display:flex;align-items:center;gap:14px;padding:0 14px;background:#fff;border-bottom:1px solid #d5dbe1}
+.stage{background:#0d1217;display:flex;align-items:center;justify-content:center}
+.frame{width:760px;height:430px;background:#25313a;border-radius:4px;position:relative}
+.b{position:absolute;border:2px solid}.b span{position:absolute;top:-22px;left:-2px;font-size:12px;font-weight:600;color:#fff;padding:1px 6px}
+.poly{position:absolute;left:470px;top:240px}
+.insp{background:#fff;border-left:1px solid #d5dbe1;display:flex;flex-direction:column}
+.tabs{display:flex;border-bottom:1px solid #d5dbe1}.tabs span{padding:11px 14px;font-weight:600;color:#56636f}
+.tabs span.on{color:#075e5b;box-shadow:inset 0 -2px #0a7c78}
+.pane{padding:12px;display:flex;flex-direction:column;gap:4px}
+.row{display:grid;grid-template-columns:12px 22px 1fr auto;gap:8px;align-items:center;padding:6px;border-radius:6px}
+.row.on{background:#e1f0ef;outline:1px solid #0a7c78}.sw{width:11px;height:11px;border-radius:3px;display:inline-block}
+.bottom{background:#fff;border-top:1px solid #d5dbe1;padding:10px 16px;display:grid;grid-template-rows:36px 1fr;gap:8px}
+.transport{display:flex;align-items:center;gap:8px}
+.ribbon{position:relative;display:flex;height:30px;border-radius:5px;overflow:hidden}
+.ribbon .job{position:absolute;top:-6px;bottom:-6px;left:0;width:100%;border:2px solid #15202b;border-radius:6px}
+.ribbon .f{position:absolute;top:0;width:3px;height:9px;background:#e09a2c}
+.ribbon .cur{position:absolute;top:-4px;bottom:-4px;width:2px;background:#15202b;left:22%}
+</style></head><body>
+<header><span class="back">← Projects</span><span class="title">pcb_panel</span><span class="chip">Object detection</span>
+<span class="btn">Job #1 · in progress ▾</span><span class="muted">Frame 12 of 53</span><span class="chip warn">To check</span>
+<span class="sp"></span><span class="muted">✓ All changes saved</span><span class="btn">?</span></header>
+<div class="work">
+  <nav class="rail">
+    <h4>AI assisted</h4>
+    <div class="tool"><i></i>Click to outline<kbd>C</kbd></div><div class="tool"><i></i>Find similar<kbd>F</kbd></div>
+    <h4>Manual</h4>
+    <div class="tool"><i></i>Rectangle<kbd>B</kbd></div><div class="tool"><i></i>Two-click box<kbd>2</kbd></div>
+    <div class="tool"><i></i>Four-point box<kbd>4</kbd></div><div class="tool on"><i></i>Polygon<kbd>O</kbd></div>
+    <div class="tool"><i></i>Ellipse<kbd>L</kbd></div><div class="tool"><i></i>Brush<kbd>P</kbd></div><div class="tool"><i></i>Eraser<kbd>E</kbd></div>
+    <h4>View</h4>
+    <div class="tool"><i></i>Pan<kbd>Space</kbd></div><div class="tool"><i></i>Fit frame<kbd>Z</kbd></div>
+  </nav>
+  <div class="center">
+    <div class="opts"><b>Polygon</b><span class="muted">Click each corner · Enter or double-click closes · Backspace removes the last point</span><span class="sp"></span><span>Class <b>ic_chip</b></span></div>
+    <div class="stage"><div class="frame">
+      <div class="b" style="left:110px;top:80px;width:150px;height:110px;border-color:#2bb3a9"><span style="background:#2bb3a9">ic_chip</span></div>
+      <div class="b" style="left:350px;top:130px;width:90px;height:60px;border-color:#e0702c"><span style="background:#e0702c">capacitor</span></div>
+      <div class="b" style="left:240px;top:290px;width:60px;height:60px;border-color:#d43f7a"><span style="background:#d43f7a">led</span></div>
+      <svg class="poly" width="220" height="120"><polyline points="10,20 180,8 210,90 40,110" fill="rgba(43,179,169,.18)" stroke="#2bb3a9" stroke-width="2"/><circle cx="10" cy="20" r="5" fill="#fff"/><circle cx="180" cy="8" r="4" fill="#fff"/><circle cx="210" cy="90" r="4" fill="#fff"/><circle cx="40" cy="110" r="4" fill="#fff"/></svg>
+    </div></div>
+  </div>
+  <aside class="insp"><div class="tabs"><span class="on">Classes</span><span>Parts 4</span><span>Find</span><span>Export</span></div>
+    <div class="pane">
+      <div class="row on"><i class="sw" style="background:#2bb3a9"></i><span class="muted">1</span>ic_chip<span class="muted">2</span></div>
+      <div class="row"><i class="sw" style="background:#e0702c"></i><span class="muted">2</span>capacitor<span class="muted">1</span></div>
+      <div class="row"><i class="sw" style="background:#7a6ce0"></i><span class="muted">3</span>connector<span class="muted">0</span></div>
+      <div class="row"><i class="sw" style="background:#d43f7a"></i><span class="muted">4</span>led<span class="muted">1</span></div>
+    </div></aside>
+</div>
+<footer class="bottom">
+  <div class="transport"><span class="btn">◀</span><span class="btn">▶</span><span class="btn">▷ Play 1×</span><span class="btn">Next to check ⇧→</span>
+    <span class="btn">◀ Back</span><span class="btn">Track 20 ▶</span><span class="btn">After this frame ▾</span><span class="btn">Undo</span>
+    <span class="sp"></span><span class="muted">18 labeled · 11 confirmed · 3 to check</span><span class="btn danger">Delete frame</span><span class="btn primary">Confirm frame ⏎</span></div>
+  <div class="ribbon"><i style="flex:11;background:#2f9e5b"></i><i style="flex:9;background:#27a79b"></i><i style="flex:24;background:#6aa6f2"></i><i style="flex:9;background:#dfe4e9"></i>
+    <i class="f" style="left:30%"></i><i class="f" style="left:47%"></i><i class="f" style="left:61%"></i><i class="cur"></i></div>
+</footer>
+</body></html>

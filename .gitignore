@@ -32,3 +32,6 @@ videos/*/renders/.*
 graphify-out/
 .claude/
 .graphifyignore
+# design review screenshots and decision-page state (regenerated; the decisions live in .impeccable/surfaces, DESIGN.md)
+.impeccable/review/
+.impeccable/questions/

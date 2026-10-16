@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Label and Review modes</title>
+<style>
+*{box-sizing:border-box;margin:0}
+body{width:1440px;height:900px;overflow:hidden;font:13px/1.4 "Segoe UI",system-ui,sans-serif;color:#15202b;background:#eef1f4;display:grid;grid-template-rows:56px 1fr 210px}
+header{display:flex;align-items:center;gap:14px;padding:0 16px;background:#fff;border-bottom:1px solid #d5dbe1}
+.back{color:#075e5b;font-weight:600}.title{font-size:16px;font-weight:600}.sp{flex:1}.muted{color:#56636f}
+.chip{font-size:12px;font-weight:600;padding:2px 9px;border-radius:99px;background:#e1f0ef;color:#075e5b}
+.seg{display:flex;background:#eef1f4;border-radius:10px;padding:3px}.seg span{padding:7px 22px;border-radius:8px;font-weight:600;font-size:15px;color:#56636f}
+.seg span.on{background:#15202b;color:#fff}
+.btn{border:1px solid #d5dbe1;border-radius:8px;padding:6px 12px;background:#fff;white-space:nowrap}
+.big{font-size:15px;padding:10px 20px;border-radius:9px}
+.primary{background:#0a7c78;border-color:#0a7c78;color:#fff;font-weight:600}.danger{border-color:#e9b5ac;color:#a5321f}
+.work{display:grid;grid-template-columns:1fr 330px;min-height:0}
+.stage{position:relative;background:#0d1217;display:flex;align-items:center;justify-content:center}
+.frame{width:860px;height:470px;background:#25313a;border-radius:4px;position:relative}
+.b{position:absolute;border:2px solid}.b span{position:absolute;top:-22px;left:-2px;font-size:12px;font-weight:600;color:#fff;padding:1px 6px}
+.flagnote{position:absolute;left:24px;top:20px;background:#fbecd3;color:#6b4700;border-radius:9px;padding:8px 12px;font-weight:600}
+.panel{background:#fff;border-left:1px solid #d5dbe1;padding:14px;display:flex;flex-direction:column;gap:10px}
+.panel h3{font-size:14px}
+.issue{display:grid;grid-template-columns:8px 1fr;gap:10px;padding:8px;border-radius:8px;background:#fdf8ee}
+.issue i{border-radius:3px;background:#e09a2c}
+.decide{display:flex;gap:8px;margin-top:auto}
+.sheet{background:#fff;border-top:1px solid #d5dbe1;padding:12px 16px;display:grid;grid-template-rows:28px 1fr;gap:8px}
+.sheetbar{display:flex;align-items:center;gap:10px}
+.strip{display:flex;gap:8px;align-items:flex-end;overflow:hidden}
+.th{width:150px;flex:none;border-radius:6px;overflow:hidden;border:2px solid #d5dbe1;background:#25313a;height:110px;position:relative}
+.th.up{height:140px;border-color:#e09a2c}.th.cur{outline:3px solid #15202b;outline-offset:2px}
+.th.ok{border-color:#2f9e5b}.th b{position:absolute;left:0;right:0;bottom:0;background:#fff;font-size:12px;padding:2px 6px;font-weight:600}
+</style></head><body>
+<header><span class="back">← Projects</span><span class="title">pcb_panel</span><span class="chip">Object detection</span>
+<div class="seg"><span>Label</span><span class="on">Review</span></div><span class="muted">Job #1 · frame 12 of 53</span>
+<span class="sp"></span><span class="muted">✓ All changes saved</span><span class="btn">?</span></header>
+<div class="work">
+  <div class="stage">
+    <div class="flagnote">⚠ connector jumped 64 px since frame 11</div>
+    <div class="frame">
+      <div class="b" style="left:120px;top:90px;width:150px;height:110px;border-color:#2bb3a9"><span style="background:#2bb3a9">ic_chip</span></div>
+      <div class="b" style="left:400px;top:140px;width:90px;height:60px;border-color:#e0702c"><span style="background:#e0702c">capacitor</span></div>
+      <div class="b" style="left:580px;top:270px;width:180px;height:70px;border-color:#e09a2c;border-width:3px"><span style="background:#e09a2c">connector</span></div>
+    </div>
+  </div>
+  <aside class="panel"><h3>Why this frame needs a look</h3>
+    <div class="issue"><i></i><span><b>connector</b> jumped 64 px since frame 11</span></div>
+    <div class="issue"><i></i><span><b>led</b> was lost after frame 10</span></div>
+    <h3>Parts on this frame</h3><span class="muted">ic_chip · capacitor · connector</span>
+    <div class="decide"><span class="btn big danger">Delete frame</span><span class="btn big">Fix in Label ⇥</span><span class="btn big primary">Confirm ⏎</span></div>
+  </aside>
+</div>
+<section class="sheet">
+  <div class="sheetbar"><b>Frames to check</b><span class="chip" style="background:#fbecd3;color:#8a5304">3 flagged</span><span class="muted">then 39 not confirmed</span><span class="sp"></span><span class="btn">◀</span><span class="btn">▶</span><span class="btn">▷ Play</span></div>
+  <div class="strip">
+    <div class="th ok"><b>10 ✓</b></div><div class="th ok"><b>11 ✓</b></div><div class="th up cur"><b>12 ⚠</b></div>
+    <div class="th"><b>13</b></div><div class="th"><b>14</b></div><div class="th up"><b>15 ⚠</b></div><div class="th"><b>16</b></div><div class="th"><b>17</b></div>
+  </div>
+</section>
+</body></html>

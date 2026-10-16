@@ -239,24 +239,40 @@ Boxes imported into a segmentation project (existing YOLO labels, Teach & Transf
 
 ## The annotator screen
 
-The annotator shows one job. Top bar: ← Projects, the project name and type, the **job menu** (`Job #n` and its
-state: **Finish the job** (marks it accepted and completed), its **Stage** and **State**, ◀ ▶ for the previous
-and next job, a list of every job, **Open the task** and **Back to the project**), the frame number within the
-job, chips that say whether
-this frame is *Confirmed* or *To check*, the save status (*All changes saved*), the bell and **?**
-(keyboard shortcuts) and ⤢ (full screen; on Colab it fills the window height, press F11 too for a
-true full screen). Below it: frame buttons, the **Track** controls (videos), **Undo**, **Export** and
-**Confirm frame**. The image is in the middle, the side panel on the right has Tool, Class, Boxes on this
-frame, Find parts, Export dataset and Settings. The timeline at the bottom shows every frame; click it to jump.
+The annotator shows one job, laid out the same way every time: tools on the left, the frame in the middle, the
+inspector on the right and the job's frames along the bottom.
 
-Timeline colors: green = confirmed, teal = has your boxes, blue = tracked or imported, purple = suggestions,
-grey = no boxes, an amber mark = to check. Box styles: solid = yours, dashed = tracked or imported,
+- **Top bar:** ← Projects, the project name and type, the **job menu** (`Job #n` and its state: **Finish the job**
+  (marks it accepted and completed), its **Stage** and **State**, previous and next job, a list of every job,
+  **Open the task** and **Back to the project**), the frame number within the job, chips that say whether this
+  frame is *Confirmed* or *To check*, the save status (*All changes saved*), the bell, Rivet, the **?** button
+  (keyboard shortcuts) and full screen (on Colab it fills the window height; press F11 too for a true full screen).
+- **Tools (left):** every tool with its name and key, in three groups: **AI assisted** (Click to outline),
+  **Manual** (Select and adjust, Box, Polygon, Brush, and in segmentation projects also Ellipse, Eraser, Smart brush
+  and Smart eraser) and **View** (Move around, Fit frame). On a smaller laptop screen the keys move into the
+  tooltips, and below about 1100 pixels wide only the icons show; point at one for its name and key.
+- **Options bar (above the frame):** the chosen tool, its modes (for Box: Drag, Two clicks, Four edge points; for
+  Polygon and Ellipse in segmentation projects: New part, Add to selected, Cut from selected), the brush size for
+  brush tools, a one-line how-to (point at it for the whole text) and the class new parts get.
+- **Inspector (right):** tabs **Classes** (pick the class for new parts, add classes; each shows how many parts of
+  it are on this frame), **Parts** (the parts on this frame), **Find** (Suggest, Find similar, Accept all, Sort
+  parts, Annotate by text), **Export** and **Settings**. Below about 980 pixels wide the inspector moves under the frame.
+- **Bottom:** frame buttons, Play, **Next to check**, the **Track** controls (videos), **After this frame ▾**,
+  **Undo**, **Delete frame** and **Confirm frame** (**Stop** appears there while a job runs; on smaller screens
+  some of these show as icons only, with their names in the tooltips). Under them, the job's frames as one
+  coloured strip, with the job's first and last frame number at its ends and the current frame's number on the
+  marker. Click or drag along the strip to go to a frame; point at it to see the frame number and its status. A
+  raised amber tick marks a frame to check. The bottom line counts labeled, confirmed and to-check frames and
+  explains the colours.
+
+Strip colours: green = confirmed, teal = has your boxes, blue = tracked or imported, purple = suggestions,
+grey = no boxes, an amber tick = to check. Box styles: solid = yours, dashed = tracked or imported,
 dotted = suggestions.
 
 ## Label a part (click to outline)
 
-1. Pick the class first: click it in the Class list or press its number key (1–9, 0 for the tenth,
-   [ and ] to step through longer lists).
+1. Pick the class first: click it on the **Classes** tab or press its number key (1–9, 0 for the tenth,
+   [ and ] to step through longer lists). The options bar above the frame shows the current class.
 2. Click the part in the image. SAM 3 outlines it and draws a tight box. It picks the smallest outline;
    press **M** for the next larger one (for example the whole assembly instead of one bolt).
 3. To fix a box: Ctrl+click selects it, then Shift+click grows it and Alt+click shrinks it.
@@ -266,22 +282,47 @@ dotted = suggestions.
 ## Zoom in and out
 
 Hold **Ctrl** and turn the mouse wheel (or pinch on a touchpad) to zoom in or out at the pointer, up to 800%.
-**+** and **−** zoom from the keyboard, **Z** shows the whole frame again, and the buttons at the bottom right of
-the picture do the same. When zoomed in, the wheel moves the view (Shift+wheel sideways), and so does dragging
-with **Space** held or with the middle mouse button. The zoom stays when you go to the next frame, so one small
+**+** and **−** zoom from the keyboard, **Z** (or **Fit frame** in the tools) shows the whole frame again, and the
+buttons at the bottom right of the picture do the same. When zoomed in, the wheel moves the view (Shift+wheel
+sideways), and so does dragging with **Space** held, with the middle mouse button, or with the **Move around** tool. The zoom stays when you go to the next frame, so one small
 part can be checked through a whole video; from about 3 screen pixels per image pixel on, the pixels show
 sharp, for exact edge work.
 
-## Draw a box by hand
+## Manual tools: label without the AI
 
-Press **B** (or choose **Draw box** under Tool) and drag: every drag adds a new box of the current class (to change an
-existing box, use its handles, below). Picking a class re-labels a box only when you selected that box yourself
-(Ctrl+click, a click in the list, or a click with Draw box); the part you just made stays highlighted but keeps its class.
-Press **C** to go back to click-to-outline. Hand-drawn boxes are useful for parts SAM cannot separate.
+Every label can be made by hand, in every project type that has parts. These tools need no model and work the same
+on a computer without a graphics card. Pick one in the tools on the left or with its key; the options bar says how
+it works.
 
-**Adjust a box** (object detection projects): select it (Ctrl+click it, or click it under Boxes on this frame), then
-drag one of its eight white handles to resize it, or drag inside it to move it. It stays the same part with the same
-class, becomes yours (manual), and Ctrl+Z undoes it.
+- **Select and adjust** (V): click a part to select it, without making anything new. Then drag a box's handles
+  (below), pick a class to re-label it, or press Del to delete it.
+- **Box** (B): three ways to place a box, chosen in the options bar or by pressing B again:
+  - **Drag**: press at one corner and drag to the other.
+  - **Two clicks**: click one corner, then the opposite corner. Easier on a touchpad.
+  - **Four edge points**: click the part's top, bottom, left and right edge in any order, and the box fits
+    those four points. This is often the quickest way to get a tight box on a round or slanted part.
+- **Polygon** (O): click each corner of the part. Close it by clicking the first corner again, double-clicking, or
+  pressing Enter. Backspace takes back the last corner and Esc cancels.
+- **Ellipse** (L, segmentation projects): drag around a round part; hold Shift for a circle.
+- **Brush** (P): paint over the part.
+
+What the shapes become depends on the project:
+
+- **Object detection:** a polygon or a brush stroke becomes the box around it. This is handy for slanted or
+  irregular parts.
+- **Segmentation:** a polygon or an ellipse is the part's exact outline. **New part** (the default) makes a new
+  part of the current class. **Add to selected** joins the shape to the selected outline. **Cut from selected**
+  takes it away, for example to cut a hole. A box drawn by hand is outlined by SAM 3, as before. The brush and
+  eraser are explained under Outlines below.
+
+Every drag adds a new part of the current class; to change an existing box, use its handles (below). Picking a class
+re-labels a part only when you selected it yourself (Ctrl+click, the Select tool, a click on the Parts tab, or a click
+with the Box tool). The part you just made stays highlighted but keeps its class. Press **C** to go back to Click to
+outline. Hand-drawn parts are useful where SAM cannot separate a part, and for people learning what a good label is.
+
+**Adjust a box** (object detection projects): select it (Ctrl+click it, use the Select tool, or click it on the
+Parts tab). Then drag one of its eight white handles to resize it, or drag inside it to move it. It stays the same
+part with the same class, becomes yours (manual), and Ctrl+Z undoes it.
 
 Once a project's first frame shows, PartLabeler loads the outline model in the background; the bottom line says "Getting the
 outline model ready…" until it is done (the first time after a start this can take up to a minute). Clicks made
@@ -362,20 +403,33 @@ image to fix something.
 on the timeline. Confirming a frame with no boxes records it as checked background (an empty label file on
 export). Click **Unconfirm frame** to undo a confirmation.
 
+## Delete a frame
+
+Some frames should not be in the dataset at all: a blurred frame, one where the camera was blocked, a duplicate.
+**Delete frame** (Shift+Delete) removes the frame you are on from the project **for good**, together with its parts.
+PartLabeler asks first; **Keep the frame** is the default. Every frame after it moves up one place, and the job and
+task get one frame shorter. It cannot be undone (Ctrl+Z does not bring it back), so to only skip a frame, leave it
+unconfirmed instead. A frame taken from a video is deleted from the project's stored frames. A picture from your own
+image folder stays in your folder: the project simply leaves it out from then on. The last frame of a task cannot be
+deleted (delete the task instead), and a running job (tracking, Suggest…) must finish or be stopped first. Image
+classification projects do not have this button.
+
 ## Outlines (segmentation)
 
-In a segmentation project the side panel's Tool section has these tools:
+In a segmentation project the tools on the left are:
 
 1. **Click to outline** (C): click a part and SAM 3 outlines it; **M** steps to the next larger outline, Shift+click
    adds to it and Alt+click takes away from it, as for boxes.
-2. **Draw box** (B): drag a box around a part; SAM 3 outlines the part inside it.
-3. **Brush** (P): paint onto the selected outline (Ctrl+click an outline to select it). With nothing selected,
+2. **Box** (B): place a box around a part (drag, two clicks or four edge points); SAM 3 outlines the part inside it.
+3. **Polygon** (O) and **Ellipse** (L): draw the outline yourself, as a new part or added to or cut from the
+   selected outline (see Manual tools above).
+4. **Brush** (P): paint onto the selected outline (Ctrl+click an outline to select it). With nothing selected,
    the brush paints a new part of the current class.
-4. **Eraser** (E): erase from the selected outline. Erasing all of it deletes the part.
-5. **Smart brush** (Shift+P): paint roughly over what is missing. The outline model (SAM 3) looks at the part and
+5. **Eraser** (E): erase from the selected outline. Erasing all of it deletes the part.
+6. **Smart brush** (Shift+P): paint roughly over what is missing. The outline model (SAM 3) looks at the part and
    the stroke, and only what it sees as the part is added: the paint stops at the part's edge even when the
    brush spills over it. With nothing selected it starts a new part.
-6. **Smart eraser** (Shift+E): erase roughly over what does not belong (a spill onto the background or a
+7. **Smart eraser** (Shift+E): erase roughly over what does not belong (a spill onto the background or a
    neighbour). Only what the outline model sees as not the part is removed; the part's own edge stays.
 
 The plain brush and eraser paint exactly where you drag; use them where the outline model gets an edge wrong
@@ -394,7 +448,7 @@ polygons (holes are not kept there). Boxes without an outline are left out and c
 A classification project opens as a grid of pictures instead of one frame at a time.
 
 - **Select** pictures: click one, Shift+click a range, Ctrl+click to add or remove, Ctrl+A for everything shown.
-  Then press a class number (1–9, 0) or click the class in the side panel. Del clears the class.
+  Then press a class number (1–9, 0) or click the class on the Classes tab. Del clears the class.
 - **New class…** (under Class): adds a class; the selected pictures get it straight away.
 - **Group by look** (G): puts look-alike pictures together (DINOv3 features, nothing leaves the computer).
   The **Groups** slider under Sort gives fewer or more groups; it starts at the best fit. Each group has
@@ -441,7 +495,7 @@ Name the objects and SAM 3 boxes every one it sees, with no labeling first: comm
 cabin, wheel, bus, person, license plate, headlight, door, window, forklift, pallet, box or helmet, or any short
 phrase (one or two words work best).
 
-1. Under **Annotate by text** in the right panel (or press **W**), type the objects separated by commas, or click
+1. Under **Annotate by text** on the inspector's **Find** tab (or press **W**), type the objects separated by commas, or click
    the common ones below the field (click again to remove one).
 2. Choose where: **Only this frame**, **This frame and the rest of the task**, **The whole task** or **The whole
    project**.
@@ -471,12 +525,25 @@ nothing is overwritten. From the command line: `python -m engine.cli export proj
 
 ## Project settings and the parent object
 
-In the annotator, open **Settings** at the bottom of the side panel (these belong to the project; your own
+In the annotator, open the inspector's **Settings** tab (these belong to the project; your own
 preferences are on the Settings page of the account menu). The **parent object** is the thing the
 parts sit on (for example "engine block" or "circuit board"). When it is set, Suggest searches only inside
 it, which helps when the camera or distance changes. Leave it empty to search the whole image. **Parts that
 change look** lists classes that are states of one part (see *Track through a video*). The Settings section also
 shows the device (GPU or CPU) and GPU memory in use.
+
+**Start over.** Under **Start over** on the same tab, **Reset this task…** removes every label, image class and
+confirmation from the task you are in, and makes its jobs new again (stage annotation, state new): a fresh task on
+the same frames with the same classes. **Reset the whole project…** does the same for every task. Both ask first;
+Ctrl+Z brings the labels back while the page stays open (the jobs stay new). A running job must finish or be stopped
+first. To keep a copy for good, make a backup first (see *Backup and restore*).
+
+## Delete a class
+
+On the inspector's **Classes** tab, point at a class and click the **×** at the end of its row (on a touch screen
+it is always shown). PartLabeler asks first, then deletes the class together with every label of it in the whole
+project, on every frame and image; the classes after it move up one number (so their number keys change). It cannot
+be undone. Classes can also be renamed, recoloured or removed on the project page (**Edit labels**).
 
 ## A reference for checking lit parts in production
 
@@ -647,6 +714,63 @@ elsewhere. The zip goes to `_backups` too. To continue it:
 Command line: `python -m engine.cli backup projects/<name> --task <task name>` and
 `python -m engine.cli import-task projects/<name> <zip>`.
 
+**Sending an unfinished project to a teammate's own PartLabeler.** Backup project makes the zip; a small
+`.bat` the teammate double-clicks inside their own PartLabeler folder means they run no commands themselves.
+Make one for any project with the two steps below.
+
+1. Make the zip: `python -m engine.cli backup projects/<name> --out <name>_unfinished.zip` (or **Backup
+   project** in the app, then rename/move the zip from `_backups`).
+2. Save this next to it as `add_<name>.bat`, with every `<name>` replaced by the real project name:
+
+   ```batch
+   @echo off
+   rem Adds the <name> project to this PartLabeler.
+   rem Put this file and <name>_unfinished.zip in the PartLabeler folder, then double-click this file.
+   rem An existing <name> is moved to the trash first (restorable from Trash on the start screen).
+   setlocal
+   cd /d "%~dp0"
+   set "ZIP=%~dp0<name>_unfinished.zip"
+   if not exist "%ZIP%" (
+       echo <name>_unfinished.zip must be in the same folder as this file.
+       goto :end
+   )
+   if not exist ".venv\Scripts\python.exe" (
+       echo Put this file in the PartLabeler folder, the one with install_windows.bat, after installing.
+       goto :end
+   )
+   for /f "delims=" %%h in ('.venv\Scripts\python.exe -c "from engine.accounts import default_home; print(default_home().resolve())"') do set "HOMEDIR=%%h"
+   if not defined HOMEDIR (
+       echo Could not find the projects folder.
+       goto :end
+   )
+   for /f %%t in ('powershell -NoProfile -Command "Get-Date -Format yyyyMMdd_HHmmss"') do set "STAMP=%%t"
+   if exist "%HOMEDIR%\<name>\project.json" (
+       if not exist "%HOMEDIR%\_trash" mkdir "%HOMEDIR%\_trash"
+       move "%HOMEDIR%\<name>" "%HOMEDIR%\_trash\<name>__%STAMP%" >nul || (
+           echo The old <name> is in use: close PartLabeler, then run this again.
+           goto :end
+       )
+       echo Moved the old <name> to the trash: %HOMEDIR%\_trash\<name>__%STAMP%
+   )
+   echo Adding <name> to %HOMEDIR% ...
+   .venv\Scripts\python.exe -m engine.cli restore "%ZIP%" --home "%HOMEDIR%" --name <name> || goto :end
+   echo.
+   echo Done. Refresh the PartLabeler start page and open <name>.
+   :end
+   echo.
+   pause
+   ```
+
+3. Send both files together - they must stay in the same folder. A real project's zip is usually hundreds of
+   MB to a few GB (frames and all), so use a USB drive or a shared/cloud folder, not email or chat.
+4. The teammate puts both files directly in their PartLabeler folder (next to `install_windows.bat`) and
+   double-clicks the `.bat`. It finds their own projects folder by itself, moves any project of that name they
+   already have to their Trash (never deletes it outright), and restores the zip under that exact name.
+
+To send a refreshed copy later (more frames annotated since), just redo step 1 with the same name and resend
+the zip - the same `.bat` works unchanged, and the teammate's older copy goes to Trash again, never overwritten
+silently.
+
 ## Trash and restore
 
 On the start screen, a project's ⋯ menu → **Move to trash…** moves it (frames, labels and exports) into
@@ -655,12 +779,15 @@ the projects. If a project with the same name exists, the restored one gets `_2`
 
 ## Keyboard shortcuts
 
+Tools: C click to outline · V select and adjust · B box (B again: drag / two clicks / four edge points) · O polygon ·
+P brush · , and . brush size. Outlines also: L ellipse · E eraser · Shift+P smart brush · Shift+E smart eraser.
 Click: new part · M: next larger outline · Shift/Alt+click: grow/shrink the selected part · Ctrl+click:
-select · B: draw box · C: click mode · 1–9, 0, [ ]: class · Del: delete · Esc: deselect · Ctrl+Z: undo ·
-← → (A / D): previous / next frame · Shift+→: next to check · K or Space: play / pause · Enter: confirm · T / Shift+T: track ahead /
+select · 1–9, 0, [ ]: class · Del: delete the selected part · Esc: deselect (or cancel a polygon) · Ctrl+Z: undo ·
+Polygon: Enter or double-click closes it, Backspace takes back a corner ·
+← → (A / D): previous / next frame · Shift+→: next to check · K or Space: play / pause · Enter: confirm ·
+Shift+Delete: delete this frame for good (asks first) · T / Shift+T: track ahead /
 to the end · R / Shift+R: track back / to the start · U / Shift+U: re-track ahead / to the end · X: stop · S: suggest · F: find similar · Y: accept all · W: annotate by text ·
-N: notifications · ?: all shortcuts. Ctrl+wheel / + / −: zoom · Z: whole frame · Space+drag or wheel: move when zoomed. Outlines: P brush · E eraser ·
-Shift+P smart brush · Shift+E smart eraser · , and . brush size. G: sort parts (grid: group
+N: notifications · ?: all shortcuts. Ctrl+wheel / + / −: zoom · Z: whole frame · Space+drag or wheel: move when zoomed. G: sort parts (grid: group
 by look). Grid: 1–9 and 0 give the selected pictures a class · Ctrl+A select all shown · Del clear · Space or
 double-click: closer look · Esc: clear the selection, then back to frames.
 

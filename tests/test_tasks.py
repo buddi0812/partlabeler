@@ -142,3 +142,71 @@ def test_rename_subset_and_delete_a_task_keep_the_others_labels(tmp_path, video,
         raise AssertionError("the last task must stay")
     except ValueError:
         pass
+
+
+def test_delete_frames_for_good_moves_the_later_labels_down(tmp_path, video, images):
+    p = Project.create(tmp_path / "proj", CLASSES, video=video, every=5, segment_size=2)   # items 0-3, jobs 0-1 / 2-3
+    p.add_source(video=make_video(tmp_path / "line3.mp4"), every=6, frames="video")         # items 4-5, read from video
+    p.add_source(images=images)                                                             # items 6-8
+    p.put(1, 1, 0, (1, 1, 5, 5)); p.put(2, 2, 1, (2, 2, 6, 6)); p.set_reviewed(2); p.put(7, 3, 2, (3, 3, 8, 8))
+    gone = p.items[1]["path"]
+    assert p.remove_items([1]) == {"items": 1, "labels": 1}
+    assert not gone.exists() and len(p.items) == 8 and p.sources[0]["info"]["kept"] == 3   # its stored file goes
+    assert p.boxes(1)[0]["box"] == [2, 2, 6, 6] and p.is_reviewed(1) and not p.boxes(0)    # the next one moved down
+    assert [(j["start"], j["end"]) for j in p.jobs(1)] == [(0, 1), (1, 3)]                 # the first job shrank
+    p.remove_items([0])                                                                     # its last frame: the job goes
+    assert [j["end"] - j["start"] for j in p.jobs(1)] == [2]
+    p.remove_items([3])                                                                     # a frame read from the video
+    idx = json.loads((tmp_path / "proj" / p.sources[1]["frames"] / "index.json").read_text())
+    assert idx["frames"] == [0] and len(p.items) == 6
+    p.remove_items([3])                                                                     # a picture of the folder (a):
+    assert (images / "a.jpg").exists() and len(p.items) == 5                                # the person's file stays
+    q = Project(tmp_path / "proj")                                                          # reopens identically
+    assert [it["name"] for it in q.items] == [it["name"] for it in p.items] and q.boxes(3)[0]["box"] == [3, 3, 8, 8]
+    with pytest.raises(ValueError, match="delete the task instead"):
+        p.remove_items([2])                                                                 # line3's last frame
+
+
+def test_delete_frames_message_drops_undo_and_reloads_every_tab(tmp_path, video):
+    p = Project.create(tmp_path / "proj", CLASSES, video=video, every=5)
+    msgs = []
+    s = Session(p, msgs.append)
+    s.handle({"type": "box", "item": 2, "cls": 0, "box": [1, 1, 9, 9]})
+    assert s.history
+    s.handle({"type": "delete_frames", "items": [1]})
+    assert not s.history and msgs[-1] == {"type": "reload", "removed": [1]} and len(p.items) == 3
+    assert p.boxes(1)[0]["box"] == [1, 1, 9, 9]                                             # the box moved with its frame
+    s.running = True
+    s.handle({"type": "delete_frames", "items": [0]})
+    assert msgs[-1]["type"] == "toast" and len(p.items) == 3                                # never while a job runs
+
+
+def test_reset_a_task_or_the_whole_project_and_undo_it(tmp_path, video, images):
+    p = Project.create(tmp_path / "proj", CLASSES, video=video, every=5)                   # items 0-3
+    p.add_source(images=images)                                                             # items 4-6
+    s = Session(p, [].append)
+    p.put(1, 1, 0, (1, 1, 5, 5)); p.set_reviewed(1); p.put(5, 2, 1, (2, 2, 6, 6))
+    jid = p.jobs()[0]["id"]
+    p.set_job(jid, stage="acceptance", state="completed")
+    s.handle({"type": "reset", "scope": "task", "item": 2})
+    assert not p.boxes(1) and not p.is_reviewed(1) and p.boxes(5)                          # only that frame's task
+    assert (p.job(jid)["stage"], p.job(jid)["state"]) == ("annotation", "new")             # its jobs are new again
+    s.handle({"type": "undo"})
+    assert p.boxes(1) and p.is_reviewed(1)                                                  # one undo step
+    s.handle({"type": "reset", "scope": "project"})
+    assert not p.boxes(1) and not p.boxes(5) and len(p.items) == 7                         # frames stay
+
+
+def test_delete_class_takes_its_labels_and_renumbers_the_rest(tmp_path, video):
+    p = Project.create(tmp_path / "proj", CLASSES, video=video, every=5)                   # left_drl, right_drl, grill
+    p.set_meta(states=[["left_drl", "right_drl", "grill"], ["left_drl", "grill"]])
+    msgs = []
+    s = Session(p, msgs.append)
+    p.put(0, 1, 0, (1, 1, 5, 5)); p.put(0, 2, 2, (2, 2, 6, 6))
+    s.handle({"type": "box", "item": 1, "cls": 1, "box": [1, 1, 9, 9]})
+    s.handle({"type": "delete_class", "cls": 0})
+    assert p.classes == ["right_drl", "grill"] and [b["cls"] for b in p.boxes(0)] == [1]  # grill moved up to 1
+    assert p.boxes(1)[0]["cls"] == 0 and p.meta["states"] == [["right_drl", "grill"]]     # a one-state group goes
+    assert not s.history and msgs[-1] == {"type": "reload"}                                 # numbers moved: no undo
+    p.set_labels([{"name": "drl_r", "from": 0}, {"name": "grille", "from": 1}])             # renames follow too
+    assert p.meta["states"] == [["drl_r", "grille"]]

@@ -5,163 +5,312 @@
 import { tooSmallForAnnotating } from "/ui/responsive.js";
 
 const CSS = `
-.pl { --bg:var(--c-bg,#eef1f4); --panel:var(--c-panel,#fff); --ink:var(--c-ink,#15202b); --muted:var(--c-muted,#56636f);
-  --line:var(--c-line,#d5dbe1); --accent:var(--c-accent,#0a7c78); --accent-ink:var(--c-accent-ink,#075e5b);
-  --accent-soft:var(--c-accent-soft,#e1f0ef); --st0:var(--c-st0,#dfe4e9); --st1:#b8a8e6; --st2:#6aa6f2; --st3:#27a79b; --st4:#2f9e5b; --flag:#e09a2c; --bad:#c2412f;
+.pl { --bg:var(--c-bg,#eef1f4); --panel:var(--c-panel,#fff); --panel-2:var(--c-panel-2,#f7f9fa); --ink:var(--c-ink,#15202b); --muted:var(--c-muted,#56636f);
+  --line:var(--c-line,#d5dbe1); --line-2:var(--c-line-2,#e6eaee); --accent:var(--c-accent,#0a7c78); --accent-ink:var(--c-accent-ink,#075e5b);
+  --accent-soft:var(--c-accent-soft,#e1f0ef); --hover:var(--c-hover,#f3f7f8); --stage:#0d1217;
+  --st0:var(--c-st0,#dfe4e9); --st1:#b8a8e6; --st2:#6aa6f2; --st3:#27a79b; --st4:#2f9e5b; --flag:#e09a2c;
+  --bad:var(--c-bad,#c2412f); --bad-ink:var(--c-bad-ink,#9b2f1f); --bad-soft:var(--c-bad-soft,#fde8e5); --bad-line:var(--c-bad-line,#efb9ae);
+  --rail-w:212px; --insp-w:320px;
   font:14px/1.45 "Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,sans-serif; color:var(--ink); background:var(--bg);
-  display:grid; grid-template-rows:auto auto minmax(0,1fr) auto; gap:8px; padding:0 12px 10px; outline:none; position:relative;
-  -webkit-tap-highlight-color:transparent; }
-.pl.web { min-height:100vh; }
+  display:grid; grid-template-rows:auto auto minmax(0,1fr) auto; outline:none; position:relative; container-type:inline-size;
+  height:clamp(620px, 86vh, 980px); -webkit-tap-highlight-color:transparent; caret-color:var(--accent);
+  scrollbar-color:var(--line) transparent; }
+.pl.web { height:100vh; }
+.pl:fullscreen { height:100vh; }
+.pl.big { height:var(--plh); }
+.pl ::selection { background:var(--accent-soft); color:var(--ink); }
+.pl * { box-sizing:border-box; }
+.pl [hidden] { display:none !important; }
+.pl :focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.pl-i { width:18px; height:18px; flex:none; fill:none; stroke:currentColor; stroke-width:1.75; stroke-linecap:round; stroke-linejoin:round; display:block; }
 .pl-toosmall { box-sizing:border-box; display:flex; align-items:center; justify-content:center; min-height:100vh; text-align:center; padding:32px; }
 .pl-toosmall-card { max-width:360px; }
 .pl-toosmall-card h1 { font-size:17px; margin:0 0 8px; }
 .pl-toosmall-card p { color:var(--muted); margin:0 0 16px; }
-.pl-toosmall-card .pl-back { display:inline-block; border:1px solid var(--line); background:var(--panel); }
-.pl:fullscreen { overflow:auto; }
-.pl.big { height:var(--plh); }
-.pl.big .pl-stage canvas { max-height:calc(var(--plh) - 230px); }
-.pl.big .pl-side { max-height:calc(var(--plh) - 150px); }
-.pl * { box-sizing:border-box; }
-.pl [hidden] { display:none !important; }
-.pl-head { display:flex; align-items:center; gap:12px; margin:0 -12px; padding:8px 12px; background:var(--panel); border-bottom:1px solid var(--line); min-width:0; }
-.pl-back { color:var(--accent-ink); text-decoration:none; font-weight:600; white-space:nowrap; padding:4px 6px; border-radius:6px; }
+.pl-toosmall-card .pl-back { display:inline-flex; border:1px solid var(--line); background:var(--panel); }
+
+/* controls */
+.pl button { font:inherit; font-size:13.5px; border:1px solid var(--line); background:var(--panel); color:var(--ink); border-radius:7px;
+  padding:5px 11px; cursor:pointer; white-space:nowrap; touch-action:manipulation; display:inline-flex; align-items:center; gap:6px;
+  transition:background-color .12s, border-color .12s, color .12s; }
+.pl button:hover:not(:disabled) { border-color:var(--accent); background:var(--hover); }
+.pl button:disabled { opacity:.45; cursor:default; }
+.pl button.primary { background:var(--accent); border-color:var(--accent); color:var(--c-on-accent,#fff); font-weight:600; }
+.pl button.primary:hover:not(:disabled) { background:var(--accent-ink); border-color:var(--accent-ink); }
+.pl button.danger { color:var(--bad-ink); border-color:var(--bad-line); }
+.pl button.danger:hover:not(:disabled) { background:var(--bad-soft); border-color:var(--bad); }
+.pl button.solid-danger { background:var(--bad); border-color:var(--bad); color:#fff; font-weight:600; }
+.pl button.solid-danger:hover:not(:disabled) { background:var(--bad-ink); border-color:var(--bad-ink); }
+.pl button.icon { padding:5px 7px; }
+.pl button.ghost { border-color:transparent; background:transparent; }
+.pl button.ghost:hover:not(:disabled) { background:var(--hover); border-color:var(--line); }
+.pl select, .pl input[type=number], .pl input[type=text], .pl input[type=search], .pl .pl-states { font:inherit; font-size:13.5px; border:1px solid var(--line);
+  border-radius:7px; padding:4px 7px; background:var(--panel); color:var(--ink); }
+.pl input[type=number] { width:58px; font-variant-numeric:tabular-nums; }
+.pl input[type=range] { accent-color:var(--accent); }
+.pl .pl-states { resize:vertical; min-height:44px; }
+.pl kbd, .pl-help-dlg kbd { font:11.5px/1.2 ui-monospace,"Cascadia Mono",Consolas,monospace; border:1px solid var(--line); border-bottom-width:2px; border-radius:5px;
+  padding:1px 5px; background:var(--panel-2); color:var(--ink); white-space:nowrap; }
+.pl-sp { flex:1; }
+.pl-src { font-size:12px; color:var(--muted); }
+.pl-empty { color:var(--muted); font-size:13px; padding:4px 2px; }
+.pl-sw { width:12px; height:12px; border-radius:3px; display:inline-block; flex:none; }
+
+/* header */
+.pl-head { display:flex; align-items:center; gap:12px; padding:8px 14px; background:var(--panel); border-bottom:1px solid var(--line); min-width:0; }
+.pl-back { color:var(--accent-ink); text-decoration:none; font-weight:600; white-space:nowrap; padding:4px 8px 4px 4px; border-radius:6px; display:inline-flex; gap:4px; align-items:center; }
 .pl-back:hover { background:var(--accent-soft); }
 .pl-title { font-weight:600; font-size:15px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
 .pl-where { color:var(--muted); font-variant-numeric:tabular-nums; white-space:nowrap; }
 .pl-chip { font-size:12px; font-weight:600; padding:2px 9px; border-radius:99px; white-space:nowrap; }
 .pl-chip.rev { background:var(--c-ok-soft,#dcf1e4); color:var(--c-ok-ink,#1f7a44); } .pl-chip.pl-type { background:var(--accent-soft); color:var(--accent-ink); }
 .pl-chip.pl-type:empty { display:none; } .pl-chip.flag { background:var(--c-warn-soft,#fbecd3); color:var(--c-warn-ink,#8a5304); }
-.pl-sp { flex:1; }
 .pl-saved { color:var(--muted); font-size:13px; white-space:nowrap; display:inline-flex; gap:5px; align-items:center; }
 .pl-saved svg { width:14px; height:14px; } .pl-saved.lost { color:var(--bad); font-weight:600; }
-.pl-bar-tools { display:flex; flex-wrap:wrap; align-items:center; gap:6px 14px; }
-.pl-group { display:inline-flex; gap:4px; align-items:center; }
-.pl-group-label { color:var(--muted); font-size:13px; margin-right:2px; }
-.pl button { font:inherit; font-size:13.5px; border:1px solid var(--line); background:var(--panel); color:var(--ink); border-radius:7px;
-  padding:5px 11px; cursor:pointer; white-space:nowrap; touch-action:manipulation; }
-.pl button:hover:not(:disabled) { border-color:var(--accent); background:var(--c-hover,#f7fbfb); }
-.pl button:disabled { opacity:.45; cursor:default; }
-.pl button.primary { background:var(--accent); border-color:var(--accent); color:var(--c-on-accent,#fff); font-weight:600; }
-.pl button.primary:hover:not(:disabled) { background:var(--accent-ink); }
-.pl button.icon { padding:5px 8px; }
-.pl :focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
-.pl select, .pl input[type=number], .pl input[type=text], .pl input[type=search], .pl .pl-states { font:inherit; font-size:13.5px; border:1px solid var(--line);
-  border-radius:7px; padding:4px 7px; background:var(--panel); color:var(--ink); }
-.pl input[type=number] { width:64px; font-variant-numeric:tabular-nums; }
-.pl .pl-states { resize:vertical; min-height:44px; }
-.pl-main { display:grid; grid-template-columns:minmax(0,1fr) 300px; gap:10px; min-height:0; }
-.pl-stage { position:relative; background:#0d1217; border-radius:10px; overflow:hidden; display:flex; align-items:center; justify-content:center; min-height:320px; }
-.pl-stage canvas { max-width:100%; max-height:calc(100vh - 250px); display:block; cursor:crosshair; transform-origin:0 0; }
-.pl-stage.panning canvas, .pl-stage.can-pan canvas { cursor:grab; } .pl-stage.panning canvas { cursor:grabbing; }
-.pl-zoom { position:absolute; right:10px; bottom:10px; display:flex; gap:2px; align-items:center; background:rgba(21,32,43,.82); border-radius:9px; padding:3px; z-index:2; }
-.pl .pl-zoom button { background:transparent; color:#fff; border-color:transparent; padding:2px 9px; font-size:14px; }
-.pl .pl-zoom button:hover:not(:disabled) { background:rgba(255,255,255,.14); border-color:transparent; }
-.pl-zoom span { color:#fff; font-size:12.5px; min-width:44px; text-align:center; font-variant-numeric:tabular-nums; }
-.pl-hint { position:absolute; left:50%; top:16px; transform:translateX(-50%); background:rgba(21,32,43,.88); color:#fff; border-radius:10px;
-  padding:10px 14px; max-width:min(560px, 90%); font-size:13.5px; display:flex; gap:12px; align-items:flex-start; }
-.pl-hint button { background:transparent; color:#fff; border-color:rgba(255,255,255,.4); padding:2px 8px; }
-.pl-hint kbd { color:var(--ink); }
-.pl-side { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:12px; display:flex; flex-direction:column;
-  gap:14px; overflow:auto; max-height:calc(100vh - 150px); overscroll-behavior:contain; }
-.pl-side h2 { margin:0 0 6px; font-size:13px; font-weight:600; color:var(--ink); }
-.pl-side section { display:flex; flex-direction:column; }
-.pl-tools { display:flex; gap:4px; flex-wrap:wrap; align-items:center; } .pl-tools button[aria-pressed=true] { background:var(--ink); color:var(--panel); border-color:var(--ink); }
-.pl-list { display:flex; flex-direction:column; gap:2px; overflow:auto; overscroll-behavior:contain; }
-.pl-classes { max-height:24vh; } .pl-boxes { max-height:18vh; }
-.pl-row { display:grid; grid-template-columns:12px minmax(16px, auto) minmax(0,1fr) auto; gap:7px; align-items:center; width:100%;
-  padding:4px 6px; border:1px solid transparent; border-radius:6px; background:none; text-align:left; font:inherit; font-size:13.5px; color:inherit; cursor:pointer; }
-.pl-row:hover { background:var(--bg); } .pl-row[aria-pressed=true] { background:var(--accent-soft); border-color:var(--accent); }
-.pl-rowwrap { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; }
-.pl-sw { width:12px; height:12px; border-radius:3px; display:inline-block; }
-.pl-key { font-size:12px; color:var(--muted); font-variant-numeric:tabular-nums; }
-.pl-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.pl-src { font-size:12px; color:var(--muted); }
-.pl-x { border:none !important; padding:2px 7px !important; color:var(--muted); background:none !important; font-size:16px !important; }
-.pl-x:hover { color:var(--bad); }
-.pl-empty { color:var(--muted); font-size:13px; }
-.pl-objs { display:flex; flex-wrap:wrap; gap:4px; margin-top:6px; }
-.pl-obj { font-size:12px !important; padding:2px 8px !important; border-radius:99px !important; }
-.pl-obj[aria-pressed=true] { background:var(--accent-soft); border-color:var(--accent); }
-.pl-side .flash { outline:2px solid var(--accent); outline-offset:4px; border-radius:8px; }
-.pl-settings summary { cursor:pointer; font-weight:600; font-size:13px; }
-.pl-settings[open] summary { margin-bottom:8px; }
-.pl-field { display:flex; flex-direction:column; gap:4px; font-size:13px; margin-bottom:6px; }
-.pl-bottom { display:grid; gap:5px; }
-.pl-strip { width:100%; height:28px; display:block; cursor:pointer; border-radius:5px; background:var(--st0); }
-.pl-foot { display:flex; gap:14px; align-items:center; color:var(--muted); font-variant-numeric:tabular-nums; min-height:18px; flex-wrap:wrap; font-size:13px; }
-.pl-loading { color:var(--ink); font-weight:600; } .pl-loading::before { content:""; display:inline-block; width:8px; height:8px; margin-right:7px; border-radius:50%; background:var(--accent); animation:pl-pulse 1s ease-in-out infinite alternate; }
-@keyframes pl-pulse { from { opacity:.25; } to { opacity:1; } }
-@media (prefers-reduced-motion: reduce) { .pl-loading::before { animation:none; } }
-.pl-bar { flex:0 0 160px; height:6px; background:var(--st0); border-radius:3px; overflow:hidden; }
-.pl-bar i { display:block; height:100%; background:var(--accent); width:0; }
-.pl-legend { display:flex; gap:12px; flex-wrap:wrap; } .pl-legend span { display:inline-flex; gap:5px; align-items:center; }
-.pl-toasts { position:fixed; right:16px; bottom:16px; display:flex; flex-direction:column; gap:8px; z-index:30; max-width:400px; }
-.pl-toast { background:var(--ink); color:var(--panel); padding:9px 12px; border-radius:8px; box-shadow:0 6px 18px rgba(0,0,0,.22); display:flex; gap:10px; align-items:flex-start; }
-.pl-toast b { font-weight:600; display:block; } .pl-toast small { opacity:.8; display:block; margin-top:1px; overflow-wrap:anywhere; }
-.pl-toast.error { background:var(--bad); color:#fff; } .pl-toast.warning { background:#8a5304; color:#fff; }
-.pl-toast button { background:transparent; color:inherit; border-color:color-mix(in srgb, currentColor 45%, transparent); padding:2px 9px; margin-left:auto; }
-.pl-banner { background:var(--c-bad-soft,#fde8e5); color:var(--c-bad-ink,#8b2a1d); border:1px solid var(--c-bad-line,#f3b8ae); border-radius:8px; padding:8px 12px; font-weight:600; }
-.pl-banner.info { background:var(--c-warn-soft,#fdf1d2); color:var(--c-warn-ink,#6b4700); border-color:var(--c-warn-line,#f0d08a); font-weight:500; }
-.pl-help-dlg { border:1px solid var(--line); border-radius:12px; padding:0; width:min(720px, calc(100vw - 32px)); max-height:85vh; color:var(--ink); background:var(--panel); }
-.pl-help-dlg::backdrop { background:rgba(21,32,43,.45); }
-.pl-help-dlg header { display:flex; align-items:center; padding:14px 18px; border-bottom:1px solid var(--line); }
-.pl-help-dlg h2 { margin:0; font-size:16px; } .pl-help-dlg header button { margin-left:auto; }
-.pl-help-grid { display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:4px 28px; padding:14px 18px 18px; overflow:auto; }
-.pl-help-grid h3 { grid-column:1 / -1; margin:10px 0 2px; font-size:13px; color:var(--muted); font-weight:600; }
-.pl-help-grid div { display:flex; justify-content:space-between; gap:12px; padding:3px 0; border-bottom:1px solid var(--c-line-2,#eef1f4); font-size:13.5px; }
-.pl kbd, .pl-help-dlg kbd { font:12px/1.2 ui-monospace,"Cascadia Mono",Consolas,monospace; border:1px solid var(--line); border-bottom-width:2px; border-radius:5px; padding:1px 5px; background:var(--c-panel-2,#f7f9fa); white-space:nowrap; }
 .pl-jobmenu { position:relative; }
 .pl-jobmenu > summary { list-style:none; cursor:pointer; font-size:12.5px; font-weight:600; padding:3px 10px; border-radius:99px; border:1px solid var(--line);
   background:var(--panel); white-space:nowrap; display:inline-flex; gap:6px; align-items:center; }
 .pl-jobmenu > summary::-webkit-details-marker { display:none; }
 .pl-jobmenu > summary:hover, .pl-jobmenu[open] > summary { border-color:var(--accent); }
-.pl-jobmenu .pl-jm { position:absolute; left:0; top:32px; z-index:25; background:var(--panel); border:1px solid var(--line); border-radius:10px;
-  box-shadow:0 14px 34px rgba(21,32,43,.18); padding:10px; display:grid; gap:8px; width:min(330px, 90vw); }
+.pl-jobmenu > summary .pl-i { width:14px; height:14px; }
+.pl-jobmenu .pl-jm { position:absolute; left:0; top:34px; z-index:25; background:var(--panel); border:1px solid var(--line); border-radius:10px;
+  box-shadow:0 14px 34px rgba(21,32,43,.18); padding:12px; display:grid; gap:8px; width:min(330px, 90vw); }
 .pl-jm label { display:grid; grid-template-columns:52px minmax(0,1fr); gap:8px; align-items:center; font-size:13px; }
 .pl-jm .pl-tools { justify-content:space-between; }
-.pl-after .pl-jm { width:min(360px, 92vw); }
+.pl-jobstate { font-size:11.5px; font-weight:600; padding:1px 8px; border-radius:99px; background:var(--bg); color:var(--muted); }
+.pl-jobstate.completed { background:var(--c-ok-soft,#dcf1e4); color:var(--c-ok-ink,#1f7a44); }
+.pl-banner { background:var(--bad-soft); color:var(--bad-ink); border-bottom:1px solid var(--bad-line); padding:8px 14px; font-weight:600; }
+.pl-banner.info { background:var(--c-warn-soft,#fdf1d2); color:var(--c-warn-ink,#6b4700); border-color:var(--c-warn-line,#f0d08a); font-weight:500; }
+
+/* body: rail | work | inspector */
+.pl-body { display:grid; grid-template-columns:var(--rail-w) minmax(0,1fr) var(--insp-w); min-height:0; grid-row:3; }
+.pl-dock { grid-row:4; }                                     /* fixed rows: a hidden banner must not move the frame into its row */
+.pl-body.gridmode { grid-template-columns:minmax(0,1fr) var(--insp-w); }
+.pl-body.gridmode .pl-rail, .pl-body.gridmode .pl-work { display:none; }
+.pl-rail { background:var(--panel); border-right:1px solid var(--line); padding:10px 8px; display:flex; flex-direction:column; gap:2px; overflow:auto; overscroll-behavior:contain; }
+.pl-rail h3 { font-size:12px; font-weight:600; color:var(--muted); margin:12px 8px 4px; }
+.pl-rail h3:first-child { margin-top:2px; }
+.pl .pl-tool { display:grid; grid-template-columns:20px minmax(0,1fr) auto; gap:9px; align-items:center; width:100%; padding:6px 8px;
+  border:1px solid transparent; border-radius:8px; background:none; text-align:left; font-size:13.5px; }
+.pl .pl-tool:hover:not(:disabled) { background:var(--hover); border-color:transparent; }
+.pl .pl-tool[aria-pressed=true] { background:var(--ink); color:var(--panel); border-color:var(--ink); }
+.pl .pl-tool[aria-pressed=true] kbd { background:transparent; color:inherit; border-color:color-mix(in srgb, currentColor 40%, transparent); }
+.pl-tool span { overflow:hidden; text-overflow:ellipsis; }
+.pl-work { display:grid; grid-template-rows:auto minmax(0,1fr); grid-template-columns:minmax(0,1fr); min-width:0; min-height:0; }
+.pl-opts { display:flex; align-items:center; gap:14px; padding:7px 14px; background:var(--panel); border-bottom:1px solid var(--line); height:44px; }
+.pl-opts > * { flex:none; }
+.pl-opts b { font-weight:600; white-space:nowrap; }
+.pl-howto { color:var(--muted); font-size:13px; flex:1 1 0; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }   /* one line: the frame never jumps */
+.pl-modes { display:inline-flex; background:var(--bg); border-radius:8px; padding:2px; gap:2px; }
+.pl .pl-modes button { border:0; background:transparent; padding:3px 10px; font-size:12.5px; border-radius:6px; color:var(--muted); }
+.pl .pl-modes button:hover:not(:disabled) { background:var(--panel); border:0; color:var(--ink); }
+.pl .pl-modes button[aria-pressed=true] { background:var(--panel); color:var(--ink); font-weight:600; box-shadow:0 1px 2px rgba(21,32,43,.14); }
+.pl-brush { display:inline-flex; gap:8px; align-items:center; font-size:13px; } .pl-brush input { width:120px; }
+.pl-bsize-v { font-variant-numeric:tabular-nums; color:var(--muted); min-width:44px; }
+.pl-curcls { display:inline-flex; gap:7px; align-items:center; font-size:13px; white-space:nowrap; }
+.pl-stage { position:relative; background:var(--stage); display:flex; align-items:center; justify-content:center; min-height:0; overflow:hidden; }
+.pl-stage canvas { max-width:100%; max-height:100%; display:block; cursor:crosshair; transform-origin:0 0; }
+.pl-stage.tool-select canvas { cursor:default; } .pl-stage.tool-pan canvas { cursor:grab; }
+.pl-stage.panning canvas, .pl-stage.can-pan canvas { cursor:grab; } .pl-stage.panning canvas { cursor:grabbing; }
+.pl-zoom { position:absolute; right:10px; bottom:10px; display:flex; gap:2px; align-items:center; background:rgba(21,32,43,.84); border-radius:9px; padding:3px; z-index:2; }
+.pl .pl-zoom button { background:transparent; color:#fff; border-color:transparent; padding:3px 7px; font-size:13px; }
+.pl .pl-zoom button:hover:not(:disabled) { background:rgba(255,255,255,.14); border-color:transparent; }
+.pl-zoom span { color:#fff; font-size:12.5px; min-width:44px; text-align:center; font-variant-numeric:tabular-nums; }
+.pl-hint { position:absolute; left:50%; top:16px; transform:translateX(-50%); background:rgba(21,32,43,.92); color:#fff; border-radius:10px;
+  padding:12px 14px; max-width:min(560px, 90%); font-size:13.5px; display:flex; gap:12px; align-items:flex-start; box-shadow:0 10px 30px rgba(0,0,0,.3); z-index:3; }
+.pl .pl-hint button { background:transparent; color:#fff; border-color:rgba(255,255,255,.4); padding:2px 9px; }
+.pl-hint kbd { color:var(--ink); }
+
+/* inspector */
+.pl-side { background:var(--panel); border-left:1px solid var(--line); display:grid; grid-template-rows:auto minmax(0,1fr); min-height:0; min-width:0; }
+.pl-tabs { display:flex; border-bottom:1px solid var(--line); padding:0 6px; overflow-x:auto; scrollbar-width:none; }
+.pl .pl-tabs button { border:0; border-radius:0; background:transparent; padding:11px 9px 10px; font-weight:600; font-size:13px; color:var(--muted); box-shadow:inset 0 -2px transparent; }
+.pl .pl-tabs button:hover:not(:disabled) { background:transparent; border:0; color:var(--ink); }
+.pl .pl-tabs button[aria-selected=true] { color:var(--accent-ink); box-shadow:inset 0 -2px var(--accent); }
+.pl-tabs b { font-weight:600; font-variant-numeric:tabular-nums; color:var(--muted); background:var(--bg); border-radius:99px; padding:0 6px; font-size:11.5px; }
+.pl-insp-body { overflow:auto; overscroll-behavior:contain; padding:14px; display:flex; flex-direction:column; gap:18px; }
+.pl-insp-body section { display:flex; flex-direction:column; gap:6px; }
+.pl-panel { display:flex; flex-direction:column; gap:22px; }  /* sections of one tab stand apart */
+.pl-insp-body h2 { margin:0; font-size:13px; font-weight:600; color:var(--ink); }
+.pl-tools { display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
+.pl-list { display:flex; flex-direction:column; gap:1px; }
+.pl-row { display:grid; grid-template-columns:12px 18px minmax(0,1fr) auto; gap:8px; align-items:center; width:100%;
+  padding:5px 7px; border:1px solid transparent; border-radius:7px; background:none; text-align:left; font:inherit; font-size:13.5px; color:inherit; cursor:pointer; }
+.pl .pl-row:hover { background:var(--hover); border-color:transparent; }
+.pl .pl-row[aria-pressed=true] { background:var(--accent-soft); border-color:var(--accent); }
+.pl-rowwrap { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; }
+.pl-key { font-size:12px; color:var(--muted); font-variant-numeric:tabular-nums; }
+.pl-n-here { font-size:12px; color:var(--muted); font-variant-numeric:tabular-nums; }
+.pl-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.pl .pl-x { border:none; padding:3px 6px; color:var(--muted); background:none; }
+.pl .pl-x:hover:not(:disabled) { color:var(--bad); background:var(--bad-soft); border:none; }
+.pl .pl-x .pl-i { width:15px; height:15px; }
+@media (hover: hover) {                                      /* a class's delete shows on its row's hover or focus (always on touch) */
+  .pl-classes .pl-x { opacity:0; } .pl-classes .pl-rowwrap:hover .pl-x, .pl-classes .pl-x:focus-visible { opacity:1; }
+}
+.pl-objs { display:flex; flex-wrap:wrap; gap:4px; }
+.pl .pl-obj { font-size:12px; padding:2px 9px; border-radius:99px; }
+.pl .pl-obj[aria-pressed=true] { background:var(--accent-soft); border-color:var(--accent); }
+.pl-side .flash { outline:2px solid var(--accent); outline-offset:4px; border-radius:8px; }
+.pl-field { display:flex; flex-direction:column; gap:4px; font-size:13px; }
+.pl-range { display:flex; gap:8px; align-items:center; font-size:13px; flex-wrap:wrap; } .pl-range input { flex:1; min-width:90px; }
+.pl-sortnote { font-size:12.5px; color:var(--muted); margin:0; }
+.pl-chk { display:inline-flex; gap:6px; align-items:center; font-size:13px; }
+
+/* dock: transport + ribbon */
+.pl-dock { background:var(--panel); border-top:1px solid var(--line); padding:8px 14px 8px; display:grid; gap:7px; }
+.pl-transport { display:flex; flex-wrap:wrap; align-items:center; gap:6px 14px; }
+.pl-group { display:inline-flex; gap:4px; align-items:center; }
+.pl-commit { margin-left:auto; gap:8px; }                    /* Delete and Confirm stay together at the right, even when the row wraps */
+.pl-group-label { color:var(--muted); font-size:13px; margin-right:2px; }
+.pl-counts { color:var(--ink); font-variant-numeric:tabular-nums; white-space:nowrap; }
+.pl-after .pl-jm { left:auto; right:0; top:auto; bottom:38px; width:min(370px, 92vw); max-height:min(70vh, 640px); overflow:auto; }
 .pl-after .pl-jm h3 { margin:2px 0 0; font-size:12.5px; }
-.pl-after .pl-jm label.pl-chk { display:inline-flex; gap:5px; align-items:center; grid-template-columns:none; font-size:12.5px; }
+.pl-after .pl-jm label.pl-chk { display:inline-flex; grid-template-columns:none; font-size:12.5px; }
 .pl-after .pl-jm .pl-src { margin:0; }
 .pl-clear-classes, .pl-track-classes { display:flex; flex-wrap:wrap; gap:3px 12px; max-height:150px; overflow:auto; padding:2px 0; }
 .pl-after hr { border:0; border-top:1px solid var(--line); margin:2px 0; width:100%; }
-.pl-jobstate { font-size:11.5px; font-weight:600; padding:1px 8px; border-radius:99px; background:var(--bg); color:var(--muted); }
-.pl-jobstate.completed { background:var(--c-ok-soft,#dcf1e4); color:var(--c-ok-ink,#1f7a44); }
-.pl-brush { display:flex; gap:8px; align-items:center; font-size:13px; margin-top:6px; } .pl-brush input { flex:1; accent-color:var(--accent); }
-.pl-gridwrap { display:flex; flex-direction:column; gap:8px; min-height:0; background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:10px 12px; }
+.pl-strip { width:100%; height:40px; display:block; cursor:pointer; border-radius:6px; touch-action:none; }
+.pl-foot { display:flex; gap:14px; align-items:center; color:var(--muted); font-variant-numeric:tabular-nums; min-height:18px; flex-wrap:wrap; font-size:12.5px; }
+.pl-loading { color:var(--ink); font-weight:600; } .pl-loading::before { content:""; display:inline-block; width:8px; height:8px; margin-right:7px; border-radius:50%; background:var(--accent); animation:pl-pulse 1s ease-in-out infinite alternate; }
+@keyframes pl-pulse { from { opacity:.25; } to { opacity:1; } }
+.pl-bar { flex:0 0 160px; height:6px; background:var(--st0); border-radius:3px; overflow:hidden; }
+.pl-bar:not(.on) { display:none; }
+.pl-bar i { display:block; height:100%; background:var(--accent); width:0; transition:width .2s ease-out; }
+.pl-legend { display:flex; gap:12px; flex-wrap:wrap; } .pl-legend span { display:inline-flex; gap:5px; align-items:center; }
+.pl-tip { position:fixed; z-index:40; pointer-events:none; background:var(--ink); color:var(--panel); font-size:12px; padding:4px 8px; border-radius:6px;
+  white-space:nowrap; font-variant-numeric:tabular-nums; transform:translate(-50%, -100%); box-shadow:0 6px 16px rgba(0,0,0,.2); }
+
+/* toasts, dialogs */
+.pl-toasts { position:fixed; right:16px; bottom:16px; display:flex; flex-direction:column; gap:8px; z-index:30; max-width:400px; }
+.pl-toast { background:var(--ink); color:var(--panel); padding:9px 12px; border-radius:8px; box-shadow:0 6px 18px rgba(0,0,0,.22); display:flex; gap:10px; align-items:flex-start; }
+.pl-toast b { font-weight:600; display:block; } .pl-toast small { opacity:.8; display:block; margin-top:1px; overflow-wrap:anywhere; }
+.pl-toast.error { background:var(--bad); color:#fff; } .pl-toast.warning { background:#8a5304; color:#fff; }
+.pl .pl-toast button { background:transparent; color:inherit; border-color:color-mix(in srgb, currentColor 45%, transparent); padding:2px 9px; margin-left:auto; }
+.pl-help-dlg, .pl-del-dlg { border:1px solid var(--line); border-radius:12px; padding:0; color:var(--ink); background:var(--panel); }
+.pl-help-dlg { width:min(760px, calc(100vw - 32px)); max-height:85vh; }
+.pl-help-dlg::backdrop, .pl-del-dlg::backdrop { background:rgba(21,32,43,.45); }
+.pl-help-dlg header { display:flex; align-items:center; padding:14px 18px; border-bottom:1px solid var(--line); }
+.pl-help-dlg h2 { margin:0; font-size:16px; } .pl-help-dlg header button { margin-left:auto; }
+.pl-help-grid { display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:4px 28px; padding:14px 18px 18px; overflow:auto; }
+.pl-help-grid h3 { grid-column:1 / -1; margin:12px 0 2px; font-size:13px; color:var(--muted); font-weight:600; }
+.pl-help-grid div { display:flex; justify-content:space-between; gap:12px; padding:3px 0; border-bottom:1px solid var(--line-2); font-size:13.5px; }
+.pl-del-dlg { width:min(440px, calc(100vw - 32px)); }
+.pl-del-dlg form { padding:20px 22px 18px; display:grid; gap:12px; margin:0; }
+.pl-del-dlg h2 { margin:0; font-size:17px; display:flex; gap:10px; align-items:center; }
+.pl-del-dlg h2 .pl-i { color:var(--bad); width:22px; height:22px; }
+.pl-del-dlg p { margin:0; color:var(--muted); }
+.pl-del-dlg .pl-tools { justify-content:flex-end; margin-top:6px; }
+
+/* grid (image classes, sort parts) */
+.pl-gridwrap { display:flex; flex-direction:column; gap:8px; min-height:0; min-width:0; background:var(--panel); padding:10px 14px; }
 .pl-gridbar { display:flex; flex-wrap:wrap; gap:6px 12px; align-items:center; }
 .pl-gridbar h2 { margin:0; font-size:15px; font-weight:600; }
 .pl-filters { display:flex; gap:4px; flex-wrap:wrap; }
-.pl-filters button { padding:3px 10px; border-radius:99px; font-size:12.5px; }
-.pl-filters button[aria-pressed=true] { background:var(--ink); color:var(--panel); border-color:var(--ink); }
+.pl .pl-filters button { padding:3px 10px; border-radius:99px; font-size:12.5px; }
+.pl .pl-filters button[aria-pressed=true] { background:var(--ink); color:var(--panel); border-color:var(--ink); }
 .pl-filters b { font-weight:600; font-variant-numeric:tabular-nums; margin-left:3px; opacity:.75; }
-.pl-grid { overflow:auto; max-height:calc(100vh - 205px); min-height:260px; overscroll-behavior:contain; display:flex; flex-direction:column; gap:14px; padding:2px 4px 8px 2px; }
-.pl.big .pl-grid { max-height:calc(var(--plh) - 165px); }
+.pl-grid { overflow:auto; flex:1; min-height:0; overscroll-behavior:contain; display:flex; flex-direction:column; gap:14px; padding:2px 4px 8px 2px; }
 .pl-gsec h3 { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin:0 0 6px; font-size:13.5px; font-weight:600; position:sticky; top:0; background:var(--panel); z-index:1; padding:5px 0; }
 .pl-gsec h3 .pl-src { font-weight:400; }
 .pl-gsec h3 select { font-size:12.5px; padding:2px 5px; }
 .pl-cards { display:grid; grid-template-columns:repeat(auto-fill, minmax(var(--card, 132px), 1fr)); gap:8px; }
-.pl .pl-card { position:relative; display:flex; flex-direction:column; padding:0; border:2px solid var(--line); border-radius:9px; overflow:hidden; background:#0d1217; text-align:left; color:var(--ink); }
-.pl .pl-card:hover:not(:disabled) { border-color:var(--accent); background:#0d1217; }
-.pl-card img { width:100%; aspect-ratio:1; object-fit:contain; display:block; background:#0d1217; }
+.pl .pl-card { position:relative; display:flex; flex-direction:column; padding:0; border:2px solid var(--line); border-radius:9px; overflow:hidden; background:var(--stage); text-align:left; color:var(--ink); gap:0; }
+.pl .pl-card:hover:not(:disabled) { border-color:var(--accent); background:var(--stage); }
+.pl-card img { width:100%; aspect-ratio:1; object-fit:contain; display:block; background:var(--stage); }
 .pl-card-cls { display:flex; gap:5px; align-items:center; padding:3px 6px; background:var(--panel); font-size:12px; min-height:23px; min-width:0; }
 .pl-card-cls span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
-.pl-card-cls .pl-sw { flex:none; }
 .pl .pl-card.sugg { border-style:dashed; } .pl-card.sugg .pl-card-cls { color:var(--muted); font-style:italic; }
 .pl .pl-card[aria-pressed=true] { border-color:var(--accent); box-shadow:0 0 0 2px var(--accent); }
 .pl .pl-card.cur { outline:2px solid var(--ink); outline-offset:2px; }
 .pl-card .pl-badge { position:absolute; top:4px; left:4px; font-size:11px; font-weight:600; padding:1px 6px; border-radius:99px; background:rgba(21,32,43,.82); color:#fff; max-width:calc(100% - 8px); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .pl-card .pl-badge.odd { background:var(--flag); color:#1d1300; }
-.pl-range { display:flex; gap:8px; align-items:center; font-size:13px; margin-top:8px; flex-wrap:wrap; } .pl-range input { flex:1; min-width:90px; accent-color:var(--accent); }
-.pl-sortnote { font-size:12.5px; color:var(--muted); margin:6px 0 0; }
+.pl .pl-more { align-self:center; }
 .pl-peek { border:1px solid var(--line); border-radius:12px; padding:0; width:min(1100px, calc(100vw - 32px)); max-height:92vh; color:var(--ink); background:var(--panel); }
 .pl-peek::backdrop { background:rgba(13,18,23,.78); }
 .pl-peek header { display:flex; gap:10px; align-items:center; padding:10px 14px; border-bottom:1px solid var(--line); flex-wrap:wrap; }
 .pl-peek header b { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; flex:1; }
-.pl-peek img { display:block; width:100%; height:min(calc(92vh - 60px), 760px); object-fit:contain; background:#0d1217; }
-@media (max-width: 900px) { .pl-main { grid-template-columns:minmax(0,1fr); } .pl-side { max-height:none; } .pl-where { display:none; } }
-@media (prefers-reduced-motion: reduce) { .pl *, .pln-drawer { scroll-behavior:auto !important; transition:none !important; } }
+.pl-peek img { display:block; width:100%; height:min(calc(92vh - 60px), 760px); object-fit:contain; background:var(--stage); }
+
+/* narrower, in steps: the rail keeps its names longest (keys move to the tooltips), then the transport's secondary
+   labels go to icons so Delete and Confirm stay on the row, then the rail goes to icons; narrowest (notebooks):
+   inspector under the frame, the how-to on its own line */
+@container (max-width: 1360px) {
+  .pl-body { --rail-w:184px; --insp-w:280px; }
+  .pl-tool kbd { display:none; }
+  .pl-transport .pl-lbl { display:none; }
+  .pl-tabs { padding:0 2px; } .pl .pl-tabs button { padding-inline:6px; }   /* all five tabs fit the slimmer inspector */
+}
+@container (max-width: 1100px) {
+  .pl-body { --rail-w:56px; }
+  .pl-rail { padding:10px 6px; align-items:center; }
+  .pl-rail h3 { font-size:0; margin:8px 0 4px; height:1px; width:28px; background:var(--line); }
+  .pl .pl-tool { grid-template-columns:20px; justify-content:center; padding:8px; width:auto; }
+  .pl-tool span { display:none; }
+  .pl-transport .pl-lbl2, .pl-group-label { display:none; }
+}
+@container (max-width: 980px) {
+  .pl-body { grid-template-columns:var(--rail-w) minmax(0,1fr); grid-template-rows:minmax(0,1fr) minmax(220px, 38%); }
+  .pl-body.gridmode { grid-template-columns:minmax(0,1fr); }
+  .pl-side { grid-column:1 / -1; border-left:0; border-top:1px solid var(--line); }
+  .pl-opts { flex-wrap:wrap; height:auto; row-gap:4px; }
+  .pl-howto { flex-basis:100%; order:9; }
+}
+@media (prefers-reduced-motion: reduce) { .pl *, .pln-drawer { scroll-behavior:auto !important; transition:none !important; } .pl-loading::before { animation:none; } }
 `;
+
+// One icon family drawn for the annotator: 24 px grid, 1.75 px round strokes (styled by .pl-i)
+const ICON_PATHS = {
+  back: '<path d="M19 12H5M11 18l-6-6 6-6"/>',
+  select: '<path d="M6 3.5l12 8.2-5.4 1.4-2.6 5.2z"/>',
+  outline: '<path d="M5 4l8.5 5.2-3.7 1-2 3.6z"/><path d="M16.5 13.5v5M14 16h5M19 4.5v2.5M17.75 5.75h2.5"/>',
+  box: '<rect x="4" y="5" width="16" height="14" rx="1.5"/>',
+  polygon: '<path d="M12 3.5l8 5.8-3 10.2H7L4 9.3z"/>',
+  ellipse: '<ellipse cx="12" cy="12" rx="8.5" ry="6"/>',
+  brush: '<path d="M19.5 4.5l-8.2 8.2"/><path d="M11.3 12.7c-2.3-.5-4.6.9-4.9 3.4-.2 1.6-.9 2.6-2.4 3.2 2.6 1 6.4.6 7.8-1.6.8-1.3.6-3.3-.5-5z"/>',
+  smartBrush: '<path d="M19.5 4.5l-8.2 8.2"/><path d="M11.3 12.7c-2.3-.5-4.6.9-4.9 3.4-.2 1.6-.9 2.6-2.4 3.2 2.6 1 6.4.6 7.8-1.6.8-1.3.6-3.3-.5-5z"/><path d="M18.5 14v5M16 16.5h5"/>',
+  erase: '<path d="M9 20h11"/><path d="M5.2 14.8l9.6-9.6a1.5 1.5 0 0 1 2.1 0l3 3a1.5 1.5 0 0 1 0 2.1L12 18.4a3 3 0 0 1-2.1.9H8.6a3 3 0 0 1-2.1-.9l-1.3-1.3a1.5 1.5 0 0 1 0-2.1z"/><path d="M9.5 10.5l5 5"/>',
+  smartErase: '<path d="M11 20h9"/><path d="M7.2 14.8l7.6-7.6a1.5 1.5 0 0 1 2.1 0l2 2a1.5 1.5 0 0 1 0 2.1L12.5 18a3 3 0 0 1-2.1.9H9.6a3 3 0 0 1-2.1-.9l-.3-.3a1.5 1.5 0 0 1 0-2.1z"/><path d="M5 3v5M2.5 5.5h5"/>',
+  pan: '<path d="M8 13V5.5a1.5 1.5 0 0 1 3 0V12M11 11V4.5a1.5 1.5 0 0 1 3 0V12M14 11.5V6a1.5 1.5 0 0 1 3 0v8c0 3.9-2.6 6.5-6.2 6.5-2.4 0-3.9-1-5.1-2.9L3.9 14a1.5 1.5 0 0 1 2.4-1.8L8 14"/>',
+  fit: '<path d="M4 9V5a1 1 0 0 1 1-1h4M20 9V5a1 1 0 0 0-1-1h-4M4 15v4a1 1 0 0 0 1 1h4M20 15v4a1 1 0 0 1-1 1h-4"/>',
+  zoomIn: '<circle cx="10.5" cy="10.5" r="6.5"/><path d="M20 20l-4.6-4.6M10.5 7.5v6M7.5 10.5h6"/>',
+  zoomOut: '<circle cx="10.5" cy="10.5" r="6.5"/><path d="M20 20l-4.6-4.6M7.5 10.5h6"/>',
+  prev: '<path d="M15 5l-7 7 7 7"/>',
+  next: '<path d="M9 5l7 7-7 7"/>',
+  play: '<path d="M7 4.5v15l12-7.5z"/>',
+  pause: '<path d="M8 5v14M16 5v14"/>',
+  flag: '<path d="M5 21V4M5 4h11l-2 4 2 4H5"/>',
+  trackBack: '<path d="M20 12h-2M15 12h-2M10 12H4M7 8l-4 4 4 4"/>',
+  trackAhead: '<path d="M4 12h2M9 12h2M14 12h6M17 8l4 4-4 4"/>',
+  stop: '<rect x="6" y="6" width="12" height="12" rx="2"/>',
+  after: '<path d="M3 12h11M10 7l5 5-5 5M20 5v14"/>',
+  undo: '<path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>',
+  export: '<path d="M12 4v11M7.5 10.5L12 15l4.5-4.5M5 20h14"/>',
+  trash: '<path d="M4 7h16M9.5 11v6M14.5 11v6M6 7l1 12.5a1.5 1.5 0 0 0 1.5 1.5h7a1.5 1.5 0 0 0 1.5-1.5L18 7M9 7V4.5A.5.5 0 0 1 9.5 4h5a.5.5 0 0 1 .5.5V7"/>',
+  check: '<path d="M20 6L9 17l-5-5"/>',
+  help: '<circle cx="12" cy="12" r="9"/><path d="M9.6 9.2a2.5 2.5 0 1 1 3.4 2.3c-.6.3-1 .8-1 1.5v.5M12 16.8v.1"/>',
+  full: '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>',
+  unfull: '<path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/>',
+  x: '<path d="M6 6l12 12M18 6L6 18"/>',
+  chevDown: '<path d="M6 9l6 6 6-6"/>',
+  alert: '<path d="M12 3.5l9.5 16.5h-19z"/><path d="M12 10v4.5M12 17.4v.1"/>',
+};
+const ic = (name) => `<svg class="pl-i" viewBox="0 0 24 24" aria-hidden="true" focusable="false">${ICON_PATHS[name] || ""}</svg>`;
+// the same close mark, sized by itself: the notification drawer and Rivet also run on pages without the annotator's CSS
+const XMARK = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true" focusable="false" style="display:block">${ICON_PATHS.x}</svg>`;
+// The annotator's tools: [id, label, key, icon, group, which projects] - "seg": outline projects only
+const TOOLS = [
+  ["click", "Click to outline", "C", "outline", "AI assisted", "all"],
+  ["select", "Select and adjust", "V", "select", "Manual", "all"],
+  ["box", "Box", "B", "box", "Manual", "all"],
+  ["polygon", "Polygon", "O", "polygon", "Manual", "all"],
+  ["ellipse", "Ellipse", "L", "ellipse", "Manual", "seg"],
+  ["brush", "Brush", "P", "brush", "Manual", "all"],
+  ["erase", "Eraser", "E", "erase", "Manual", "seg"],
+  ["smartBrush", "Smart brush", "⇧P", "smartBrush", "Manual", "seg"],
+  ["smartErase", "Smart eraser", "⇧E", "smartErase", "Manual", "seg"],
+  ["pan", "Move around", "Space", "pan", "View", "all"],
+];
 
 const NOTE_CSS = `
 .pln-bell { position:relative; display:inline-flex; align-items:center; justify-content:center; width:36px; height:32px; border:1px solid var(--c-line,#d5dbe1);
@@ -250,7 +399,7 @@ export function notificationCenter({ mount, onRead, onClear, onAction, actionAva
   drawer.setAttribute("role", "dialog"); drawer.setAttribute("aria-label", "Notifications");
   drawer.innerHTML = `<div class="pln-head"><h2 tabindex="-1">Notifications</h2>
       <button type="button" data-n="read">Mark all as read</button><button type="button" data-n="clear">Clear all</button>
-      <button type="button" data-n="close" aria-label="Close notifications">✕</button></div>
+      <button type="button" data-n="close" aria-label="Close notifications">${XMARK}</button></div>
     <div class="pln-filter" role="group" aria-label="Show">
       <button type="button" data-f="all" aria-pressed="true">All</button><button type="button" data-f="error" aria-pressed="false">Problems</button></div>
     <ul class="pln-list" aria-live="polite"></ul>`;
@@ -564,7 +713,7 @@ export function assistant({ mount, transport, variant = "fab", context = () => (
       <div class="rv-ph-t"><b>Rivet</b><small class="rv-status">Ask me anything about PartLabeler</small></div>
       <button type="button" class="rv-ph-b" data-r="tips" title="Show a 'Did you know?' bubble now and then">Tips</button>
       <button type="button" class="rv-ph-b" data-r="new" title="Start a new conversation">New chat</button>
-      <button type="button" class="x" data-r="close" aria-label="Close the helper">✕</button></header>
+      <button type="button" class="x" data-r="close" aria-label="Close the helper">${XMARK}</button></header>
     <div class="rv-log" aria-live="polite"></div>
     <div class="rv-chips"></div>
     <div class="rv-keybox" hidden><p>Rivet is answering from the built-in guide. For full answers, add a free Gemini API key
@@ -697,7 +846,7 @@ export function assistant({ mount, transport, variant = "fab", context = () => (
     if (!tip || !panel.hidden) return;
     tipEl.innerHTML = `<p><b>${esc(lead)}</b>${esc(tip.text)}</p><div class="rv-tip-row">
       ${tip.ask ? `<button type="button" class="go" data-t="more">${tip.cta ? esc(tip.cta) : "Tell me more"}</button>` : ""}
-      <button type="button" class="x" data-t="hide" aria-label="Hide this tip">✕</button></div>`;
+      <button type="button" class="x" data-t="hide" aria-label="Hide this tip">${XMARK}</button></div>`;
     tipEl._tip = tip; tipEl.hidden = false; mood("happy", 1400);
     clearTimeout(tipEl._t); tipEl._t = setTimeout(hideTip, 14000);
   }
@@ -785,18 +934,19 @@ function render({ model, el }) {
     el.innerHTML = `<div class="pl-toosmall-card">
       <h1>Labelling needs a bigger screen</h1>
       <p>It uses mouse clicks and drags to draw boxes, and keyboard shortcuts - open this project on a laptop or desktop computer instead.</p>
-      <a class="pl-back" href="/">← Back to projects</a></div>`;
+      <a class="pl-back" href="/">${ic("back")}Back to projects</a></div>`;
     return;
   }
   el.className = web ? "pl web" : "pl";
   el.tabIndex = 0;
+  let railGroup = "";
   el.innerHTML = `
     <header class="pl-head">
-      <a class="pl-back" href="/" hidden>← Projects</a>
+      <a class="pl-back" href="/" hidden>${ic("back")}Projects</a>
       <span class="pl-title">PartLabeler</span><span class="pl-chip pl-type" title="Project type"></span>
       <details class="pl-jobmenu" hidden><summary title="This job: its state, and the other jobs"></summary><div class="pl-jm">
         <div class="pl-tools"><button type="button" class="primary" data-a="finishJob" title="Mark this job completed (and accepted)">Finish the job</button>
-          <span><button type="button" class="icon" data-a="prevJob" aria-label="Previous job" title="Previous job">◀</button><button type="button" class="icon" data-a="nextJob" aria-label="Next job" title="Next job">▶</button></span></div>
+          <span class="pl-group"><button type="button" class="icon" data-a="prevJob" aria-label="Previous job" title="Previous job">${ic("prev")}</button><button type="button" class="icon" data-a="nextJob" aria-label="Next job" title="Next job">${ic("next")}</button></span></div>
         <label>Stage <select class="pl-jstage" aria-label="Job stage"><option>annotation</option><option>validation</option><option>acceptance</option></select></label>
         <label>State <select class="pl-jstate" aria-label="Job state"><option>new</option><option>in progress</option><option>rejected</option><option>completed</option></select></label>
         <label>Job <select class="pl-jpick" aria-label="Go to job"></select></label>
@@ -805,157 +955,207 @@ function render({ model, el }) {
       <span class="pl-sp"></span>
       <span class="pl-saved" role="status" aria-live="polite"></span>
       <span class="pl-bellmount"></span><span class="pl-rivetmount"></span>
-      <button type="button" class="icon pl-full" data-a="full" aria-label="Full screen" title="Full screen">⤢</button>
-      <button type="button" class="icon" data-a="help" aria-label="Keyboard shortcuts" title="Keyboard shortcuts (?)">?</button>
+      <button type="button" class="icon ghost" data-a="help" aria-label="Keyboard shortcuts" title="Keyboard shortcuts (?)">${ic("help")}</button>
+      <button type="button" class="icon ghost pl-full" data-a="full" aria-label="Full screen" title="Full screen">${ic("full")}</button>
     </header>
-    <div class="pl-bar-tools" role="toolbar" aria-label="Frame actions">
-      <span class="pl-group">
-        <button type="button" class="icon" data-a="prev" aria-label="Previous frame" title="Previous frame (←)">◀</button>
-        <button type="button" class="icon" data-a="next" aria-label="Next frame" title="Next frame (→)">▶</button>
-        <button type="button" data-a="nextTodo" title="Next frame that is flagged or not confirmed (Shift+→)">Next to check</button>
-        <button type="button" class="pl-play" data-a="play" aria-pressed="false" title="Play the frames like a video, labels on (K or Space); stops at the end, or when you step or click">▷ Play</button>
-        <select class="pl-speed" name="play-speed" aria-label="Play speed" title="Play speed: 1× is the video's own speed (the frames kept per second)">
-          <option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="1" selected>1×</option>
-          <option value="2">2×</option><option value="4">4×</option></select>
-      </span>
-      <span class="pl-group pl-video">
-        <span class="pl-group-label" id="pl-track-label">Track</span>
-        <button type="button" data-a="trackBack" title="Track this frame's boxes backwards (R; Shift+R to the start)">◀ Back</button>
-        <input type="number" class="pl-n" min="1" value="${PREFS.track_n || 20}" name="track-frames" autocomplete="off" aria-label="Frames to track" title="Frames to track">
-        <button type="button" data-a="track" title="Track this frame's boxes ahead (T; Shift+T to the end)">Ahead ▶</button>
-        <button type="button" data-a="stop" title="Stop the running job (X)">Stop</button>
-        <details class="pl-jobmenu pl-after"><summary title="Re-track or clear the frames after this one">After this frame ▾</summary><div class="pl-jm">
-          <h3>Re-track from this frame</h3>
-          <div class="pl-tools"><button type="button" data-a="retrack" title="Re-track the next frames (U)">Next <span class="pl-n-echo">20</span> frames</button>
-            <button type="button" data-a="retrackAll" title="Re-track to the end of the task (Shift+U)">To the end</button></div>
-          <p class="pl-src">Frames you have not confirmed get this frame's parts again, fixes included: tracked parts there are
-            replaced (parts gone from this frame go there too) and empty frames are filled. Your own boxes and confirmed
-            frames stay. U / Shift+U.</p>
-          <hr><h3>Clear parts after this frame</h3>
-          <label class="pl-chk"><input type="checkbox" class="pl-clear-all" checked> All classes</label>
-          <div class="pl-clear-classes" hidden></div>
-          <label>Frames <select class="pl-clear-range" aria-label="Which frames"><option value="n">the next N (as Track)</option>
-            <option value="end" selected>to the end of the task</option></select></label>
-          <label class="pl-chk"><input type="checkbox" class="pl-clear-confirmed"> also confirmed frames</label>
-          <div class="pl-tools"><button type="button" class="primary" data-a="clearAfter">Clear</button><span class="pl-src">Ctrl+Z brings them back</span></div>
-          <hr><h3>Track only some classes</h3>
-          <div class="pl-track-classes" role="group" aria-label="Classes to track"></div>
-          <label>Frames <select class="pl-track-range" aria-label="Which frames"><option value="n">the next N (as Track)</option>
-            <option value="end">to the end (or start) of the task</option></select></label>
-          <label class="pl-chk"><input type="checkbox" class="pl-track-confirmed"> also confirmed frames</label>
-          <p class="pl-src">Follows only the ticked classes from this frame. On the frames reached, their tracked or model
-            parts are replaced; every other class and your own boxes stay as they are.</p>
-          <div class="pl-tools"><button type="button" data-a="trackSomeBack">◀ Back</button>
-            <button type="button" data-a="trackSome">Ahead ▶</button></div>
-          <hr><h3>Swap classes</h3>
-          <label>From <select class="pl-swap-src" aria-label="Class to change"></select></label>
-          <label>To <select class="pl-swap-dst" aria-label="Class it becomes"></select></label>
-          <label class="pl-chk"><input type="checkbox" class="pl-swap-both" checked> and the other way round (swap both)</label>
-          <label>Frames <select class="pl-swap-range" aria-label="Which frames"><option value="after">this one and all after it</option>
-            <option value="task">the whole task</option><option value="frame">this frame only</option></select></label>
-          <div class="pl-tools"><button type="button" data-a="swapClasses">Swap</button><span class="pl-src">Confirmed frames too. Ctrl+Z undoes it</span></div>
-        </div></details>
-      </span>
-      <span class="pl-group">
-        <button type="button" data-a="undo" title="Undo the last change (Ctrl+Z)">Undo</button>
-        <button type="button" data-a="exportJump" title="Export the dataset: YOLO, COCO, CVAT, Pascal VOC or Label Studio">Export</button>
-      </span>
-      <span class="pl-sp"></span>
-      <button type="button" class="primary" data-a="review" title="Mark this frame as checked and go to the next one (Enter)">Confirm frame</button>
-    </div>
     <div class="pl-banner" hidden></div>
-    <div class="pl-main">
+    <div class="pl-body">
+      <nav class="pl-rail" aria-label="Tools">${TOOLS.map(([id, label, key, icon, group, only]) =>
+        (group !== railGroup ? `<h3>${(railGroup = group)}</h3>` : "") + `<button type="button" class="pl-tool${only === "seg" ? " pl-seg" : ""}" data-tool="${id}"
+          aria-pressed="false" title="${label} (${key})">${ic(icon)}<span>${label}</span><kbd>${key}</kbd></button>`).join("")}
+        <button type="button" class="pl-tool" data-a="zoomFit" title="Show the whole frame (Z)">${ic("fit")}<span>Fit frame</span><kbd>Z</kbd></button></nav>
+      <div class="pl-work">
+        <div class="pl-opts" role="toolbar" aria-label="Tool options">
+          <b class="pl-toolname"></b>
+          <span class="pl-modes pl-boxmodes" role="group" aria-label="How to draw a box" hidden>
+            <button type="button" data-boxmode="drag" aria-pressed="true" title="Press and drag from corner to corner">Drag</button>
+            <button type="button" data-boxmode="two" aria-pressed="false" title="Click one corner, then the opposite corner">Two clicks</button>
+            <button type="button" data-boxmode="four" aria-pressed="false" title="Click the part's top, bottom, left and right edge, in any order">Four edge points</button></span>
+          <span class="pl-modes pl-polymodes" role="group" aria-label="What the shape does" hidden>
+            <button type="button" data-polymode="new" aria-pressed="true">New part</button>
+            <button type="button" data-polymode="add" aria-pressed="false">Add to selected</button>
+            <button type="button" data-polymode="cut" aria-pressed="false">Cut from selected</button></span>
+          <label class="pl-brush" hidden>Size <input type="range" class="pl-bsize" min="1" max="120" value="${PREFS.brush || 12}" name="brush-size" aria-label="Brush size in pixels"><span class="pl-bsize-v">12 px</span></label>
+          <span class="pl-howto"></span>
+          <span class="pl-sp"></span>
+          <span class="pl-curcls" title="The class new parts get: pick it in Classes or with 1–9"></span>
+        </div>
+        <div class="pl-stage"><canvas class="pl-cv" aria-label="Frame image. Click a part to box it."></canvas>
+          <div class="pl-zoom" role="group" aria-label="Zoom"><button type="button" data-a="zoomOut" aria-label="Zoom out" title="Zoom out (−)">${ic("zoomOut")}</button>
+            <span class="pl-zoom-v" aria-live="polite">100%</span><button type="button" data-a="zoomIn" aria-label="Zoom in" title="Zoom in (+, or Ctrl+wheel at the pointer)">${ic("zoomIn")}</button>
+            <button type="button" data-a="zoomFit" title="Show the whole frame (Z)">Fit</button></div>
+          <div class="pl-hint" hidden><span><b>Start here.</b> Pick a tool on the left and a class on the right (or press <kbd>1</kbd>–<kbd>9</kbd>),
+            then click a part: <b>Click to outline</b> lets SAM 3 find its edge for you. Every tool shows how it works above the picture;
+            <kbd>?</kbd> lists all the keys.</span>
+            <button type="button" data-a="hideHint">Got it</button></div></div>
+      </div>
       <div class="pl-gridwrap" hidden><div class="pl-gridbar"><h2 class="pl-gtitle">Images</h2><span class="pl-src pl-gcount"></span>
           <div class="pl-filters" role="group" aria-label="Show"></div></div><div class="pl-grid" tabindex="-1"></div></div>
-      <div class="pl-stage"><canvas class="pl-cv" aria-label="Frame image. Click a part to box it."></canvas>
-        <div class="pl-zoom" role="group" aria-label="Zoom"><button type="button" data-a="zoomOut" aria-label="Zoom out" title="Zoom out (−)">−</button>
-          <span class="pl-zoom-v" aria-live="polite">100%</span><button type="button" data-a="zoomIn" aria-label="Zoom in" title="Zoom in (+, or Ctrl+wheel at the pointer)">+</button>
-          <button type="button" data-a="zoomFit" title="Show the whole frame (Z)">Fit</button></div>
-        <div class="pl-hint" hidden><span><b>Click a part</b> to outline and box it, or press <kbd>B</kbd> and drag to draw a box.
-          Pick the class first with <kbd>1</kbd>–<kbd>9</kbd>. Press <kbd>?</kbd> for all shortcuts.</span>
-          <button type="button" data-a="hideHint">Got it</button></div></div>
-      <aside class="pl-side" aria-label="Labeling tools">
-        <section class="pl-toolsec"><h2>Tool</h2><div class="pl-tools" role="group" aria-label="Tool">
-          <button type="button" data-tool="click" title="Click a part to outline and box it (C)">Click to outline</button>
-          <button type="button" data-tool="box" title="Drag to draw a box (B)">Draw box</button>
-          <button type="button" data-tool="brush" class="pl-seg" title="Paint onto the selected outline, or a new part (P)">Brush</button>
-          <button type="button" data-tool="erase" class="pl-seg" title="Erase from the selected outline (E)">Eraser</button>
-          <button type="button" data-tool="smartBrush" class="pl-seg" title="Paint roughly: only what the outline model sees as the part is added, so it stops at the part's edge (Shift+P)">Smart brush</button>
-          <button type="button" data-tool="smartErase" class="pl-seg" title="Erase roughly: only what the outline model sees as not the part is removed (Shift+E)">Smart eraser</button></div>
-          <label class="pl-brush pl-seg">Brush size <input type="range" class="pl-bsize" min="1" max="120" value="${PREFS.brush || 12}" name="brush-size" aria-label="Brush size in pixels"><span class="pl-bsize-v">12 px</span></label></section>
-        <section><h2 id="pl-class-h">Class</h2>
-          <input type="search" class="pl-filter" name="class-filter" autocomplete="off" placeholder="Filter classes…" aria-label="Filter classes" hidden>
-          <div class="pl-list pl-classes" role="group" aria-labelledby="pl-class-h"></div>
-          <form class="pl-addcls pl-tools" style="margin-top:6px"><input type="text" class="pl-newcls" name="new-class" autocomplete="off" placeholder="New class…" aria-label="New class name" style="flex:1;min-width:0">
-            <button type="submit" title="Add a class; selected pictures in the grid get it">Add</button></form></section>
-        <section><h2 id="pl-box-h">Boxes on this frame</h2><div class="pl-list pl-boxes" role="group" aria-labelledby="pl-box-h"></div></section>
-        <section class="pl-find"><h2>Find parts</h2><div class="pl-tools">
-          <button type="button" data-b="suggest" title="Suggest boxes that look like parts you labeled on other frames (S)">Suggest</button>
-          <button type="button" data-b="findAll" title="Find more parts like the selected box on this frame (F)">Find similar</button>
-          <button type="button" data-b="accept" title="Keep every suggestion on this frame (Y)">Accept all</button>
-          <button type="button" data-b="sortParts" title="See every part as a picture, grouped by look, and name or fix classes in bulk (G)">Sort parts</button></div>
-          <div class="pl-tools pl-seg" style="margin-top:6px">
-          <button type="button" data-b="outlineHere" title="Outline every box on this frame that has no outline yet">Outline boxes</button>
-          <button type="button" data-b="outlineAll" title="Outline every box without an outline, on every frame">…on every frame</button></div></section>
-        <section class="pl-textsec"><h2 id="pl-text-h">Annotate by text</h2>
-          <form class="pl-textform pl-tools"><input type="text" class="pl-text" name="objects" autocomplete="off" spellcheck="false"
-            placeholder="e.g. car, truck cabin, wheel" aria-labelledby="pl-text-h" style="flex:1;min-width:0">
-            <button type="submit" class="pl-tgo" title="Find every object you named and box it (W focuses the words)">Annotate</button></form>
-          <div class="pl-objs" role="group" aria-label="Common objects">${COMMON_OBJECTS.map((o) =>
-            `<button type="button" class="pl-obj" data-word="${o}" aria-pressed="false">${o}</button>`).join("")}</div>
-          <select class="pl-tscope" name="text-scope" aria-label="Where to annotate" style="margin-top:6px">
-            <option value="frame">Only this frame</option><option value="rest">This frame and the rest of the task</option>
-            <option value="task">The whole task</option><option value="project">The whole project</option></select>
-          <label class="pl-range" style="margin-top:6px">Sureness <input type="range" class="pl-tthr" min="0.2" max="0.9" step="0.05" value="0.5"
-            name="text-sureness" aria-label="Lowest sureness to keep"><span class="pl-tthr-v">0.50</span></label>
-          <label class="pl-src" style="margin-top:4px"><input type="checkbox" class="pl-tconf" name="text-confirmed"> Also confirmed frames</label>
-          <span class="pl-src" style="margin-top:4px">SAM 3 boxes every object you name; a new name becomes a class. What it finds is marked to check.</span></section>
-        <section class="pl-sort" hidden><h2>Sort</h2><div class="pl-tools">
-          <button type="button" data-b="group" title="Put look-alikes together (G)">Group by look</button>
-          <button type="button" data-b="suggestTags" class="pl-imgonly" title="Suggest a class for every image without one, from the ones you classed (S)">Suggest classes</button>
-          <button type="button" data-b="acceptTags" class="pl-imgonly" title="Keep the suggested classes: of the selected images, or all (Y)">Accept suggestions</button>
-          <button type="button" data-b="odd" title="Find labels that disagree with their look-alikes">Check labels</button>
-          <button type="button" data-b="closeGrid" class="pl-partsonly" title="Back to labeling frames (Esc)">Back to frames</button></div>
-          <label class="pl-range" hidden>Groups <input type="range" class="pl-k" min="1" value="1" name="groups" aria-label="Number of groups"><span class="pl-kv"></span></label>
-          <p class="pl-sortnote">Select pictures (click, Shift+click, Ctrl+click, Ctrl+A), then press a class number. Double-click to look closer.</p></section>
-        <section class="pl-export"><h2>Export dataset</h2><div class="pl-tools">
-          <select class="pl-fmt" name="export-format" aria-label="Export format"></select>
-          <label><input type="checkbox" class="pl-revonly" name="confirmed-only"${PREFS.confirmed_only ? " checked" : ""}> Confirmed frames only</label>
-          <select class="pl-scope" name="export-scope" aria-label="What to export"><option value="job">This job</option><option value="task">This task</option><option value="project">Whole project</option></select>
-          <button type="button" class="primary" data-b="export">Export</button></div></section>
-        <details class="pl-settings"><summary>Settings</summary>
-          <p class="pl-field pl-src pl-typeline"></p>
-          <label class="pl-field pl-parentf">Parent object
-            <input type="text" class="pl-parent" name="parent-object" autocomplete="off" placeholder="Optional, e.g. engine block…"></label>
-          <span class="pl-src pl-parentf">What the parts sit on. Suggestions then search inside it, which helps when the camera or distance changes.
-            Leave empty to search the whole image.</span>
-          <label class="pl-field pl-parentf">Parts that change look
-            <textarea class="pl-states" name="part-states" rows="2" autocomplete="off" spellcheck="false" placeholder="e.g. bright, dim"></textarea></label>
-          <span class="pl-src pl-parentf">Classes that are states of one part, one part per line (e.g. a lamp that is bright or dim).
-            Tracking then gives each frame the state its confirmed examples match. With left_/right_ classes, the shared name covers both sides.</span>
-          <div class="pl-tools" style="margin-top:8px"><button type="button" data-b="saveSettings">Save settings</button></div>
-          <p class="pl-src pl-device"></p><p class="pl-src pl-version"></p></details>
+      <aside class="pl-side" aria-label="Inspector">
+        <div class="pl-tabs" role="tablist" aria-label="Inspector">
+          <button type="button" role="tab" data-tab="classes" aria-selected="true">Classes</button>
+          <button type="button" role="tab" data-tab="parts" aria-selected="false">Parts <b class="pl-nparts">0</b></button>
+          <button type="button" role="tab" data-tab="find" aria-selected="false">Find</button>
+          <button type="button" role="tab" data-tab="export" aria-selected="false">Export</button>
+          <button type="button" role="tab" data-tab="settings" aria-selected="false">Settings</button></div>
+        <div class="pl-insp-body">
+          <div class="pl-panel" data-panel="classes" role="tabpanel" aria-label="Classes">
+            <section class="pl-sort" hidden><h2>Sort</h2><div class="pl-tools">
+              <button type="button" data-b="group" title="Put look-alikes together (G)">Group by look</button>
+              <button type="button" data-b="suggestTags" class="pl-imgonly" title="Suggest a class for every image without one, from the ones you classed (S)">Suggest classes</button>
+              <button type="button" data-b="acceptTags" class="pl-imgonly" title="Keep the suggested classes: of the selected images, or all (Y)">Accept suggestions</button>
+              <button type="button" data-b="odd" title="Find labels that disagree with their look-alikes">Check labels</button>
+              <button type="button" data-b="closeGrid" class="pl-partsonly" title="Back to labeling frames (Esc)">Back to frames</button></div>
+              <label class="pl-range pl-krange" hidden>Groups <input type="range" class="pl-k" min="1" value="1" name="groups" aria-label="Number of groups"><span class="pl-kv"></span></label>
+              <p class="pl-sortnote">Select pictures (click, Shift+click, Ctrl+click, Ctrl+A), then press a class number. Double-click to look closer.</p></section>
+            <section><h2 id="pl-class-h">Class for new parts</h2>
+              <input type="search" class="pl-filter" name="class-filter" autocomplete="off" placeholder="Filter classes…" aria-label="Filter classes" hidden>
+              <div class="pl-list pl-classes" role="group" aria-labelledby="pl-class-h"></div>
+              <form class="pl-addcls pl-tools"><input type="text" class="pl-newcls" name="new-class" autocomplete="off" placeholder="New class…" aria-label="New class name" style="flex:1;min-width:0">
+                <button type="submit" title="Add a class; selected pictures in the grid get it">Add</button></form></section>
+          </div>
+          <div class="pl-panel" data-panel="parts" role="tabpanel" aria-label="Parts" hidden>
+            <section><h2 id="pl-box-h">Parts on this frame</h2><div class="pl-list pl-boxes" role="group" aria-labelledby="pl-box-h"></div>
+              <p class="pl-src">Click a part to select it. Picking a class then re-labels it on every frame it was tracked to.</p></section>
+          </div>
+          <div class="pl-panel" data-panel="find" role="tabpanel" aria-label="Find parts" hidden>
+            <section class="pl-find"><h2>Find parts</h2><div class="pl-tools">
+              <button type="button" data-b="suggest" title="Suggest boxes that look like parts you labeled on other frames (S)">Suggest</button>
+              <button type="button" data-b="findAll" title="Find more parts like the selected box on this frame (F)">Find similar</button>
+              <button type="button" data-b="accept" title="Keep every suggestion on this frame (Y)">Accept all</button>
+              <button type="button" data-b="sortParts" title="See every part as a picture, grouped by look, and name or fix classes in bulk (G)">Sort parts</button></div>
+              <div class="pl-tools pl-seg">
+              <button type="button" data-b="outlineHere" title="Outline every box on this frame that has no outline yet">Outline boxes</button>
+              <button type="button" data-b="outlineAll" title="Outline every box without an outline, on every frame">…on every frame</button></div></section>
+            <section class="pl-textsec"><h2 id="pl-text-h">Annotate by text</h2>
+              <form class="pl-textform pl-tools"><input type="text" class="pl-text" name="objects" autocomplete="off" spellcheck="false"
+                placeholder="e.g. car, truck cabin, wheel" aria-labelledby="pl-text-h" style="flex:1;min-width:0">
+                <button type="submit" class="pl-tgo" title="Find every object you named and box it (W focuses the words)">Annotate</button></form>
+              <div class="pl-objs" role="group" aria-label="Common objects">${COMMON_OBJECTS.map((o) =>
+                `<button type="button" class="pl-obj" data-word="${o}" aria-pressed="false">${o}</button>`).join("")}</div>
+              <select class="pl-tscope" name="text-scope" aria-label="Where to annotate">
+                <option value="frame">Only this frame</option><option value="rest">This frame and the rest of the task</option>
+                <option value="task">The whole task</option><option value="project">The whole project</option></select>
+              <label class="pl-range">Sureness <input type="range" class="pl-tthr" min="0.2" max="0.9" step="0.05" value="0.5"
+                name="text-sureness" aria-label="Lowest sureness to keep"><span class="pl-tthr-v">0.50</span></label>
+              <label class="pl-chk"><input type="checkbox" class="pl-tconf" name="text-confirmed"> Also confirmed frames</label>
+              <span class="pl-src">SAM 3 boxes every object you name; a new name becomes a class. What it finds is marked to check.</span></section>
+          </div>
+          <div class="pl-panel" data-panel="export" role="tabpanel" aria-label="Export" hidden>
+            <section class="pl-export"><h2>Export dataset</h2>
+              <label class="pl-field">Format <select class="pl-fmt" name="export-format"></select></label>
+              <label class="pl-field">What <select class="pl-scope" name="export-scope"><option value="job">This job</option><option value="task">This task</option><option value="project">Whole project</option></select></label>
+              <label class="pl-chk"><input type="checkbox" class="pl-revonly" name="confirmed-only"${PREFS.confirmed_only ? " checked" : ""}> Confirmed frames only</label>
+              <div class="pl-tools"><button type="button" class="primary" data-b="export">${ic("export")}Export</button></div>
+              <p class="pl-src">The dataset goes into the project's exports folder; a notification offers to open it.</p></section>
+          </div>
+          <div class="pl-panel pl-settings" data-panel="settings" role="tabpanel" aria-label="Settings" hidden>
+            <section><h2>Project settings</h2>
+              <p class="pl-src pl-typeline"></p>
+              <label class="pl-field pl-parentf">Parent object
+                <input type="text" class="pl-parent" name="parent-object" autocomplete="off" placeholder="Optional, e.g. engine block…"></label>
+              <span class="pl-src pl-parentf">What the parts sit on. Suggestions then search inside it, which helps when the camera or distance changes.
+                Leave empty to search the whole image.</span>
+              <label class="pl-field pl-parentf">Parts that change look
+                <textarea class="pl-states" name="part-states" rows="2" autocomplete="off" spellcheck="false" placeholder="e.g. bright, dim"></textarea></label>
+              <span class="pl-src pl-parentf">Classes that are states of one part, one part per line (e.g. a lamp that is bright or dim).
+                Tracking then gives each frame the state its confirmed examples match. With left_/right_ classes, the shared name covers both sides.</span>
+              <div class="pl-tools"><button type="button" data-b="saveSettings">Save settings</button></div></section>
+            <section><h2>Start over</h2>
+              <p class="pl-src">Removes every label, image class and confirmation, and makes the jobs new again: a fresh start on the
+                same frames with the same classes. Both ask first; Ctrl+Z brings the labels back while this page is open.</p>
+              <div class="pl-tools"><button type="button" class="danger pl-reset" data-b="resetTask">Reset this task…</button>
+                <button type="button" class="danger pl-reset" data-b="resetProject">Reset the whole project…</button></div></section>
+            <section><h2>This computer</h2><p class="pl-src pl-device"></p><p class="pl-src pl-version"></p></section>
+          </div>
+        </div>
       </aside>
     </div>
-    <div class="pl-bottom">
-      <canvas class="pl-strip" role="img" aria-label="Timeline of every frame; click to jump" title="Every frame; click to jump"></canvas>
+    <div class="pl-dock">
+      <div class="pl-transport" role="toolbar" aria-label="Frames">
+        <span class="pl-group">
+          <button type="button" class="icon" data-a="prev" aria-label="Previous frame" title="Previous frame (←)">${ic("prev")}</button>
+          <button type="button" class="icon" data-a="next" aria-label="Next frame" title="Next frame (→)">${ic("next")}</button>
+          <button type="button" class="pl-play" data-a="play" aria-pressed="false" title="Play the frames like a video, labels on (K or Space); stops at the end, or when you step or click">${ic("play")}<span>Play</span></button>
+          <select class="pl-speed" name="play-speed" aria-label="Play speed" title="Play speed: 1× is the video's own speed (the frames kept per second)">
+            <option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="1" selected>1×</option>
+            <option value="2">2×</option><option value="4">4×</option></select>
+          <button type="button" data-a="nextTodo" aria-label="Next to check" title="Next frame that is flagged or not confirmed (Shift+→)">${ic("flag")}<span class="pl-lbl2">Next to check</span></button>
+        </span>
+        <span class="pl-group pl-video">
+          <span class="pl-group-label" id="pl-track-label">Track</span>
+          <button type="button" data-a="trackBack" aria-label="Track back" title="Track this frame's parts backwards (R; Shift+R to the start)">${ic("trackBack")}<span class="pl-lbl">Back</span></button>
+          <input type="number" class="pl-n" min="1" value="${PREFS.track_n || 20}" name="track-frames" autocomplete="off" aria-label="Frames to track" title="Frames to track">
+          <button type="button" data-a="track" aria-label="Track ahead" title="Track this frame's parts ahead (T; Shift+T to the end)"><span class="pl-lbl">Ahead</span>${ic("trackAhead")}</button>
+          <button type="button" class="danger" data-a="stop" title="Stop the running job (X)" hidden>${ic("stop")}Stop</button>
+          <details class="pl-jobmenu pl-after"><summary aria-label="After this frame" title="After this frame: re-track, clear, track some classes or swap classes from this frame on">${ic("after")}<span class="pl-lbl">After this frame</span>${ic("chevDown")}</summary><div class="pl-jm">
+            <h3>Re-track from this frame</h3>
+            <div class="pl-tools"><button type="button" data-a="retrack" title="Re-track the next frames (U)">Next <span class="pl-n-echo">20</span> frames</button>
+              <button type="button" data-a="retrackAll" title="Re-track to the end of the task (Shift+U)">To the end</button></div>
+            <p class="pl-src">Frames you have not confirmed get this frame's parts again, fixes included: tracked parts there are
+              replaced (parts gone from this frame go there too) and empty frames are filled. Your own boxes and confirmed
+              frames stay. U / Shift+U.</p>
+            <hr><h3>Clear parts after this frame</h3>
+            <label class="pl-chk"><input type="checkbox" class="pl-clear-all" checked> All classes</label>
+            <div class="pl-clear-classes" hidden></div>
+            <label>Frames <select class="pl-clear-range" aria-label="Which frames"><option value="n">the next N (as Track)</option>
+              <option value="end" selected>to the end of the task</option></select></label>
+            <label class="pl-chk"><input type="checkbox" class="pl-clear-confirmed"> also confirmed frames</label>
+            <div class="pl-tools"><button type="button" class="primary" data-a="clearAfter">Clear</button><span class="pl-src">Ctrl+Z brings them back</span></div>
+            <hr><h3>Track only some classes</h3>
+            <div class="pl-track-classes" role="group" aria-label="Classes to track"></div>
+            <label>Frames <select class="pl-track-range" aria-label="Which frames"><option value="n">the next N (as Track)</option>
+              <option value="end">to the end (or start) of the task</option></select></label>
+            <label class="pl-chk"><input type="checkbox" class="pl-track-confirmed"> also confirmed frames</label>
+            <p class="pl-src">Follows only the ticked classes from this frame. On the frames reached, their tracked or model
+              parts are replaced; every other class and your own boxes stay as they are.</p>
+            <div class="pl-tools"><button type="button" data-a="trackSomeBack">${ic("trackBack")}Back</button>
+              <button type="button" data-a="trackSome">Ahead${ic("trackAhead")}</button></div>
+            <hr><h3>Swap classes</h3>
+            <label>From <select class="pl-swap-src" aria-label="Class to change"></select></label>
+            <label>To <select class="pl-swap-dst" aria-label="Class it becomes"></select></label>
+            <label class="pl-chk"><input type="checkbox" class="pl-swap-both" checked> and the other way round (swap both)</label>
+            <label>Frames <select class="pl-swap-range" aria-label="Which frames"><option value="after">this one and all after it</option>
+              <option value="task">the whole task</option><option value="frame">this frame only</option></select></label>
+            <div class="pl-tools"><button type="button" data-a="swapClasses">Swap</button><span class="pl-src">Confirmed frames too. Ctrl+Z undoes it</span></div>
+          </div></details>
+        </span>
+        <span class="pl-group"><button type="button" data-a="undo" aria-label="Undo" title="Undo the last change (Ctrl+Z)">${ic("undo")}<span class="pl-lbl2">Undo</span></button></span>
+        <span class="pl-group pl-commit"><button type="button" class="danger pl-delframe" data-a="deleteFrame" title="Delete this frame and its labels for good (Shift+Delete)">${ic("trash")}Delete frame</button>
+        <button type="button" class="primary pl-confirm" data-a="review" title="Mark this frame as checked and go to the next one (Enter)">${ic("check")}<span>Confirm frame</span></button></span>
+      </div>
+      <canvas class="pl-strip" role="img" aria-label="Every frame of this job, coloured by status; click or drag to go to a frame"></canvas>
       <div class="pl-foot"><span class="pl-counts"></span><span class="pl-bar" aria-hidden="true"><i></i></span><span class="pl-prog" role="status" aria-live="polite"></span><span class="pl-loading" role="status" aria-live="polite" hidden></span>
         <span class="pl-sp"></span><span class="pl-legend"></span></div>
     </div>
+    <div class="pl-tip" hidden></div>
     <div class="pl-toasts" aria-live="polite" aria-relevant="additions"></div>
+    <dialog class="pl-del-dlg" aria-labelledby="pl-del-h"><form method="dialog">
+      <h2 id="pl-del-h">${ic("alert")}<span class="pl-del-t">Delete this frame for good?</span></h2>
+      <p class="pl-del-b"></p>
+      <div class="pl-tools"><button type="submit" value="keep" class="pl-del-keep" autofocus>Keep the frame</button>
+        <button type="submit" value="delete" class="solid-danger pl-del-ok">${ic("trash")}<span>Delete for good</span></button></div></form></dialog>
     <dialog class="pl-help-dlg" aria-labelledby="pl-help-h"><header><h2 id="pl-help-h">Keyboard shortcuts</h2>
       <button type="button" data-a="closeHelp">Close</button></header>
       <div class="pl-help-grid">
+        <h3>Tools</h3>
+        <div><span>Click to outline (SAM 3 finds the edge)</span><kbd>C</kbd></div>
+        <div><span>Select and adjust</span><kbd>V</kbd></div>
+        <div><span>Box (press again: drag, two clicks, four edge points)</span><kbd>B</kbd></div>
+        <div><span>Polygon</span><kbd>O</kbd></div>
+        <div><span>Ellipse (outline projects)</span><kbd>L</kbd></div>
+        <div><span>Brush / eraser</span><span><kbd>P</kbd> / <kbd>E</kbd></span></div>
+        <div><span>Smart brush / smart eraser (stop at the part's edge)</span><span><kbd>Shift</kbd>+<kbd>P</kbd> / <kbd>Shift</kbd>+<kbd>E</kbd></span></div>
+        <div><span>Smaller / larger brush</span><span><kbd>,</kbd> <kbd>.</kbd></span></div>
         <h3>Label</h3>
         <div><span>New part of the current class</span><span>Click</span></div>
         <div><span>Next larger outline for it</span><kbd>M</kbd></div>
         <div><span>Grow / shrink the selected part</span><span><kbd>Shift</kbd>/<kbd>Alt</kbd> + click</span></div>
-        <div><span>Select a box</span><span><kbd>Ctrl</kbd> + click</span></div>
-        <div><span>Draw a new box</span><span><kbd>B</kbd> then drag</span></div>
-        <div><span>Resize / move the selected box (object detection)</span><span>drag a handle / drag inside it</span></div>
-        <div><span>Back to click-to-outline</span><kbd>C</kbd></div>
-        <div><span>Pick class (re-labels a box you selected)</span><span><kbd>1</kbd>–<kbd>9</kbd>, <kbd>0</kbd>, <kbd>[</kbd> <kbd>]</kbd></span></div>
-        <div><span>Delete the selected box</span><kbd>Del</kbd></div>
+        <div><span>Select a part (any tool)</span><span><kbd>Ctrl</kbd> + click</span></div>
+        <div><span>Resize / move the selected box</span><span>drag a handle / drag inside it</span></div>
+        <div><span>Polygon: close / undo a point / cancel</span><span><kbd>Enter</kbd> / <kbd>Backspace</kbd> / <kbd>Esc</kbd></span></div>
+        <div><span>Pick class (re-labels a part you selected)</span><span><kbd>1</kbd>–<kbd>9</kbd>, <kbd>0</kbd>, <kbd>[</kbd> <kbd>]</kbd></span></div>
+        <div><span>Delete the selected part</span><kbd>Del</kbd></div>
         <div><span>Deselect</span><kbd>Esc</kbd></div>
         <div><span>Undo</span><span><kbd>Ctrl</kbd> + <kbd>Z</kbd></span></div>
         <h3>Frames</h3>
@@ -963,23 +1163,20 @@ function render({ model, el }) {
         <div><span>Next frame to check</span><span><kbd>Shift</kbd> + <kbd>→</kbd></span></div>
         <div><span>Play / pause the frames</span><span><kbd>K</kbd> / <kbd>Space</kbd></span></div>
         <div><span>Confirm frame and go on</span><kbd>Enter</kbd></div>
+        <div><span>Delete this frame for good (asks first)</span><span><kbd>Shift</kbd> + <kbd>Del</kbd></span></div>
         <div><span>Track ahead / to the end</span><span><kbd>T</kbd> / <kbd>Shift</kbd>+<kbd>T</kbd></span></div>
         <div><span>Track back / to the start</span><span><kbd>R</kbd> / <kbd>Shift</kbd>+<kbd>R</kbd></span></div>
         <div><span>Re-track the next frames / to the end (replaces tracked parts)</span><span><kbd>U</kbd> / <kbd>Shift</kbd>+<kbd>U</kbd></span></div>
         <div><span>Stop the running job</span><kbd>X</kbd></div>
         <h3>Find and review</h3>
-        <div><span>Suggest boxes from labeled frames</span><kbd>S</kbd></div>
-        <div><span>Find more like the selected box</span><kbd>F</kbd></div>
+        <div><span>Suggest parts from labeled frames</span><kbd>S</kbd></div>
+        <div><span>Find more like the selected part</span><kbd>F</kbd></div>
         <div><span>Accept all suggestions</span><kbd>Y</kbd></div>
         <div><span>Annotate by text: type what to find</span><kbd>W</kbd></div>
         <div><span>Notifications</span><kbd>N</kbd></div>
         <div><span>Ask Rivet, the helper</span><kbd>H</kbd></div>
         <div><span>This list</span><kbd>?</kbd></div>
-        <div><span>Full screen (top bar)</span><span>⤢</span></div>
-        <h3>Outlines and sorting</h3>
-        <div><span>Brush / eraser (outline projects)</span><span><kbd>P</kbd> / <kbd>E</kbd></span></div>
-        <div><span>Smaller / larger brush</span><span><kbd>,</kbd> <kbd>.</kbd></span></div>
-        <div><span>Smart brush / smart eraser (stop at the part's edge)</span><span><kbd>Shift</kbd>+<kbd>P</kbd> / <kbd>Shift</kbd>+<kbd>E</kbd></span></div>
+        <h3>View and sorting</h3>
         <div><span>Zoom in / out at the pointer</span><span><kbd>Ctrl</kbd> + wheel, <kbd>+</kbd> <kbd>−</kbd></span></div>
         <div><span>Whole frame again</span><kbd>Z</kbd></div>
         <div><span>Move around when zoomed in</span><span>wheel, <kbd>Space</kbd>+drag, middle drag</span></div>
@@ -989,17 +1186,27 @@ function render({ model, el }) {
         <div><span>Grid: look closer</span><span>Double-click, <kbd>Space</kbd></span></div>
       </div></dialog>
     <dialog class="pl-peek" aria-label="Picture"><header><b class="pl-peek-t"></b><span class="pl-peek-c"></span>
-      <button type="button" data-a="peekPrev" aria-label="Previous">◀</button><button type="button" data-a="peekNext" aria-label="Next">▶</button>
+      <button type="button" class="icon" data-a="peekPrev" aria-label="Previous">${ic("prev")}</button><button type="button" class="icon" data-a="peekNext" aria-label="Next">${ic("next")}</button>
       <button type="button" data-a="closePeek">Close</button></header><img class="pl-peek-img" alt=""></dialog>`;
   const $ = (s) => el.querySelector(s);
   const cv = $(".pl-cv"), ctx = cv.getContext("2d"), strip = $(".pl-strip"), sctx = strip.getContext("2d");
   const S = { project: null, statuses: [], flags: [], item: 0, target: 0, data: null, img: null, mask: null,
               maskItem: -1, cls: 0, tool: "click", sel: null, drag: null, busy: false, filter: "",
               saving: false, savedAt: null, hintHidden: false, started: false, brush: PREFS.brush || 12, hover: null, paint: null,
-              grid: null, zoom: 1, pan: [0, 0], panning: null, space: false };
+              grid: null, zoom: 1, pan: [0, 0], panning: null, space: false,
+              boxMode: "drag", polyMode: "new", shape: null, tab: "classes" };
   try { S.hintHidden = window.PL ? PREFS.hints === false : localStorage.getItem("pl-hint-hidden") === "1"; } catch {}
-  const MUTATING = new Set(["box", "click", "cycle", "delete", "set_class", "swap_classes", "review", "accept", "undo", "settings", "paint", "smart_paint", "tag", "accept_tags", "add_class"]);
+  try { S.tab = localStorage.getItem("pl-tab") || "classes"; } catch {}
+  const MUTATING = new Set(["box", "click", "cycle", "delete", "set_class", "swap_classes", "review", "accept", "undo", "settings", "paint", "smart_paint", "tag", "accept_tags", "add_class", "delete_frames", "delete_class", "reset"]);
+  let pendingDanger = null;                                      // what the confirm dialog sends when the person says yes
+  function confirmDanger(title, body, keep, ok, msg) {
+    const dlg = $(".pl-del-dlg");
+    $(".pl-del-t").textContent = title; $(".pl-del-b").textContent = body;
+    $(".pl-del-keep").textContent = keep; $(".pl-del-ok span").textContent = ok;
+    pendingDanger = msg; dlg.returnValue = ""; dlg.showModal();
+  }
   const seg = () => S.project?.task === "segment", classify = () => S.project?.task === "classify";
+  const statusName = (i) => (seg() ? STATUS[i].replace("boxes", "outlines") : STATUS[i]);   // the project's own word for its labels
   const send = (m) => { if (MUTATING.has(m.type)) { S.saving = true; renderSaved(); } model.send(m); };
   const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches || document.documentElement.dataset.motion === "off";
 
@@ -1014,8 +1221,16 @@ function render({ model, el }) {
     onAction: (a) => runAction(a),
   });
   // ---- Rivet, the helper ------------------------------------------------------------------
+  // The inspector shows one tab at a time; flash() opens the tab holding `box` first
+  function openTab(name, remember = true) {
+    S.tab = name;
+    el.querySelectorAll("[data-tab]").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.tab === name)));
+    el.querySelectorAll("[data-panel]").forEach((p) => (p.hidden = p.dataset.panel !== name));
+    if (remember) try { localStorage.setItem("pl-tab", name); } catch {}
+  }
   const flash = (box) => {
-    const side = $(".pl-side");
+    const panel = box.closest("[data-panel]"); if (panel) openTab(panel.dataset.panel);
+    const side = $(".pl-insp-body");
     side.scrollBy({ top: box.getBoundingClientRect().top - side.getBoundingClientRect().top - 60 });
     const r = box.getBoundingClientRect();
     if (r.top < 0 || r.bottom > window.innerHeight) box.scrollIntoView({ block: "center", behavior: reduceMotion ? "auto" : "smooth" });
@@ -1033,7 +1248,7 @@ function render({ model, el }) {
       shortcuts: { label: "Show shortcuts", run: () => actions.help() },
       notifications: { label: "Open notifications", run: () => center.open() },
       find: { label: "Show Find parts", run: () => flash($(".pl-find")) },
-      settings: { label: "Open Settings", run: () => { $(".pl-settings").open = true; flash($(".pl-settings")); } },
+      settings: { label: "Open Settings", run: () => flash($(".pl-settings section")) },
       ...(web ? { projects: { label: "Go to projects", run: () => { location.href = model.homeUrl; } } } : {}),
     },
     starters: ["How can I export?", "How do I track through the video?", "What does 'To check' mean?", { q: "What makes PartLabeler different?", local: "pros" }],
@@ -1098,8 +1313,8 @@ function render({ model, el }) {
         ctx.drawImage(t.canvas, b.mask[0], b.mask[1]);
       }
       ctx.globalAlpha = 1;
-      if (S.paint) { ctx.globalAlpha = S.paint.smart ? 0.45 : 0.6; ctx.drawImage(S.paint.cv, 0, 0); ctx.globalAlpha = 1; }
     }
+    if (S.paint) { ctx.globalAlpha = S.paint.smart ? 0.45 : 0.6; ctx.drawImage(S.paint.cv, 0, 0); ctx.globalAlpha = 1; }
     for (const b of S.data?.boxes || []) {
       const [x1, y1, x2, y2] = b.box, col = colorOf(b.cls), on = b.obj === S.sel;
       const outlined = seg() && b.mask;
@@ -1123,11 +1338,14 @@ function render({ model, el }) {
         ctx.fillRect(hx - h / 2, hy - h / 2, h, h); ctx.strokeRect(hx - h / 2, hy - h / 2, h, h);
       }
     }
-    if (S.drag?.moved && S.tool === "box" && !S.drag.grip) {
-      const d = S.drag; ctx.setLineDash([lw * 3, lw * 2]); ctx.lineWidth = lw; ctx.strokeStyle = "#fff";
-      ctx.strokeRect(Math.min(d.x0, d.x1), Math.min(d.y0, d.y1), Math.abs(d.x1 - d.x0), Math.abs(d.y1 - d.y0));
+    if (S.drag?.moved && (S.tool === "box" || S.tool === "ellipse") && !S.drag.grip) {
+      const d = S.drag, [x, y, w, h] = S.tool === "ellipse" ? ellipseBox(d) : [Math.min(d.x0, d.x1), Math.min(d.y0, d.y1), Math.abs(d.x1 - d.x0), Math.abs(d.y1 - d.y0)];
+      ctx.setLineDash([lw * 3, lw * 2]); ctx.lineWidth = lw; ctx.strokeStyle = "#fff";
+      if (S.tool === "ellipse") { ctx.beginPath(); ctx.ellipse(x + w / 2, y + h / 2, w / 2, h / 2, 0, 0, Math.PI * 2); ctx.stroke(); }
+      else ctx.strokeRect(x, y, w, h);
       ctx.setLineDash([]);
     }
+    if (S.shape) drawShape(lw);
     if (S.hover && painting()) {                                          // the brush's footprint
       const erasing = S.tool === "erase" || S.tool === "smartErase";
       ctx.beginPath(); ctx.arc(S.hover[0], S.hover[1], S.brush, 0, Math.PI * 2);
@@ -1138,22 +1356,68 @@ function render({ model, el }) {
       }
     }
   }
+  // A shape being placed point by point: polygon corners, the first corner of a two-click box, edge points of a four-point box
+  function drawShape(lw) {
+    const { kind, pts } = S.shape, hov = S.hover, col = colorOf(S.cls), r = lw * 3.2;
+    ctx.lineWidth = lw * 1.4; ctx.strokeStyle = col; ctx.fillStyle = col;
+    if (kind === "polygon") {
+      ctx.beginPath(); pts.forEach(([x, y], k) => (k ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+      if (hov) ctx.lineTo(hov[0], hov[1]);
+      ctx.globalAlpha = 0.18; if (pts.length > 1) { ctx.closePath(); ctx.fill(); } ctx.globalAlpha = 1;
+      ctx.beginPath(); pts.forEach(([x, y], k) => (k ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); if (hov) ctx.lineTo(hov[0], hov[1]); ctx.stroke();
+      if (pts.length >= 3 && hov && nearFirst(hov)) { ctx.beginPath(); ctx.arc(pts[0][0], pts[0][1], r * 2, 0, Math.PI * 2); ctx.strokeStyle = "#fff"; ctx.stroke(); }
+    } else {
+      const all = hov ? [...pts, hov] : pts, xs = all.map((p) => p[0]), ys = all.map((p) => p[1]);
+      if (all.length > 1) { ctx.setLineDash([lw * 3, lw * 2]); ctx.strokeStyle = "#fff"; ctx.strokeRect(Math.min(...xs), Math.min(...ys), Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)); ctx.setLineDash([]); }
+    }
+    for (const [x, y] of pts) { ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fillStyle = "#fff"; ctx.fill(); ctx.lineWidth = lw; ctx.strokeStyle = col; ctx.stroke(); }
+  }
+  const nearFirst = ([x, y]) => {                               // within 10 screen pixels of the polygon's first corner
+    const [fx, fy] = S.shape.pts[0], r = cv.getBoundingClientRect(), px = cv.width / r.width;
+    return Math.hypot(x - fx, y - fy) <= 10 * px;
+  };
 
-  function drawStrip() {                                         // the current task's frames
+  // The job's frames: the job's first and last frame number as a bracket, the status band, raised flags and a
+  // playhead that carries the frame number (the whole job readable and scrubbable at a glance)
+  function drawStrip() {
     const dpr = window.devicePixelRatio || 1, w = strip.clientWidth * dpr, h = strip.clientHeight * dpr;
     strip.width = w; strip.height = h;
     if (!S.statuses.length || !S.project) return;
     const t = view(), n = Math.max(1, t.end - t.start);
-    const css = getComputedStyle(el), cw = w / n;
+    const css = getComputedStyle(el), v = (k) => css.getPropertyValue(k).trim(), cw = w / n, top = 17 * dpr, bh = h - top;
+    sctx.save(); sctx.beginPath(); sctx.roundRect?.(0, top, w, bh, 4 * dpr) ?? sctx.rect(0, top, w, bh); sctx.clip();
     for (let i = 0; i < n; i++) {
-      sctx.fillStyle = css.getPropertyValue(`--st${S.statuses[t.start + i] ?? 0}`);
-      sctx.fillRect(Math.floor(i * cw), 0, Math.ceil(cw), h);
+      sctx.fillStyle = v(`--st${S.statuses[t.start + i] ?? 0}`);
+      sctx.fillRect(Math.floor(i * cw), top, Math.ceil(cw), bh);
     }
-    sctx.fillStyle = css.getPropertyValue("--flag");
-    for (const f of S.flags) if (f >= t.start && f < t.end) sctx.fillRect(Math.floor((f - t.start) * cw), 0, Math.max(2, Math.ceil(cw)), h * 0.3);
-    const x = (S.item - t.start + 0.5) * cw;
-    sctx.fillStyle = "#15202b"; sctx.fillRect(x - dpr, 0, 2 * dpr, h);
-    sctx.beginPath(); sctx.moveTo(x - 5 * dpr, h); sctx.lineTo(x + 5 * dpr, h); sctx.lineTo(x, h - 7 * dpr); sctx.fill();
+    sctx.restore();
+    sctx.fillStyle = v("--flag");                                       // flags rise above the band, so they read at any zoom
+    for (const f of S.flags) if (f >= t.start && f < t.end) sctx.fillRect(Math.floor((f - t.start) * cw), top - 6 * dpr, Math.max(2 * dpr, Math.ceil(cw)), 11 * dpr);
+    const ink = v("--ink") || "#15202b", x = (S.item - t.start + 0.5) * cw, label = String(S.item - t.start + 1);
+    sctx.font = `600 ${11 * dpr}px "Segoe UI Variable Text","Segoe UI",system-ui,sans-serif`; sctx.textBaseline = "middle";
+    const pw = sctx.measureText(label).width + 12 * dpr, px = Math.max(0, Math.min(w - pw, x - pw / 2)), ph = 15 * dpr;
+    sctx.fillStyle = v("--muted"); sctx.textAlign = "left";             // the bracket: first and last frame of the job
+    if (px > 30 * dpr) sctx.fillText("1", 2 * dpr, 7 * dpr);
+    sctx.textAlign = "right"; if (px + pw < w - 30 * dpr) sctx.fillText(String(n), w - 2 * dpr, 7 * dpr);
+    sctx.fillStyle = ink; sctx.fillRect(x - dpr, ph, 2 * dpr, h - ph);
+    sctx.beginPath(); sctx.roundRect?.(px, 0, pw, ph, 7 * dpr) ?? sctx.rect(px, 0, pw, ph); sctx.fill();
+    sctx.fillStyle = v("--panel") || "#fff"; sctx.textAlign = "center"; sctx.fillText(label, px + pw / 2, ph / 2 + 0.5 * dpr);
+  }
+  {                                                                   // the account's theme can change while open: canvases follow
+    const redraw = () => { drawStrip(); draw(); };
+    new MutationObserver(redraw).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "data-accent"] });
+    window.matchMedia?.("(prefers-color-scheme: dark)").addEventListener?.("change", redraw);
+  }
+  const stripItem = (e) => {                                      // the frame under the pointer on the ribbon
+    const r = strip.getBoundingClientRect(), t = view();
+    return t.start + Math.max(0, Math.min(t.end - t.start - 1, Math.floor((e.clientX - r.left) / r.width * (t.end - t.start))));
+  };
+  function stripTip(e) {
+    const tip = $(".pl-tip"); if (!e || !S.project) { tip.hidden = true; return; }
+    const i = stripItem(e), t = view(), st = S.statuses[i] ?? 0;
+    tip.textContent = `${t.kind === "video" ? "Frame" : "Image"} ${i - t.start + 1} · ${statusName(st)}${S.flags.includes(i) ? " · to check" : ""}`;
+    const r = strip.getBoundingClientRect();
+    tip.style.left = `${e.clientX}px`; tip.style.top = `${r.top - 6}px`; tip.hidden = false;
   }
 
   function renderSide() {
@@ -1161,28 +1425,70 @@ function render({ model, el }) {
     const filt = $(".pl-filter"); filt.hidden = cls.length <= 8;
     const q = S.filter.trim().toLowerCase();
     const shown = cls.map((c, i) => [c, i]).filter(([c]) => !q || c.toLowerCase().includes(q));
-    $(".pl-classes").innerHTML = !S.project ? "" : !cls.length ? `<span class="pl-empty">No classes yet: type one below${S.grid ? "; the selected pictures get it" : ""}.</span>` : shown.length ? shown.map(([c, i]) => `<button type="button" class="pl-row" data-cls="${i}" aria-pressed="${i === S.cls}">
+    const boxes = S.data?.boxes || [], here = new Map();
+    for (const b of boxes) here.set(b.cls, (here.get(b.cls) || 0) + 1);
+    $(".pl-classes").innerHTML = !S.project ? "" : !cls.length ? `<span class="pl-empty">No classes yet: type one below${S.grid ? "; the selected pictures get it" : ""}.</span>` : shown.length ? shown.map(([c, i]) => `<div class="pl-rowwrap"><button type="button" class="pl-row" data-cls="${i}" aria-pressed="${i === S.cls}">
       <span class="pl-sw" style="background:${colorOf(i)}" aria-hidden="true"></span><span class="pl-key">${i < 10 ? (i + 1) % 10 : ""}</span>
-      <span class="pl-name" translate="no">${esc(c)}</span><span></span></button>`).join("") : `<span class="pl-empty">No class matches “${esc(S.filter)}”.</span>`;
-    const boxes = S.data?.boxes || [];
+      <span class="pl-name" translate="no">${esc(c)}</span><span class="pl-n-here" title="Parts of this class on this frame">${S.grid ? "" : here.get(i) || ""}</span></button>
+      <button type="button" class="pl-x" data-delcls="${i}"${S.busy ? " disabled" : ""} aria-label="Delete class ${esc(c)}" title="Delete this class and its labels">${ic("x")}</button></div>`).join("") : `<span class="pl-empty">No class matches “${esc(S.filter)}”.</span>`;
     $(".pl-boxes").innerHTML = boxes.length ? boxes.map((b) => `<div class="pl-rowwrap"><button type="button" class="pl-row" data-obj="${b.obj}" aria-pressed="${b.obj === S.sel}">
       <span class="pl-sw" style="background:${colorOf(b.cls)}" aria-hidden="true"></span><span class="pl-key">#${b.obj}</span>
       <span class="pl-name"><span translate="no">${esc(cls[b.cls] ?? b.cls)}</span> <span class="pl-src">${b.source}${b.score != null && b.source !== "manual" ? " " + b.score.toFixed(2) : ""}</span></span><span></span></button>
-      <button type="button" class="pl-x" data-del="${b.obj}" aria-label="Delete ${esc(cls[b.cls] ?? "")} box #${b.obj}" title="Delete (Del)">×</button></div>`).join("")
-      : `<span class="pl-empty">No boxes yet. Click a part in the image.</span>`;
-    el.querySelectorAll("[data-tool]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.tool === S.tool));
+      <button type="button" class="pl-x" data-del="${b.obj}" aria-label="Delete ${esc(cls[b.cls] ?? "")} part #${b.obj}" title="Delete (Del)">${ic("x")}</button></div>`).join("")
+      : `<span class="pl-empty">No parts on this frame yet. Pick a tool on the left and click or draw a part.</span>`;
+    $(".pl-nparts").textContent = boxes.length;
+    el.querySelectorAll("[data-tool]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.tool === S.tool)));
     const grid = Boolean(S.grid), cl = classify();
+    $("#pl-class-h").textContent = !grid ? "Class for new parts" : `Class for the selected ${cl ? "pictures" : "parts"}`;
     el.querySelectorAll(".pl-seg").forEach((n) => (n.hidden = !seg() || grid));
-    $(".pl-toolsec").hidden = grid; $(".pl-boxes").closest("section").hidden = grid; $(".pl-find").hidden = grid;
+    $(".pl-body").classList.toggle("gridmode", grid);
+    $('[data-tab="parts"]').hidden = grid; $('[data-tab="find"]').hidden = grid;
+    openTab(grid && (S.tab === "parts" || S.tab === "find") ? "classes" : S.tab, false);
     $(".pl-textsec").hidden = grid || cl;
     $(".pl-sort").hidden = !grid;
     el.querySelectorAll(".pl-imgonly").forEach((n) => (n.hidden = !cl));
     el.querySelectorAll(".pl-partsonly").forEach((n) => (n.hidden = cl));
     $(".pl-bsize-v").textContent = `${S.brush} px`;
     el.querySelectorAll(".pl-webonly").forEach((n) => (n.hidden = !web));
-    renderJob();
+    renderOpts(); renderJob();
     const hint = $(".pl-hint");
     hint.hidden = S.hintHidden || !S.project || grid || boxes.length > 0 || S.statuses.some((s) => s >= 2);
+  }
+
+  // The bar above the picture: the active tool, how it works, and its options
+  const HOWTO = {
+    click: () => "Click a part: SAM 3 finds its edge. M: larger outline · Shift/Alt+click: grow/shrink · Ctrl+click: select.",
+    select: () => seg() ? "Click a part to select it, then pick a class, press Del, or fix it with the brush."
+      : "Click a part to select it. Drag a handle to resize the box, or inside it to move it.",
+    box: () => ({ drag: "Drag from one corner to the other.", two: "Click one corner, then the opposite one.",
+                  four: "Click the part's top, bottom, left and right edges." }[S.boxMode]) + (seg() ? " SAM 3 outlines it." : ""),
+    polygon: () => seg() ? "Click each corner; click the first one again (or Enter) to close."
+      : "Click around the part, then the first corner again (or Enter): the box fits.",
+    ellipse: () => "Drag around a round part. Hold Shift for a circle.",
+    brush: () => seg() ? "Paint onto the selected outline, or a new part of the current class." : "Paint over the part: the box fits what you painted.",
+    erase: () => "Erase from the selected outline (Ctrl+click it first). Erasing all of it deletes the part.",
+    smartBrush: () => "Paint roughly over what is missing: SAM 3 keeps only the part, so the paint stops at its edge.",
+    smartErase: () => "Erase roughly over what does not belong: SAM 3 keeps the part's own edge.",
+    pan: () => S.zoom > 1 ? "Drag to move around the frame. With any tool, hold Space and drag." : "Zoom in first (Ctrl+wheel or +), then drag to move around.",
+  };
+  function renderOpts() {
+    const t = TOOLS.find((x) => x[0] === S.tool) || TOOLS[0];
+    $(".pl-toolname").textContent = t[1];
+    const how = $(".pl-howto"); how.textContent = how.title = (HOWTO[S.tool] || (() => ""))();
+    $(".pl-boxmodes").hidden = S.tool !== "box";
+    $(".pl-polymodes").hidden = !(seg() && (S.tool === "polygon" || S.tool === "ellipse"));
+    $(".pl-brush").hidden = !["brush", "erase", "smartBrush", "smartErase"].includes(S.tool);
+    el.querySelectorAll("[data-boxmode]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.boxmode === S.boxMode)));
+    el.querySelectorAll("[data-polymode]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.polymode === S.polyMode)));
+    const name = S.project?.classes?.[S.cls];
+    $(".pl-curcls").innerHTML = name == null ? "" : `<span class="pl-src">Class</span><i class="pl-sw" style="background:${colorOf(S.cls)}" aria-hidden="true"></i><b translate="no">${esc(name)}</b>`;
+    const st = $(".pl-stage"); st.classList.toggle("tool-select", S.tool === "select"); st.classList.toggle("tool-pan", S.tool === "pan");
+  }
+  function setTool(t, cycle = false) {                           // a shape half placed is dropped when the tool changes
+    if (!seg() && TOOLS.find((x) => x[0] === t)?.[5] === "seg") return;
+    if (cycle && S.tool === "box" && t === "box") S.boxMode = { drag: "two", two: "four", four: "drag" }[S.boxMode];   // B again: next mode
+    S.tool = t; S.shape = null; S.drag = null;
+    renderSide(); draw();
   }
 
   function renderSaved() {
@@ -1210,15 +1516,17 @@ function render({ model, el }) {
     $(".pl-counts").textContent = `${lab} labeled, ${rev} confirmed, ${flags} to check${curJob() ? " in this job" : ""}`;
     const busy = S.busy;
     el.querySelectorAll('[data-a="track"],[data-a="trackBack"],[data-a="retrack"],[data-a="retrackAll"],[data-a="clearAfter"],[data-a="swapClasses"],[data-a="trackSome"],[data-a="trackSomeBack"],[data-b="suggest"],[data-b="findAll"],[data-b="export"]').forEach((b) => (b.disabled = busy));
-    $('[data-a="stop"]').disabled = !busy;
+    $('[data-a="stop"]').hidden = !busy;                         // only while a job runs: an idle square read as a checkbox
     $('[data-a="undo"]').disabled = busy || !S.undo;
-    $(".pl-video").hidden = view().kind !== "video";
-    $('[data-a="review"]').textContent = S.data.reviewed ? "Unconfirm frame" : "Confirm frame";
+    $(".pl-video").hidden = view().kind !== "video" || classify();   // image classes are never tracked
+    $('[data-a="review"] span').textContent = S.data.reviewed ? "Unconfirm frame" : "Confirm frame";
+    $('[data-a="deleteFrame"]').disabled = busy;
+    el.querySelectorAll(".pl-reset, [data-delcls]").forEach((b) => (b.disabled = busy));   // renderSide sets new rows' own
     $(".pl-device").textContent = [S.project.device, S.gpu && `GPU memory in use: ${S.gpu}`].filter(Boolean).join(". ");
     el.querySelectorAll('[data-b="group"],[data-b="suggestTags"],[data-b="odd"],[data-b="outlineHere"],[data-b="outlineAll"],[data-b="sortParts"],.pl-tgo')
       .forEach((b) => (b.disabled = busy));
     const cl = classify();
-    $('[data-a="prev"]').closest(".pl-group").hidden = cl; $('[data-a="review"]').hidden = cl;
+    $('[data-a="prev"]').closest(".pl-group").hidden = cl; $('[data-a="review"]').hidden = cl; $('[data-a="deleteFrame"]').hidden = cl;
     $(".pl-strip").hidden = cl; $(".pl-legend").hidden = cl;
     if (cl) {
       const n = (v) => S.statuses.filter((s) => s === v).length, given = n(4) + n(2), sugg = n(1);
@@ -1239,17 +1547,16 @@ function render({ model, el }) {
     $(".pl-revonly").closest("label").hidden = classify();              // suggested classes are never exported
 
     el.querySelectorAll(".pl-parentf").forEach((n) => (n.hidden = classify()));
-    $('[data-a="exportJump"]').title = `Export the dataset: ${(S.project.formats || []).map((f) => FORMAT_NAMES[f] || f).join(", ")}`;
     $(".pl-version").innerHTML = (S.project.version ? `PartLabeler version ${esc(S.project.version)}.` : "")
       + (web ? ` <a href="${model.homeUrl}#update">Check for updates</a>` : " Update: rerun Step 3 of the notebook.");
     const back = $(".pl-back"); back.hidden = !web; if (web) back.href = model.homeUrl;
     if (web) document.title = `${S.project.name} · PartLabeler`;
     if (classify() && !S.grid) openGrid("images");
-    if (!seg() && /brush|erase/i.test(S.tool)) S.tool = "click";
+    if (!seg() && TOOLS.find((x) => x[0] === S.tool)?.[5] === "seg") S.tool = "click";
   }
 
   function legend() {
-    $(".pl-legend").innerHTML = STATUS.map((t, i) => `<span><i class="pl-sw" style="background:var(--st${i})" aria-hidden="true"></i>${t}</span>`).join("")
+    $(".pl-legend").innerHTML = STATUS.map((t, i) => `<span><i class="pl-sw" style="background:var(--st${i})" aria-hidden="true"></i>${statusName(i)}</span>`).join("")
       + `<span><i class="pl-sw" style="background:var(--flag)" aria-hidden="true"></i>To check</span>`;
   }
 
@@ -1296,7 +1603,7 @@ function render({ model, el }) {
   const fpsOf = () => { const t = view().task; return t?.info?.fps ? t.info.fps / (t.every || 1) : 5; };
   function renderPlay() {
     const b = $(".pl-play");
-    b.textContent = S.playing ? "❚❚ Pause" : "▷ Play"; b.setAttribute("aria-pressed", String(!!S.playing));
+    b.innerHTML = S.playing ? `${ic("pause")}<span>Pause</span>` : `${ic("play")}<span>Play</span>`; b.setAttribute("aria-pressed", String(!!S.playing));
   }
   function stopPlay() {
     if (!S.playing) return;
@@ -1344,7 +1651,7 @@ function render({ model, el }) {
     menu.hidden = !j;
     if (!j) return;
     const t = view().task;
-    menu.querySelector("summary").innerHTML = `Job #${j.id}${tasks().length > 1 ? ` · <span translate="no">${esc(t?.name || "")}</span>` : ""} <span class="pl-jobstate ${j.state === "completed" ? "completed" : ""}">${esc(j.state)}</span> ▾`;
+    menu.querySelector("summary").innerHTML = `Job #${j.id}${tasks().length > 1 ? ` · <span translate="no">${esc(t?.name || "")}</span>` : ""} <span class="pl-jobstate ${j.state === "completed" ? "completed" : ""}">${esc(j.state)}</span>${ic("chevDown")}`;
     $(".pl-jstage").value = j.stage; $(".pl-jstate").value = j.state;
     $(".pl-jpick").innerHTML = jobs().map((x) => `<option value="${x.id}"${x.id === j.id ? " selected" : ""}>#${x.id} · ${esc(x.task_name)} · ${x.end - x.start} frames · ${esc(x.state)}</option>`).join("");
     const k = jobs().indexOf(j);
@@ -1403,7 +1710,27 @@ function render({ model, el }) {
       send({ type: "export", format: $(".pl-fmt").value, reviewed_only: $(".pl-revonly").checked,
              ...(scope === "job" && j ? { jobs: [j.id] } : scope === "task" && j ? { tasks: [j.task] } : {}) });
     },
-    exportJump: () => { flash($(".pl-export")); $(".pl-fmt").focus(); },   // the controls sit below a possibly long class list
+    exportJump: () => { flash($(".pl-export")); $(".pl-fmt").focus(); },
+    deleteFrame: () => {                                        // permanent: the person confirms in a dialog first
+      if (!S.data || S.busy || classify()) return;
+      const t = view(), n = S.data.boxes?.length || 0, image = t.kind !== "video";
+      confirmDanger(`Delete ${image ? "image" : "frame"} ${S.item - t.start + 1} for good?`,
+        `It leaves the project with its ${n} part${n === 1 ? "" : "s"}, and every ${image ? "image" : "frame"} after it `
+        + `moves up one place. ${image ? "The picture itself stays in your folder. " : ""}This cannot be undone.`,
+        "Keep the frame", "Delete for good", { type: "delete_frames", items: [S.item] });
+    },
+    resetTask: () => {
+      const t = view().task; if (!t || S.busy) return;
+      confirmDanger(`Reset task ${t.name}?`, `Every label, image class and confirmation on its ${t.end - t.start} frames goes, and its jobs are `
+        + "new again. The frames and classes stay. Ctrl+Z brings the labels back while this page is open.",
+        "Keep the labels", "Reset the task", { type: "reset", scope: "task", item: t.start });
+    },
+    resetProject: () => {
+      if (!S.project || S.busy) return;
+      confirmDanger(`Reset the whole project ${S.project.name}?`, `Every label, image class and confirmation on all ${S.project.count} frames, `
+        + "in every task, goes, and every job is new again. The frames and classes stay. Ctrl+Z brings the labels back while this page is open.",
+        "Keep the labels", "Reset the project", { type: "reset", scope: "project" });
+    },
     saveSettings: () => send({ type: "settings", parent: $(".pl-parent").value, states: $(".pl-states").value }),
     sortParts: () => openGrid("parts"),
     finishJob: () => { const j = curJob(); if (j) { send({ type: "job_state", job: j.id, stage: "acceptance", state: "completed" }); $(".pl-jobmenu").open = false; } },
@@ -1427,15 +1754,27 @@ function render({ model, el }) {
   el.addEventListener("click", (e) => {
     const a = e.target.closest("[data-a]")?.dataset.a; if (a && actions[a]) { actions[a](); return; }
     if (S.grid && e.target.closest(".pl-gridwrap") && gridClick(e)) return;
-    if (!e.target.closest(".pl-side")) return;
+    const tab = e.target.closest("[data-tab]"); if (tab) { openTab(tab.dataset.tab); return; }
+    const bm = e.target.closest("[data-boxmode]"); if (bm) { S.boxMode = bm.dataset.boxmode; S.shape = null; renderOpts(); draw(); return; }
+    const pm = e.target.closest("[data-polymode]"); if (pm) { S.polyMode = pm.dataset.polymode; renderOpts(); return; }
+    if (!e.target.closest(".pl-side, .pl-rail")) return;
     const b = e.target.closest("[data-b]")?.dataset.b; if (b) { actions[b](); return; }
-    const t = e.target.closest("[data-tool],[data-cls],[data-obj],[data-del]"); if (!t) return;
-    if (t.dataset.del) { send({ type: "delete", item: S.item, obj: +t.dataset.del }); if (S.sel === +t.dataset.del) S.sel = null; }
-    else if (t.dataset.tool) { S.tool = t.dataset.tool; renderSide(); }
+    const t = e.target.closest("[data-tool],[data-cls],[data-obj],[data-del],[data-delcls]"); if (!t) return;
+    if (t.dataset.delcls) {
+      const c = +t.dataset.delcls, name = S.project.classes[c];
+      confirmDanger(`Delete class ${name}?`, `Every ${name} label in the project goes with it, on every frame and image, and the `
+        + "classes after it move up one number. This cannot be undone.", "Keep the class", "Delete the class", { type: "delete_class", cls: c });
+    }
+    else if (t.dataset.del) { send({ type: "delete", item: S.item, obj: +t.dataset.del }); if (S.sel === +t.dataset.del) S.sel = null; }
+    else if (t.dataset.tool) setTool(t.dataset.tool);
     else if (t.dataset.cls) setClass(+t.dataset.cls);
     else if (t.dataset.obj) { S.sel = +t.dataset.obj; S.picked = true; renderSide(); draw(); }
   });
   $(".pl-filter").addEventListener("input", (e) => { S.filter = e.target.value; renderSide(); });
+  $(".pl-del-dlg").addEventListener("close", (e) => {
+    if (e.target.returnValue === "delete" && pendingDanger) send(pendingDanger);
+    pendingDanger = null; el.focus();
+  });
   $(".pl-after").addEventListener("toggle", (e) => {
     if (!e.target.open) return;
     $(".pl-n-echo").textContent = trackN();
@@ -1515,7 +1854,7 @@ function render({ model, el }) {
                filter: "all", sel: new Set(), cur: null, anchor: null, shown: 400, visible: [], thumbs: new Map(), want: new Set() };
     S.sel = null; S.tool = /brush|erase/i.test(S.tool) ? "click" : S.tool;
     $(".pl-gtitle").textContent = of === "images" ? "Images" : "Parts";
-    $(".pl-gridwrap").hidden = false; $(".pl-stage").hidden = true; $(".pl-range").hidden = true;
+    $(".pl-gridwrap").hidden = false; $(".pl-krange").hidden = true;
     send({ type: "grid", of });
     renderGrid(); renderSide(); renderTop();
     $(".pl-grid").focus?.();
@@ -1523,7 +1862,7 @@ function render({ model, el }) {
   function closeGrid() {
     if (!S.grid || classify()) return;
     S.grid = null;
-    $(".pl-gridwrap").hidden = true; $(".pl-stage").hidden = false;
+    $(".pl-gridwrap").hidden = true;
     renderSide(); renderTop();
     send({ type: "goto", item: S.target });                        // classes may have changed
   }
@@ -1673,10 +2012,12 @@ function render({ model, el }) {
     else return;
     e.preventDefault(); e.stopPropagation();
   });
-  strip.addEventListener("click", (e) => {
-    const r = strip.getBoundingClientRect(), t = view();
-    goto(t.start + Math.floor((e.clientX - r.left) / r.width * (t.end - t.start)));
-  });
+  let scrubbing = false;                                       // the ribbon: click a frame, or drag along it to scrub
+  strip.addEventListener("pointerdown", (e) => { scrubbing = true; strip.setPointerCapture(e.pointerId); goto(stripItem(e)); stripTip(e); });
+  strip.addEventListener("pointermove", (e) => { stripTip(e); if (scrubbing) goto(stripItem(e)); });
+  strip.addEventListener("pointerup", () => { scrubbing = false; });
+  strip.addEventListener("pointerleave", () => { if (!scrubbing) stripTip(null); });
+  strip.addEventListener("lostpointercapture", () => { scrubbing = false; stripTip(null); });
   $(".pl-jobmenu").addEventListener("change", (e) => {
     const j = curJob(); if (!j) return;
     if (e.target.matches(".pl-jpick")) { openJob(+e.target.value); return; }
@@ -1696,7 +2037,7 @@ function render({ model, el }) {
       el.style.setProperty("--plh", `${h}px`);
       try { colab?.setIframeHeight?.(h + 16, true); } catch {}
       el.scrollIntoView?.({ block: "start" });
-      if (!S.bigHint) { S.bigHint = true; toast({ title: "Filled the window height", detail: "For a true full screen, press F11 in your browser as well. Click ⤡ to go back." }); }
+      if (!S.bigHint) { S.bigHint = true; toast({ title: "Filled the window height", detail: "For a true full screen, press F11 in your browser as well. The full-screen button at the top right goes back." }); }
     } else {
       el.style.removeProperty("--plh");
       try { colab?.resizeIframeToContent?.(); } catch {}
@@ -1705,7 +2046,7 @@ function render({ model, el }) {
   }
   function renderFull() {
     const on = Boolean(document.fullscreenElement) || S.big, b = $(".pl-full");
-    b.textContent = on ? "⤡" : "⤢";
+    b.innerHTML = ic(on ? "unfull" : "full");
     b.setAttribute("aria-label", on ? "Leave full screen" : "Full screen"); b.title = b.getAttribute("aria-label");
   }
   async function toggleFull() {
@@ -1751,7 +2092,55 @@ function render({ model, el }) {
   cv.addEventListener("contextmenu", (e) => e.preventDefault());
   // Brush and eraser (outline projects): paint on a copy of the part's mask; on release the page sends the
   // part's whole new mask as a PNG crop (engine: on_paint)
-  const painting = () => seg() && ["brush", "erase", "smartBrush", "smartErase"].includes(S.tool);
+  // (object detection projects: the brush paints a part's area and the box fits what was painted)
+  const painting = () => ["brush", "erase", "smartBrush", "smartErase"].includes(S.tool) && (seg() || S.tool === "brush");
+  function maskCanvas(b) {                                           // a frame-sized canvas holding b's outline, if any
+    const pc = document.createElement("canvas"); pc.width = cv.width; pc.height = cv.height;
+    const px = pc.getContext("2d"), t = b?.mask ? tinted(b) : null;
+    if (b?.mask && !t) return null;                                  // its mask is still loading
+    let bounds = null;
+    if (t) {
+      const id = px.createImageData(t.w, t.h), [r, g, bl] = rgbOf(b.cls);
+      for (let i = 0; i < t.w * t.h; i++) if (t.inside[i]) { id.data[i * 4] = r; id.data[i * 4 + 1] = g; id.data[i * 4 + 2] = bl; id.data[i * 4 + 3] = 255; }
+      px.putImageData(id, b.mask[0], b.mask[1]);
+      bounds = [b.mask[0], b.mask[1], b.mask[0] + t.w, b.mask[1] + t.h];
+    }
+    return { pc, px, bounds };
+  }
+  const union = (a, b) => (a ? [Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.max(a[2], b[2]), Math.max(a[3], b[3])] : b);
+  const clampBox = ([x1, y1, x2, y2]) => [Math.max(0, x1), Math.max(0, y1), Math.min(cv.width, x2), Math.min(cv.height, y2)];
+  function sendBox(box) {                                            // a box drawn by hand (two clicks, four points, a shape)
+    const [x1, y1, x2, y2] = clampBox(box);
+    if (x2 - x1 < 2 || y2 - y1 < 2) { hint("That box is too small: make it a little bigger"); return; }
+    send({ type: "box", item: S.item, cls: S.cls, box: [x1, y1, x2, y2] });
+  }
+  // A polygon or ellipse placed by hand: object detection gets the box around it; outline projects get its exact pixels
+  // as a part - a new one, or added to or cut from the selected outline (the engine's on_paint, like the brush)
+  function commitShape(trace, bb) {
+    if (!seg()) { sendBox(bb); return; }
+    const mode = S.polyMode, b = mode !== "new" && S.sel != null ? S.data.boxes.find((x) => x.obj === S.sel) : null;
+    if (mode !== "new" && !b) { hint("Select an outline first (Ctrl+click it), or choose New part"); return; }
+    const m = maskCanvas(b); if (!m) return;
+    const cls = b ? b.cls : S.cls;
+    m.px.fillStyle = colorOf(cls); m.px.globalCompositeOperation = mode === "cut" ? "destination-out" : "source-over";
+    m.px.beginPath(); trace(m.px); m.px.fill();
+    S.paint = { cv: m.pc, px: m.px, obj: b ? b.obj : null, cls, bounds: mode === "cut" ? m.bounds : union(m.bounds, clampBox(bb)) };
+    finishPaint();
+  }
+  function closePolygon() {                                          // Enter, a double-click, or a click on the first corner
+    const sh = S.shape; if (!sh || sh.kind !== "polygon") return false;
+    const pts = sh.pts.filter((p, k, a) => !k || Math.hypot(p[0] - a[k - 1][0], p[1] - a[k - 1][1]) > 1);
+    if (pts.length < 3) { hint("A polygon needs at least 3 corners"); return true; }
+    S.shape = null; S.hover = null;
+    const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
+    commitShape((c) => { pts.forEach(([x, y], k) => (k ? c.lineTo(x, y) : c.moveTo(x, y))); c.closePath(); },
+                [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)]);
+    draw(); return true;
+  }
+  const ellipseBox = (d) => {                                        // the drag's rectangle; Shift makes it a circle
+    let w = Math.abs(d.x1 - d.x0), h = Math.abs(d.y1 - d.y0); if (d.shift) w = h = Math.max(w, h);
+    return [d.x1 < d.x0 ? d.x0 - w : d.x0, d.y1 < d.y0 ? d.y0 - h : d.y0, w, h];
+  };
   // The smart brush and smart eraser send the stroke instead: the engine asks the outline model which pixels
   // under it are the part (on_smart_paint), so the edit stops at the part's edge.
   function startSmart(x, y) {
@@ -1767,21 +2156,12 @@ function render({ model, el }) {
   function startPaint(x, y) {
     if (S.tool.startsWith("smart")) { startSmart(x, y); return; }
     if (S.tool === "erase" && S.sel == null) { hint("Select an outline first (Ctrl+click it), then erase"); return; }
-    const b = S.sel != null ? S.data.boxes.find((bb) => bb.obj === S.sel) : null;
-    const t = b?.mask ? tinted(b) : null;
-    if (b?.mask && !t) return;                                       // its mask is still loading
-    const pc = document.createElement("canvas"); pc.width = cv.width; pc.height = cv.height;
-    const px = pc.getContext("2d"), cls = b ? b.cls : S.cls;
-    let bounds = [x, y, x, y];
-    if (t) {
-      const id = px.createImageData(t.w, t.h), [r, g, bl] = rgbOf(cls);
-      for (let i = 0; i < t.w * t.h; i++) if (t.inside[i]) { id.data[i * 4] = r; id.data[i * 4 + 1] = g; id.data[i * 4 + 2] = bl; id.data[i * 4 + 3] = 255; }
-      px.putImageData(id, b.mask[0], b.mask[1]);
-      bounds = [Math.min(x, b.mask[0]), Math.min(y, b.mask[1]), Math.max(x, b.mask[0] + t.w), Math.max(y, b.mask[1] + t.h)];
-    }
+    const b = seg() && S.sel != null ? S.data.boxes.find((bb) => bb.obj === S.sel) : null;
+    const m = maskCanvas(b); if (!m) return;
+    const { pc, px } = m, cls = b ? b.cls : S.cls;
     px.lineCap = px.lineJoin = "round"; px.lineWidth = S.brush * 2; px.strokeStyle = colorOf(cls);
     px.globalCompositeOperation = S.tool === "erase" ? "destination-out" : "source-over";
-    S.paint = { cv: pc, px, obj: b ? b.obj : null, cls, last: [x, y], bounds };
+    S.paint = { cv: pc, px, obj: b ? b.obj : null, cls, last: [x, y], bounds: union(m.bounds, [x, y, x, y]), detect: !seg() };
     strokeTo(x, y);
   }
   function strokeTo(x, y) {
@@ -1807,6 +2187,10 @@ function render({ model, el }) {
         if (d[i] > 127) { const xx = j % w, yy = (j / w) | 0; if (xx < bx0) bx0 = xx; if (xx > bx1) bx1 = xx; if (yy < by0) by0 = yy; if (yy > by1) by1 = yy; }
       }
     }
+    if (P.detect) {                                                  // object detection: the box around the painted area
+      if (bx1 >= 0) sendBox([x0 + bx0, y0 + by0, x0 + bx1 + 1, y0 + by1 + 1]);
+      draw(); return;
+    }
     if (bx1 < 0 && P.obj == null) { draw(); return; }                 // erased nothing into nothing
     const out = document.createElement("canvas");
     let ox = 0, oy = 0;
@@ -1822,7 +2206,9 @@ function render({ model, el }) {
     cv.style.transform = S.zoom > 1 ? `translate(${S.pan[0]}px, ${S.pan[1]}px) scale(${S.zoom})` : "";
     cv.style.imageRendering = S.zoom * cv.clientWidth / Math.max(1, cv.width) >= 3 ? "pixelated" : "";   // see the pixels you edit
     $(".pl-zoom-v").textContent = `${Math.round(S.zoom * 100)}%`;
-    $('[data-a="zoomOut"]').disabled = $('[data-a="zoomFit"]').disabled = S.zoom <= 1;
+    $('[data-a="zoomOut"]').disabled = S.zoom <= 1;
+    el.querySelectorAll('[data-a="zoomFit"]').forEach((b) => (b.disabled = S.zoom <= 1));
+    if (S.tool === "pan") renderOpts();
     $('[data-a="zoomIn"]').disabled = S.zoom >= 8;
     $(".pl-stage").classList.toggle("can-pan", S.zoom > 1 && S.space);
     draw();
@@ -1855,24 +2241,37 @@ function render({ model, el }) {
   el.addEventListener("keyup", (e) => { if (e.key === " ") { S.space = false; $(".pl-stage").classList.remove("can-pan"); } });
   let hoverRaf = 0;
   cv.addEventListener("mouseleave", () => { if (S.hover) { S.hover = null; draw(); } });
+  cv.addEventListener("dblclick", () => closePolygon());
   cv.addEventListener("mousedown", (e) => {
     if (!S.img) return;
     stopPlay();
-    if (e.button === 1 || (S.space && e.button === 0)) {             // pan: middle button, or Space + drag
+    if (e.button === 1 || ((S.space || S.tool === "pan") && e.button === 0)) {   // pan: middle button, Space + drag, Move tool
       e.preventDefault();
       if (S.zoom > 1) { S.panning = { x: e.clientX, y: e.clientY, pan: [...S.pan] }; $(".pl-stage").classList.add("panning"); }
+      else if (S.tool === "pan") hint("Zoom in first (Ctrl+wheel or +), then drag to move around");
       return;
     }
     const [x, y] = toImage(e); el.focus();
-    if (painting() && !(e.ctrlKey || e.metaKey) && e.button === 0) { startPaint(x, y); return; }
+    const plain = e.button === 0 && !(e.ctrlKey || e.metaKey);
+    if (painting() && plain) { startPaint(x, y); return; }
+    if (plain && (S.tool === "polygon" || (S.tool === "box" && S.boxMode !== "drag"))) {   // corner by corner, one click each
+      const kind = S.tool === "polygon" ? "polygon" : S.boxMode, sh = S.shape?.kind === kind ? S.shape : (S.shape = { kind, pts: [] });
+      if (kind === "polygon" && sh.pts.length >= 3 && nearFirst([x, y])) { closePolygon(); return; }
+      sh.pts.push([x, y]);
+      if (kind !== "polygon" && sh.pts.length === (kind === "two" ? 2 : 4)) {
+        const xs = sh.pts.map((p) => p[0]), ys = sh.pts.map((p) => p[1]); S.shape = null;
+        sendBox([Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)]);
+      }
+      draw(); return;
+    }
     const grip = e.button === 0 && !(e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) ? boxGrip(x, y) : null;
     S.drag = { x0: x, y0: y, x1: x, y1: y, moved: false, e, grip, box: grip ? [...selBox().box] : null };
   });
   cv.addEventListener("mousemove", (e) => {
     if (S.paint) { const [x, y] = toImage(e); strokeTo(x, y); return; }
-    if (painting() && !S.drag) { S.hover = toImage(e); if (!hoverRaf) hoverRaf = requestAnimationFrame(() => { hoverRaf = 0; draw(); }); return; }
+    if ((painting() || S.shape) && !S.drag) { S.hover = toImage(e); if (!hoverRaf) hoverRaf = requestAnimationFrame(() => { hoverRaf = 0; draw(); }); return; }
     if (!S.drag) { const g = !S.space && !S.panning && boxGrip(...toImage(e)); cv.style.cursor = g ? GRIP_CURSORS[g] : ""; return; }
-    const [x, y] = toImage(e); S.drag.x1 = x; S.drag.y1 = y;
+    const [x, y] = toImage(e); S.drag.x1 = x; S.drag.y1 = y; S.drag.shift = e.shiftKey;
     const r = cv.getBoundingClientRect(), px = cv.width / r.width;
     S.drag.moved ||= Math.hypot(x - S.drag.x0, y - S.drag.y0) > 5 * px; if (S.drag.moved) draw();
   });
@@ -1885,14 +2284,18 @@ function render({ model, el }) {
       if (b) send({ type: "box", item: S.item, cls: b.cls, box: gripBox(d.grip, d.box, d.x1 - d.x0, d.y1 - d.y0), obj: b.obj });
       draw(); return;
     }
-    if (e.ctrlKey || e.metaKey) { S.sel = boxAt(d.x0, d.y0); S.picked = S.sel != null; renderSide(); draw(); return; }
-    if (S.tool === "box") {
-      if (d.moved) {                          // always a new box: the selected one is adjusted with its handles
-        const box = [Math.min(d.x0, d.x1), Math.min(d.y0, d.y1), Math.max(d.x0, d.x1), Math.max(d.y0, d.y1)];
-        send({ type: "box", item: S.item, cls: S.cls, box });
-      } else { S.sel = boxAt(d.x0, d.y0); S.picked = S.sel != null; renderSide(); draw(); }
-      return;
+    if (e.ctrlKey || e.metaKey || S.tool === "select") { S.sel = boxAt(d.x0, d.y0); S.picked = S.sel != null; renderSide(); draw(); return; }
+    if (S.tool === "box" || S.tool === "ellipse") {
+      if (!d.moved) { S.sel = boxAt(d.x0, d.y0); S.picked = S.sel != null; renderSide(); draw(); return; }
+      if (S.tool === "box") {                 // always a new box: the selected one is adjusted with its handles
+        sendBox([Math.min(d.x0, d.x1), Math.min(d.y0, d.y1), Math.max(d.x0, d.x1), Math.max(d.y0, d.y1)]);
+      } else {
+        const [ex, ey, w, h] = ellipseBox(d);
+        commitShape((c) => c.ellipse(ex + w / 2, ey + h / 2, Math.max(0.5, w / 2), Math.max(0.5, h / 2), 0, 0, Math.PI * 2), [ex, ey, ex + w, ey + h]);
+      }
+      draw(); return;
     }
+    if (S.tool !== "click") { draw(); return; }
     if (d.moved) { draw(); return; }
     const refine = S.sel != null && (e.shiftKey || e.altKey || e.button === 2);
     if ((e.altKey || e.button === 2) && S.sel == null) { hint("Select a box first (Ctrl+click), then Alt+click to shrink it"); return; }
@@ -1910,22 +2313,26 @@ function render({ model, el }) {
     else if (/^[0-9]$/.test(k)) { setClass(k === "0" ? 9 : +k - 1); }
     else if (k === "ArrowRight" || k === "d") { e.shiftKey ? nextTodo() : goto(S.target + 1); }
     else if (k === "ArrowLeft" || k === "a") goto(S.target - 1);
-    else if (k === "Enter") actions.review();
+    else if (k === "Enter") { if (!closePolygon()) actions.review(); }
+    else if (k === "Delete" && e.shiftKey) actions.deleteFrame();
+    else if (S.shape && k === "Backspace") { S.shape.pts.pop(); if (!S.shape.pts.length) S.shape = null; draw(); }
     else if (k === "Delete" || k === "Backspace") { if (S.sel != null) { send({ type: "delete", item: S.item, obj: S.sel }); S.sel = null; } }
-    else if (k === "Escape") { S.sel = null; S.drag = null; renderSide(); draw(); }
+    else if (k === "Escape") { if (S.shape) S.shape = null; else S.sel = null; S.drag = null; renderSide(); draw(); }
     else if (k === "t") actions.track(); else if (k === "T") actions.trackAll();
     else if (k === "r") actions.trackBack(); else if (k === "R") actions.trackBackAll();
     else if (k === "u") actions.retrack(); else if (k === "U") actions.retrackAll();
     else if (k === "s") actions.suggest(); else if (k === "f") actions.findAll();
     else if (k === "y") actions.accept(); else if (k === "x") actions.stop();
-    else if (k === "c" || k === "b") { S.tool = k === "c" ? "click" : "box"; renderSide(); draw(); }
-    else if ("peEP".includes(k) && k.length === 1 && seg()) { S.tool = { p: "brush", e: "erase", P: "smartBrush", E: "smartErase" }[k]; renderSide(); draw(); }
+    else if (k.length === 1 && "cbvolpePE".includes(k)) {             // tools; B again cycles drag / two clicks / four points
+      const t = { c: "click", b: "box", v: "select", o: "polygon", l: "ellipse", p: "brush", e: "erase", P: "smartBrush", E: "smartErase" }[k];
+      setTool(t, t === "box" && S.tool === "box");
+    }
     else if (k === "+" || k === "=") zoomAt(1.5);
     else if (k === "-" || k === "_") zoomAt(1 / 1.5);
     else if (k === "z") zoomAt(0);
     else if (k === " ") { if (S.zoom > 1) { S.space = true; $(".pl-stage").classList.add("can-pan"); } else if (!e.repeat) togglePlay(); }
     else if (k === "k") togglePlay();
-    else if ((k === "," || k === ".") && seg()) { S.brush = Math.max(1, Math.min(120, Math.round(S.brush * (k === "." ? 1.25 : 0.8)))); $(".pl-bsize").value = S.brush; renderSide(); draw(); }
+    else if (k === "," || k === ".") { S.brush = Math.max(1, Math.min(120, Math.round(S.brush * (k === "." ? 1.25 : 0.8)))); $(".pl-bsize").value = S.brush; renderSide(); draw(); }
     else if (k === "g" && !classify()) actions.sortParts();
     else if (k === "w" && !classify() && !S.grid) { flash($(".pl-textsec")); $(".pl-text").focus(); }
     else if (k === "m") { if (S.sel != null) send({ type: "cycle", item: S.item, obj: S.sel }); }
@@ -1944,14 +2351,19 @@ function render({ model, el }) {
       if (!curJob()) { const j = pickStartJob(); S.jobId = j?.id ?? null; if (j && !S.grid && (S.target < j.start || S.target >= j.end)) goto(model.startItem >= j.start && model.startItem < j.end ? model.startItem : j.start, false); }
       legend(); renderProject(); renderSide(); renderTop(); renderJob(); if (S.grid) renderGrid(); else draw();
     }
-    else if (m.type === "reload") { if (web) location.reload(); else model.send({ type: "ready", item: S.target }); }
+    else if (m.type === "reload") {                    // m.removed: frames deleted for good; the ones after them moved up
+      const at = m.removed ? Math.max(0, Math.min(S.project.count - m.removed.length - 1, S.target - m.removed.filter((r) => r < S.target).length)) : S.target;
+      if (!web) { S.target = at; model.send({ type: "ready", item: at }); }
+      else if (!m.removed) location.reload();
+      else location.replace(`${model.homeUrl}p/${encodeURIComponent(S.project.name)}?item=${at}`);
+    }
     else if (m.type === "grid" && S.grid?.of === m.of) {
       S.grid.cards = new Map(m.cards.map((c) => [c.key, c])); S.grid.order = m.cards.map((c) => c.key); S.grid.loaded = true; renderGrid();
     }
     else if (m.type === "cards" && S.grid?.of === m.of) { for (const c of m.cards) S.grid.cards.set(c.key, c); renderGrid(); if ($(".pl-peek").open) peek(S.grid.peek); }
     else if (m.type === "groups" && S.grid?.of === m.of) {
       Object.assign(S.grid, { groups: m.groups, unsure: new Set(m.unsure), dups: m.dups, dupOf: new Set(m.dups.flat()) });
-      const r = $(".pl-range"), k = $(".pl-k"); r.hidden = m.max_k < 2; k.max = m.max_k; k.value = m.k;
+      const r = $(".pl-krange"), k = $(".pl-k"); r.hidden = m.max_k < 2; k.max = m.max_k; k.value = m.k;
       $(".pl-kv").textContent = `${m.k}${m.k === m.best_k ? " (best fit)" : ""}`;
       renderGrid();
     }
@@ -1975,7 +2387,7 @@ function render({ model, el }) {
       const img = new Image();
       img.onload = () => {
         if (m.item !== S.target) return;
-        if (m.item !== S.item) S.mask = null;
+        if (m.item !== S.item) { S.mask = null; S.shape = null; }    // a half-placed polygon or box stays on its own frame
         S.item = m.item; S.data = m; S.img = img;
         if (cv.width !== m.w || cv.height !== m.h) { cv.width = m.w; cv.height = m.h; S.zoom = 1; S.pan = [0, 0]; applyZoom(); }
         if (S.sel != null && !m.boxes.some((b) => b.obj === S.sel)) S.sel = null;
@@ -1995,7 +2407,7 @@ function render({ model, el }) {
     }
     else if (m.type === "progress") {
       const f = m.finished ? 0 : m.done / Math.max(1, m.total);
-      $(".pl-bar i").style.width = `${f * 100}%`;
+      $(".pl-bar i").style.width = `${f * 100}%`; $(".pl-bar").classList.toggle("on", !m.finished);
       $(".pl-prog").textContent = m.finished ? "" : `${m.task} ${m.done} of ${m.total}${m.rate ? `, ${m.rate} frames/s` : ""}`;
       S.busy = !m.finished; renderTop();
     }

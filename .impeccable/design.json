@@ -1,0 +1,678 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-16T21:47:18+00:00",
+  "title": "Design System: PartLabeler",
+  "extensions": {
+    "colorMeta": {
+      "accent": {
+        "role": "primary",
+        "displayName": "Accent",
+        "canonical": "#0a7c78",
+        "tonalRamp": [
+          "oklch(from #0a7c78 0.15 c h)",
+          "oklch(from #0a7c78 0.26 c h)",
+          "oklch(from #0a7c78 0.37 c h)",
+          "oklch(from #0a7c78 0.48 c h)",
+          "oklch(from #0a7c78 0.6 c h)",
+          "oklch(from #0a7c78 0.72 c h)",
+          "oklch(from #0a7c78 0.84 c h)",
+          "oklch(from #0a7c78 0.95 c h)"
+        ]
+      },
+      "accent-ink": {
+        "role": "primary",
+        "displayName": "Accent Ink",
+        "canonical": "#075e5b",
+        "tonalRamp": [
+          "oklch(from #075e5b 0.15 c h)",
+          "oklch(from #075e5b 0.26 c h)",
+          "oklch(from #075e5b 0.37 c h)",
+          "oklch(from #075e5b 0.48 c h)",
+          "oklch(from #075e5b 0.6 c h)",
+          "oklch(from #075e5b 0.72 c h)",
+          "oklch(from #075e5b 0.84 c h)",
+          "oklch(from #075e5b 0.95 c h)"
+        ]
+      },
+      "accent-soft": {
+        "role": "primary",
+        "displayName": "Accent Soft",
+        "canonical": "#e1f0ef",
+        "tonalRamp": [
+          "oklch(from #e1f0ef 0.15 c h)",
+          "oklch(from #e1f0ef 0.26 c h)",
+          "oklch(from #e1f0ef 0.37 c h)",
+          "oklch(from #e1f0ef 0.48 c h)",
+          "oklch(from #e1f0ef 0.6 c h)",
+          "oklch(from #e1f0ef 0.72 c h)",
+          "oklch(from #e1f0ef 0.84 c h)",
+          "oklch(from #e1f0ef 0.95 c h)"
+        ]
+      },
+      "ground": {
+        "role": "neutral",
+        "displayName": "Ground",
+        "canonical": "#eef1f4",
+        "tonalRamp": [
+          "oklch(from #eef1f4 0.15 c h)",
+          "oklch(from #eef1f4 0.26 c h)",
+          "oklch(from #eef1f4 0.37 c h)",
+          "oklch(from #eef1f4 0.48 c h)",
+          "oklch(from #eef1f4 0.6 c h)",
+          "oklch(from #eef1f4 0.72 c h)",
+          "oklch(from #eef1f4 0.84 c h)",
+          "oklch(from #eef1f4 0.95 c h)"
+        ]
+      },
+      "panel": {
+        "role": "neutral",
+        "displayName": "Panel",
+        "canonical": "#ffffff",
+        "tonalRamp": [
+          "oklch(from #ffffff 0.15 c h)",
+          "oklch(from #ffffff 0.26 c h)",
+          "oklch(from #ffffff 0.37 c h)",
+          "oklch(from #ffffff 0.48 c h)",
+          "oklch(from #ffffff 0.6 c h)",
+          "oklch(from #ffffff 0.72 c h)",
+          "oklch(from #ffffff 0.84 c h)",
+          "oklch(from #ffffff 0.95 c h)"
+        ]
+      },
+      "panel-2": {
+        "role": "neutral",
+        "displayName": "Panel 2",
+        "canonical": "#f7f9fa",
+        "tonalRamp": [
+          "oklch(from #f7f9fa 0.15 c h)",
+          "oklch(from #f7f9fa 0.26 c h)",
+          "oklch(from #f7f9fa 0.37 c h)",
+          "oklch(from #f7f9fa 0.48 c h)",
+          "oklch(from #f7f9fa 0.6 c h)",
+          "oklch(from #f7f9fa 0.72 c h)",
+          "oklch(from #f7f9fa 0.84 c h)",
+          "oklch(from #f7f9fa 0.95 c h)"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Ink",
+        "canonical": "#15202b",
+        "tonalRamp": [
+          "oklch(from #15202b 0.15 c h)",
+          "oklch(from #15202b 0.26 c h)",
+          "oklch(from #15202b 0.37 c h)",
+          "oklch(from #15202b 0.48 c h)",
+          "oklch(from #15202b 0.6 c h)",
+          "oklch(from #15202b 0.72 c h)",
+          "oklch(from #15202b 0.84 c h)",
+          "oklch(from #15202b 0.95 c h)"
+        ]
+      },
+      "muted": {
+        "role": "neutral",
+        "displayName": "Muted",
+        "canonical": "#56636f",
+        "tonalRamp": [
+          "oklch(from #56636f 0.15 c h)",
+          "oklch(from #56636f 0.26 c h)",
+          "oklch(from #56636f 0.37 c h)",
+          "oklch(from #56636f 0.48 c h)",
+          "oklch(from #56636f 0.6 c h)",
+          "oklch(from #56636f 0.72 c h)",
+          "oklch(from #56636f 0.84 c h)",
+          "oklch(from #56636f 0.95 c h)"
+        ]
+      },
+      "line": {
+        "role": "neutral",
+        "displayName": "Line",
+        "canonical": "#d5dbe1",
+        "tonalRamp": [
+          "oklch(from #d5dbe1 0.15 c h)",
+          "oklch(from #d5dbe1 0.26 c h)",
+          "oklch(from #d5dbe1 0.37 c h)",
+          "oklch(from #d5dbe1 0.48 c h)",
+          "oklch(from #d5dbe1 0.6 c h)",
+          "oklch(from #d5dbe1 0.72 c h)",
+          "oklch(from #d5dbe1 0.84 c h)",
+          "oklch(from #d5dbe1 0.95 c h)"
+        ]
+      },
+      "line-2": {
+        "role": "neutral",
+        "displayName": "Line 2",
+        "canonical": "#e6eaee",
+        "tonalRamp": [
+          "oklch(from #e6eaee 0.15 c h)",
+          "oklch(from #e6eaee 0.26 c h)",
+          "oklch(from #e6eaee 0.37 c h)",
+          "oklch(from #e6eaee 0.48 c h)",
+          "oklch(from #e6eaee 0.6 c h)",
+          "oklch(from #e6eaee 0.72 c h)",
+          "oklch(from #e6eaee 0.84 c h)",
+          "oklch(from #e6eaee 0.95 c h)"
+        ]
+      },
+      "hover": {
+        "role": "neutral",
+        "displayName": "Hover",
+        "canonical": "#f3f7f8",
+        "tonalRamp": [
+          "oklch(from #f3f7f8 0.15 c h)",
+          "oklch(from #f3f7f8 0.26 c h)",
+          "oklch(from #f3f7f8 0.37 c h)",
+          "oklch(from #f3f7f8 0.48 c h)",
+          "oklch(from #f3f7f8 0.6 c h)",
+          "oklch(from #f3f7f8 0.72 c h)",
+          "oklch(from #f3f7f8 0.84 c h)",
+          "oklch(from #f3f7f8 0.95 c h)"
+        ]
+      },
+      "stage": {
+        "role": "neutral",
+        "displayName": "Stage",
+        "canonical": "#0d1217",
+        "tonalRamp": [
+          "oklch(from #0d1217 0.15 c h)",
+          "oklch(from #0d1217 0.26 c h)",
+          "oklch(from #0d1217 0.37 c h)",
+          "oklch(from #0d1217 0.48 c h)",
+          "oklch(from #0d1217 0.6 c h)",
+          "oklch(from #0d1217 0.72 c h)",
+          "oklch(from #0d1217 0.84 c h)",
+          "oklch(from #0d1217 0.95 c h)"
+        ]
+      },
+      "status-empty": {
+        "role": "status",
+        "displayName": "Status Empty",
+        "canonical": "#dfe4e9",
+        "tonalRamp": [
+          "oklch(from #dfe4e9 0.15 c h)",
+          "oklch(from #dfe4e9 0.26 c h)",
+          "oklch(from #dfe4e9 0.37 c h)",
+          "oklch(from #dfe4e9 0.48 c h)",
+          "oklch(from #dfe4e9 0.6 c h)",
+          "oklch(from #dfe4e9 0.72 c h)",
+          "oklch(from #dfe4e9 0.84 c h)",
+          "oklch(from #dfe4e9 0.95 c h)"
+        ]
+      },
+      "status-suggested": {
+        "role": "status",
+        "displayName": "Status Suggested",
+        "canonical": "#b8a8e6",
+        "tonalRamp": [
+          "oklch(from #b8a8e6 0.15 c h)",
+          "oklch(from #b8a8e6 0.26 c h)",
+          "oklch(from #b8a8e6 0.37 c h)",
+          "oklch(from #b8a8e6 0.48 c h)",
+          "oklch(from #b8a8e6 0.6 c h)",
+          "oklch(from #b8a8e6 0.72 c h)",
+          "oklch(from #b8a8e6 0.84 c h)",
+          "oklch(from #b8a8e6 0.95 c h)"
+        ]
+      },
+      "status-tracked": {
+        "role": "status",
+        "displayName": "Status Tracked",
+        "canonical": "#6aa6f2",
+        "tonalRamp": [
+          "oklch(from #6aa6f2 0.15 c h)",
+          "oklch(from #6aa6f2 0.26 c h)",
+          "oklch(from #6aa6f2 0.37 c h)",
+          "oklch(from #6aa6f2 0.48 c h)",
+          "oklch(from #6aa6f2 0.6 c h)",
+          "oklch(from #6aa6f2 0.72 c h)",
+          "oklch(from #6aa6f2 0.84 c h)",
+          "oklch(from #6aa6f2 0.95 c h)"
+        ]
+      },
+      "status-yours": {
+        "role": "status",
+        "displayName": "Status Yours",
+        "canonical": "#27a79b",
+        "tonalRamp": [
+          "oklch(from #27a79b 0.15 c h)",
+          "oklch(from #27a79b 0.26 c h)",
+          "oklch(from #27a79b 0.37 c h)",
+          "oklch(from #27a79b 0.48 c h)",
+          "oklch(from #27a79b 0.6 c h)",
+          "oklch(from #27a79b 0.72 c h)",
+          "oklch(from #27a79b 0.84 c h)",
+          "oklch(from #27a79b 0.95 c h)"
+        ]
+      },
+      "status-confirmed": {
+        "role": "status",
+        "displayName": "Status Confirmed",
+        "canonical": "#2f9e5b",
+        "tonalRamp": [
+          "oklch(from #2f9e5b 0.15 c h)",
+          "oklch(from #2f9e5b 0.26 c h)",
+          "oklch(from #2f9e5b 0.37 c h)",
+          "oklch(from #2f9e5b 0.48 c h)",
+          "oklch(from #2f9e5b 0.6 c h)",
+          "oklch(from #2f9e5b 0.72 c h)",
+          "oklch(from #2f9e5b 0.84 c h)",
+          "oklch(from #2f9e5b 0.95 c h)"
+        ]
+      },
+      "flag": {
+        "role": "status",
+        "displayName": "Flag",
+        "canonical": "#e09a2c",
+        "tonalRamp": [
+          "oklch(from #e09a2c 0.15 c h)",
+          "oklch(from #e09a2c 0.26 c h)",
+          "oklch(from #e09a2c 0.37 c h)",
+          "oklch(from #e09a2c 0.48 c h)",
+          "oklch(from #e09a2c 0.6 c h)",
+          "oklch(from #e09a2c 0.72 c h)",
+          "oklch(from #e09a2c 0.84 c h)",
+          "oklch(from #e09a2c 0.95 c h)"
+        ]
+      },
+      "bad": {
+        "role": "status",
+        "displayName": "Bad",
+        "canonical": "#c2412f",
+        "tonalRamp": [
+          "oklch(from #c2412f 0.15 c h)",
+          "oklch(from #c2412f 0.26 c h)",
+          "oklch(from #c2412f 0.37 c h)",
+          "oklch(from #c2412f 0.48 c h)",
+          "oklch(from #c2412f 0.6 c h)",
+          "oklch(from #c2412f 0.72 c h)",
+          "oklch(from #c2412f 0.84 c h)",
+          "oklch(from #c2412f 0.95 c h)"
+        ]
+      },
+      "bad-ink": {
+        "role": "status",
+        "displayName": "Bad Ink",
+        "canonical": "#9b2f1f",
+        "tonalRamp": [
+          "oklch(from #9b2f1f 0.15 c h)",
+          "oklch(from #9b2f1f 0.26 c h)",
+          "oklch(from #9b2f1f 0.37 c h)",
+          "oklch(from #9b2f1f 0.48 c h)",
+          "oklch(from #9b2f1f 0.6 c h)",
+          "oklch(from #9b2f1f 0.72 c h)",
+          "oklch(from #9b2f1f 0.84 c h)",
+          "oklch(from #9b2f1f 0.95 c h)"
+        ]
+      },
+      "bad-soft": {
+        "role": "status",
+        "displayName": "Bad Soft",
+        "canonical": "#fde8e5",
+        "tonalRamp": [
+          "oklch(from #fde8e5 0.15 c h)",
+          "oklch(from #fde8e5 0.26 c h)",
+          "oklch(from #fde8e5 0.37 c h)",
+          "oklch(from #fde8e5 0.48 c h)",
+          "oklch(from #fde8e5 0.6 c h)",
+          "oklch(from #fde8e5 0.72 c h)",
+          "oklch(from #fde8e5 0.84 c h)",
+          "oklch(from #fde8e5 0.95 c h)"
+        ]
+      },
+      "bad-line": {
+        "role": "status",
+        "displayName": "Bad Line",
+        "canonical": "#efb9ae",
+        "tonalRamp": [
+          "oklch(from #efb9ae 0.15 c h)",
+          "oklch(from #efb9ae 0.26 c h)",
+          "oklch(from #efb9ae 0.37 c h)",
+          "oklch(from #efb9ae 0.48 c h)",
+          "oklch(from #efb9ae 0.6 c h)",
+          "oklch(from #efb9ae 0.72 c h)",
+          "oklch(from #efb9ae 0.84 c h)",
+          "oklch(from #efb9ae 0.95 c h)"
+        ]
+      },
+      "ok-soft": {
+        "role": "status",
+        "displayName": "Ok Soft",
+        "canonical": "#dcf1e4",
+        "tonalRamp": [
+          "oklch(from #dcf1e4 0.15 c h)",
+          "oklch(from #dcf1e4 0.26 c h)",
+          "oklch(from #dcf1e4 0.37 c h)",
+          "oklch(from #dcf1e4 0.48 c h)",
+          "oklch(from #dcf1e4 0.6 c h)",
+          "oklch(from #dcf1e4 0.72 c h)",
+          "oklch(from #dcf1e4 0.84 c h)",
+          "oklch(from #dcf1e4 0.95 c h)"
+        ]
+      },
+      "ok-ink": {
+        "role": "status",
+        "displayName": "Ok Ink",
+        "canonical": "#1f7a44",
+        "tonalRamp": [
+          "oklch(from #1f7a44 0.15 c h)",
+          "oklch(from #1f7a44 0.26 c h)",
+          "oklch(from #1f7a44 0.37 c h)",
+          "oklch(from #1f7a44 0.48 c h)",
+          "oklch(from #1f7a44 0.6 c h)",
+          "oklch(from #1f7a44 0.72 c h)",
+          "oklch(from #1f7a44 0.84 c h)",
+          "oklch(from #1f7a44 0.95 c h)"
+        ]
+      },
+      "warn-soft": {
+        "role": "status",
+        "displayName": "Warn Soft",
+        "canonical": "#fbecd3",
+        "tonalRamp": [
+          "oklch(from #fbecd3 0.15 c h)",
+          "oklch(from #fbecd3 0.26 c h)",
+          "oklch(from #fbecd3 0.37 c h)",
+          "oklch(from #fbecd3 0.48 c h)",
+          "oklch(from #fbecd3 0.6 c h)",
+          "oklch(from #fbecd3 0.72 c h)",
+          "oklch(from #fbecd3 0.84 c h)",
+          "oklch(from #fbecd3 0.95 c h)"
+        ]
+      },
+      "warn-ink": {
+        "role": "status",
+        "displayName": "Warn Ink",
+        "canonical": "#8a5304",
+        "tonalRamp": [
+          "oklch(from #8a5304 0.15 c h)",
+          "oklch(from #8a5304 0.26 c h)",
+          "oklch(from #8a5304 0.37 c h)",
+          "oklch(from #8a5304 0.48 c h)",
+          "oklch(from #8a5304 0.6 c h)",
+          "oklch(from #8a5304 0.72 c h)",
+          "oklch(from #8a5304 0.84 c h)",
+          "oklch(from #8a5304 0.95 c h)"
+        ]
+      },
+      "dark-ground": {
+        "role": "neutral",
+        "displayName": "Dark Ground",
+        "canonical": "#11171b",
+        "tonalRamp": [
+          "oklch(from #11171b 0.15 c h)",
+          "oklch(from #11171b 0.26 c h)",
+          "oklch(from #11171b 0.37 c h)",
+          "oklch(from #11171b 0.48 c h)",
+          "oklch(from #11171b 0.6 c h)",
+          "oklch(from #11171b 0.72 c h)",
+          "oklch(from #11171b 0.84 c h)",
+          "oklch(from #11171b 0.95 c h)"
+        ]
+      },
+      "dark-panel": {
+        "role": "neutral",
+        "displayName": "Dark Panel",
+        "canonical": "#182025",
+        "tonalRamp": [
+          "oklch(from #182025 0.15 c h)",
+          "oklch(from #182025 0.26 c h)",
+          "oklch(from #182025 0.37 c h)",
+          "oklch(from #182025 0.48 c h)",
+          "oklch(from #182025 0.6 c h)",
+          "oklch(from #182025 0.72 c h)",
+          "oklch(from #182025 0.84 c h)",
+          "oklch(from #182025 0.95 c h)"
+        ]
+      },
+      "dark-ink": {
+        "role": "neutral",
+        "displayName": "Dark Ink",
+        "canonical": "#e2e8eb",
+        "tonalRamp": [
+          "oklch(from #e2e8eb 0.15 c h)",
+          "oklch(from #e2e8eb 0.26 c h)",
+          "oklch(from #e2e8eb 0.37 c h)",
+          "oklch(from #e2e8eb 0.48 c h)",
+          "oklch(from #e2e8eb 0.6 c h)",
+          "oklch(from #e2e8eb 0.72 c h)",
+          "oklch(from #e2e8eb 0.84 c h)",
+          "oklch(from #e2e8eb 0.95 c h)"
+        ]
+      },
+      "dark-line": {
+        "role": "neutral",
+        "displayName": "Dark Line",
+        "canonical": "#2d3940",
+        "tonalRamp": [
+          "oklch(from #2d3940 0.15 c h)",
+          "oklch(from #2d3940 0.26 c h)",
+          "oklch(from #2d3940 0.37 c h)",
+          "oklch(from #2d3940 0.48 c h)",
+          "oklch(from #2d3940 0.6 c h)",
+          "oklch(from #2d3940 0.72 c h)",
+          "oklch(from #2d3940 0.84 c h)",
+          "oklch(from #2d3940 0.95 c h)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "title": {
+        "displayName": "Title",
+        "purpose": "Project name in the header, grid title."
+      },
+      "dialog-title": {
+        "displayName": "Dialog title",
+        "purpose": "Help (16px) and delete (17px) dialogs."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Base text."
+      },
+      "control": {
+        "displayName": "Control",
+        "purpose": "Buttons, inputs, rail tools, list rows."
+      },
+      "section-label": {
+        "displayName": "Section label",
+        "purpose": "Inspector headings and tabs."
+      },
+      "small": {
+        "displayName": "Small",
+        "purpose": "Rail group headings, chips, footer, notes, tooltip (11.5-12.5px)."
+      },
+      "key": {
+        "displayName": "Key",
+        "purpose": "Keyboard key caps only."
+      }
+    },
+    "shadows": [
+      {
+        "name": "pressed-segment",
+        "value": "0 1px 2px rgba(21,32,43,.14)",
+        "purpose": "Selected option in a segmented control."
+      },
+      {
+        "name": "popover",
+        "value": "0 14px 34px rgba(21,32,43,.18)",
+        "purpose": "Job menu, After this frame menu."
+      },
+      {
+        "name": "tooltip",
+        "value": "0 6px 16px rgba(0,0,0,.2)",
+        "purpose": "Ribbon tooltip."
+      },
+      {
+        "name": "toast",
+        "value": "0 6px 18px rgba(0,0,0,.22)",
+        "purpose": "Toasts."
+      },
+      {
+        "name": "hint",
+        "value": "0 10px 30px rgba(0,0,0,.3)",
+        "purpose": "First-run hint over the stage."
+      },
+      {
+        "name": "backdrop",
+        "value": "rgba(21,32,43,.45)",
+        "purpose": "Dialog backdrop."
+      }
+    ],
+    "motion": [
+      {
+        "name": "control-state",
+        "value": "background-color .12s, border-color .12s, color .12s",
+        "purpose": "Button state changes."
+      },
+      {
+        "name": "progress",
+        "value": "width .2s ease-out",
+        "purpose": "Progress bar fill."
+      },
+      {
+        "name": "loading-pulse",
+        "value": "1s ease-in-out infinite alternate",
+        "purpose": "Loading dot; off under reduced motion or data-motion=off."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "wide-step",
+        "value": "1360px (container)"
+      },
+      {
+        "name": "rail-icons",
+        "value": "1100px (container)"
+      },
+      {
+        "name": "inspector-below",
+        "value": "980px (container)"
+      },
+      {
+        "name": "annotate-gate",
+        "value": "900px (viewport, web host only)"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Button",
+      "kind": "button",
+      "refersTo": "button",
+      "description": "Default control: panel fill, hairline, accent border on hover.",
+      "html": "<button class=\"ds-btn\">Next to check</button>",
+      "css": ".ds-btn{font-family:\"Segoe UI Variable Text\",\"Segoe UI\",system-ui,sans-serif;font-size:13.5px;border:1px solid var(--c-line,#d5dbe1);background:var(--c-panel,#fff);color:var(--c-ink,#15202b);border-radius:7px;padding:5px 11px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:background-color .12s,border-color .12s,color .12s;}.ds-btn:hover{border-color:var(--c-accent,#0a7c78);background:var(--c-hover,#f3f7f8);}.ds-btn:focus-visible{outline:2px solid var(--c-accent,#0a7c78);outline-offset:2px;}"
+    },
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "One per region: Confirm frame, Export, Finish the job.",
+      "html": "<button class=\"ds-btn-primary\"><svg class=\"ds-i\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M20 6L9 17l-5-5\"/></svg>Confirm frame</button>",
+      "css": ".ds-i{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round;display:block;flex:none;}.ds-btn-primary{font-family:\"Segoe UI Variable Text\",\"Segoe UI\",system-ui,sans-serif;font-size:13.5px;border:1px solid var(--c-line,#d5dbe1);background:var(--c-panel,#fff);color:var(--c-ink,#15202b);border-radius:7px;padding:5px 11px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:background-color .12s,border-color .12s,color .12s;background:var(--c-accent,#0a7c78);border-color:var(--c-accent,#0a7c78);color:var(--c-on-accent,#fff);font-weight:600;}.ds-btn-primary:hover{background:var(--c-accent-ink,#075e5b);border-color:var(--c-accent-ink,#075e5b);}.ds-btn-primary:focus-visible{outline:2px solid var(--c-accent,#0a7c78);outline-offset:2px;}"
+    },
+    {
+      "name": "Danger Button",
+      "kind": "button",
+      "refersTo": "button-danger",
+      "description": "Outlined destructive action that opens the confirm dialog (Delete frame, Stop).",
+      "html": "<button class=\"ds-btn-danger\"><svg class=\"ds-i\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M4 7h16M9.5 11v6M14.5 11v6M6 7l1 12.5a1.5 1.5 0 0 0 1.5 1.5h7a1.5 1.5 0 0 0 1.5-1.5L18 7M9 7V4.5A.5.5 0 0 1 9.5 4h5a.5.5 0 0 1 .5.5V7\"/></svg>Delete frame</button>",
+      "css": ".ds-i{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round;display:block;flex:none;}.ds-btn-danger{font-family:\"Segoe UI Variable Text\",\"Segoe UI\",system-ui,sans-serif;font-size:13.5px;border:1px solid var(--c-line,#d5dbe1);background:var(--c-panel,#fff);color:var(--c-ink,#15202b);border-radius:7px;padding:5px 11px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:background-color .12s,border-color .12s,color .12s;color:var(--c-bad-ink,#9b2f1f);border-color:var(--c-bad-line,#efb9ae);}.ds-btn-danger:hover{background:var(--c-bad-soft,#fde8e5);border-color:#c2412f;}.ds-btn-danger:focus-visible{outline:2px solid var(--c-accent,#0a7c78);outline-offset:2px;}"
+    },
+    {
+      "name": "Rail Tool Row",
+      "kind": "nav",
+      "refersTo": "rail-tool",
+      "description": "Icon, name and key; the active tool inverts to ink.",
+      "html": "<nav class=\"ds-rail\"><div class=\"ds-rail-h\">Manual</div><button class=\"ds-tool\"><svg class=\"ds-i\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><rect x=\"4\" y=\"5\" width=\"16\" height=\"14\" rx=\"1.5\"/></svg><span>Box</span><kbd class=\"ds-kbd\">B</kbd></button><button class=\"ds-tool\" aria-pressed=\"true\"><svg class=\"ds-i\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M12 3.5l8 5.8-3 10.2H7L4 9.3z\"/></svg><span>Polygon</span><kbd class=\"ds-kbd\">O</kbd></button></nav>",
+      "css": ".ds-i{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round;display:block;flex:none;}.ds-kbd{font:11.5px/1.2 ui-monospace,\"Cascadia Mono\",Consolas,monospace;border:1px solid var(--c-line,#d5dbe1);border-bottom-width:2px;border-radius:5px;padding:1px 5px;background:var(--c-panel-2,#f7f9fa);color:var(--c-ink,#15202b);}.ds-rail{font-family:\"Segoe UI Variable Text\",\"Segoe UI\",system-ui,sans-serif;width:212px;background:var(--c-panel,#fff);padding:10px 8px;display:flex;flex-direction:column;gap:2px;}.ds-rail-h{font-size:12px;font-weight:600;color:var(--c-muted,#56636f);margin:2px 8px 4px;}.ds-tool{font-family:\"Segoe UI Variable Text\",\"Segoe UI\",system-ui,sans-serif;display:grid;grid-template-columns:20px 1fr auto;gap:9px;align-items:center;padding:6px 8px;border:1px solid transparent;border-radius:8px;background:none;text-align:left;font-size:13.5px;color:var(--c-ink,#15202b);cursor:pointer;}.ds-tool:hover{background:var(--c-hover,#f3f7f8);}.ds-tool:focus-visible{outline:2px solid var(--c-accent,#0a7c78);outline-offset:2px;}.ds-tool[aria-pressed=true]{background:var(--c-ink,#15202b);color:var(--c-panel,#fff);}.ds-tool[aria-pressed=true] .ds-kbd{background:transparent;color:inherit;border-color:color-mix(in srgb,currentColor 40%,transparent);}"
+    },
+    {
+      "name": "Segmented Modes",
+      "kind": "custom",
+      "refersTo": "segmented-track",
+      "description": "Mode switch in the options bar.",
+      "html": "<span class=\"ds-modes\"><button aria-pressed=\"true\">New part</button><button aria-pressed=\"false\">Add to selected</button><button aria-pressed=\"false\">Cut from selected</button></span>",
+      "css": ".ds-modes{display:inline-flex;background:var(--c-bg,#eef1f4);border-radius:8px;padding:2px;gap:2px;}.ds-modes button{font-family:\"Segoe UI Variable Text\",\"Segoe UI\",system-ui,sans-serif;border:0;background:transparent;padding:3px 10px;font-size:12.5px;border-radius:6px;color:var(--c-muted,#56636f);cursor:pointer;}.ds-modes button:hover{background:var(--c-panel,#fff);color:var(--c-ink,#15202b);}.ds-modes button:focus-visible{outline:2px solid var(--c-accent,#0a7c78);outline-offset:2px;}.ds-modes button[aria-pressed=true]{background:var(--c-panel,#fff);color:var(--c-ink,#15202b);font-weight:600;box-shadow:0 1px 2px rgba(21,32,43,.14);}"
+    },
+    {
+      "name": "Inspector Tabs",
+      "kind": "nav",
+      "refersTo": "inspector-tab",
+      "description": "Classes, Parts, Find, Export, Settings with accent underline.",
+      "html": "<div class=\"ds-tabs\" role=\"tablist\"><button role=\"tab\" aria-selected=\"true\">Classes</button><button role=\"tab\" aria-selected=\"false\">Parts <b>2</b></button><button role=\"tab\" aria-selected=\"false\">Find</button><button role=\"tab\" aria-selected=\"false\">Export</button><button role=\"tab\" aria-selected=\"false\">Settings</button></div>",
+      "css": ".ds-tabs{display:flex;border-bottom:1px solid var(--c-line,#d5dbe1);padding:0 6px;background:var(--c-panel,#fff);}.ds-tabs button{font-family:\"Segoe UI Variable Text\",\"Segoe UI\",system-ui,sans-serif;border:0;background:transparent;padding:11px 9px 10px;font-weight:600;font-size:13px;color:var(--c-muted,#56636f);box-shadow:inset 0 -2px transparent;cursor:pointer;}.ds-tabs button:hover{color:var(--c-ink,#15202b);}.ds-tabs button:focus-visible{outline:2px solid var(--c-accent,#0a7c78);outline-offset:2px;}.ds-tabs button[aria-selected=true]{color:var(--c-accent-ink,#075e5b);box-shadow:inset 0 -2px var(--c-accent,#0a7c78);}.ds-tabs b{font-variant-numeric:tabular-nums;color:var(--c-muted,#56636f);background:var(--c-bg,#eef1f4);border-radius:99px;padding:0 6px;font-size:11.5px;}"
+    },
+    {
+      "name": "Class Row",
+      "kind": "custom",
+      "refersTo": "list-row",
+      "description": "Swatch, key, name, count; selected = accent wash with accent border.",
+      "html": "<div class=\"ds-list\"><button class=\"ds-row\" aria-pressed=\"true\"><span class=\"ds-sw\" style=\"background:#e5322d\"></span><span class=\"ds-k\">1</span><span>chip</span><span class=\"ds-k\">2</span></button><button class=\"ds-row\" aria-pressed=\"false\"><span class=\"ds-sw\" style=\"background:#2fc56a\"></span><span class=\"ds-k\">2</span><span>capacitor</span><span></span></button></div>",
+      "css": ".ds-list{display:flex;flex-direction:column;gap:1px;width:290px;}.ds-row{font-family:\"Segoe UI Variable Text\",\"Segoe UI\",system-ui,sans-serif;display:grid;grid-template-columns:12px 18px 1fr auto;gap:8px;align-items:center;padding:5px 7px;border:1px solid transparent;border-radius:7px;background:none;text-align:left;font-size:13.5px;color:var(--c-ink,#15202b);cursor:pointer;}.ds-row:hover{background:var(--c-hover,#f3f7f8);}.ds-row:focus-visible{outline:2px solid var(--c-accent,#0a7c78);outline-offset:2px;}.ds-row[aria-pressed=true]{background:var(--c-accent-soft,#e1f0ef);border-color:var(--c-accent,#0a7c78);}.ds-sw{width:12px;height:12px;border-radius:3px;}.ds-k{font-size:12px;color:var(--c-muted,#56636f);font-variant-numeric:tabular-nums;}"
+    },
+    {
+      "name": "Status Ribbon",
+      "kind": "custom",
+      "refersTo": "status-ribbon",
+      "description": "The whole job: one cell per frame by state, raised flag ticks, numbered playhead, job bracket (a canvas in the build; static approximation here).",
+      "html": "<div class=\"ds-rib\"><span class=\"ds-end\">1</span><span class=\"ds-end r\">27</span><div class=\"ds-band\"><i style=\"background:#2f9e5b;flex:4\"></i><i style=\"background:#27a79b;flex:3\"></i><i style=\"background:#6aa6f2;flex:8\"></i><i style=\"background:#b8a8e6;flex:2\"></i><i style=\"background:var(--c-st0,#dfe4e9);flex:10\"></i></div><span class=\"ds-flag\" style=\"left:52%\"></span><span class=\"ds-ph\" style=\"left:30%\"><b>9</b></span></div>",
+      "css": ".ds-rib{font-family:\"Segoe UI Variable Text\",\"Segoe UI\",system-ui,sans-serif;position:relative;width:520px;height:40px;}.ds-band{position:absolute;left:0;right:0;top:17px;bottom:0;display:flex;border-radius:4px;overflow:hidden;}.ds-band i{display:block;}.ds-end{position:absolute;top:0;left:2px;font-size:11px;font-weight:600;color:var(--c-muted,#56636f);}.ds-end.r{left:auto;right:2px;}.ds-flag{position:absolute;top:11px;width:3px;height:11px;background:#e09a2c;}.ds-ph{position:absolute;top:0;bottom:0;width:2px;background:var(--c-ink,#15202b);}.ds-ph b{position:absolute;top:0;left:50%;transform:translateX(-50%);background:var(--c-ink,#15202b);color:var(--c-panel,#fff);font-size:11px;font-weight:600;padding:0 6px;border-radius:7px;line-height:15px;font-variant-numeric:tabular-nums;}"
+    },
+    {
+      "name": "Toast",
+      "kind": "custom",
+      "refersTo": "toast",
+      "description": "Bottom-right notice; error variant in bad, warning in warn-ink.",
+      "html": "<div class=\"ds-toast\"><div><b>Exported 27 frames</b><small>COCO, this job</small></div><button>Open</button></div>",
+      "css": ".ds-toast{font-family:\"Segoe UI Variable Text\",\"Segoe UI\",system-ui,sans-serif;background:var(--c-ink,#15202b);color:var(--c-panel,#fff);padding:9px 12px;border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.22);display:flex;gap:10px;align-items:flex-start;max-width:400px;font-size:14px;}.ds-toast b{font-weight:600;display:block;}.ds-toast small{opacity:.8;display:block;}.ds-toast button{font-family:\"Segoe UI Variable Text\",\"Segoe UI\",system-ui,sans-serif;margin-left:auto;background:transparent;color:inherit;border:1px solid color-mix(in srgb,currentColor 45%,transparent);border-radius:7px;padding:2px 9px;cursor:pointer;}.ds-toast button:hover{background:rgba(255,255,255,.12);}.ds-toast button:focus-visible{outline:2px solid var(--c-accent,#0a7c78);outline-offset:2px;}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Fixed Map",
+    "overview": "One screen an annotator learns once and never has to search again: tools on a labeled left rail, the frame on a near-black stage in the middle, an inspector on the right, and the whole job as one status ribbon along the bottom. Every control sits in the same place for every project type; only its content changes with the label type.\n\nThe material is quiet and dense: white panels on a cool grey ground separated by 1px hairlines, no decoration, one accent from the person's own account. Colour carries meaning only: ink for the chosen tool, accent for the chosen class and the primary action, and a fixed status scale that tells the state of every frame at a glance. Counts are tabular so numbers never jitter while tracking runs.",
+    "keyCharacteristics": [
+      "Rail 212px, inspector 320px, stage fills the rest; steps down by container width, never by device.",
+      "Each tool shows its name, key and how-to in place; the full keyboard map lives in the help dialog.",
+      "One authored stroke icon family; no glyph icons.",
+      "Status ribbon with job bracket, raised flag ticks and a numbered playhead.",
+      "Follows the account theme (light, dark, system; eight accents) live, canvases included."
+    ],
+    "rules": [
+      {
+        "name": "The Meaning-Only Colour Rule",
+        "body": "Colour on this screen always states something: chosen (ink/accent), frame state (st0-st4, flag) or destruction (bad). Nothing is coloured for decoration.",
+        "section": "colors"
+      },
+      {
+        "name": "The Fixed Status Rule",
+        "body": "st1-st4 and flag keep the same hues in light and dark so a frame's state reads the same for every account; only st0 follows the theme.",
+        "section": "colors"
+      },
+      {
+        "name": "The Tabular Count Rule",
+        "body": "Every number that changes (frame N of M, counts, zoom %, brush size, track frames, tab counts, ribbon tooltip) uses `font-variant-numeric: tabular-nums`.",
+        "section": "typography"
+      },
+      {
+        "name": "The Float-Only Shadow Rule",
+        "body": "A shadow means \"above the screen\": popovers, toasts, tooltips, the hint. Docked panels never get one.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "**Do** read every colour from the module tokens (`--accent`, `--ink`, `--st0`...) mapped to `--c-*` with the light value as fallback, so notebooks and accounts both work.",
+      "**Do** redraw any canvas when `data-theme`/`data-accent` or the system colour scheme changes.",
+      "**Do** put a tool's name, key and how-to on screen where it is used, and list every key in the help dialog.",
+      "**Do** make anything permanent a modal confirm with Keep autofocused; everything else saves at once and is undoable.",
+      "**Do** step the layout by container width (1360 / 1100 / 980) and keep Delete and Confirm on the transport row at every step.",
+      "**Do** use tabular numerals for every changing number."
+    ],
+    "donts": [
+      "**Don't** use unicode glyphs as icons; draw them in the 24px, 1.75px round-stroke set.",
+      "**Don't** add shadows to docked panels or bars.",
+      "**Don't** use the status hues (st1-st4, flag) or bad for anything but frame state and destruction.",
+      "**Don't** gate the annotator by device or touch; width only, and never in a notebook.",
+      "**Don't** change the stage from near-black in either theme."
+    ]
+  }
+}

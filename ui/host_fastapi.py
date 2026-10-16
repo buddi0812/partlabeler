@@ -254,9 +254,11 @@ app.mount("/ui", StaticFiles(directory=UI_DIR), name="ui")
 
 @app.middleware("http")
 async def revalidate_ui(request, call_next):
-    """UI files change with every update: browsers must check (cheap 304s) instead of running a stale copy."""
+    """UI files change with every update: browsers must check (cheap 304s) instead of running a stale copy. Frame
+    images too: /items/<project>/<n>.jpg shows another picture once a frame or task before n is deleted."""
     response = await call_next(request)
-    if request.url.path.startswith("/ui/") or request.url.path == "/" or request.url.path.startswith("/p/"):
+    path = request.url.path
+    if path.startswith(("/ui/", "/p/", "/items/")) or path == "/":
         response.headers["Cache-Control"] = "no-cache"
     return response
 

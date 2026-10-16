@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Editor dock</title>
+<style>
+*{box-sizing:border-box;margin:0}
+body{width:1440px;height:900px;overflow:hidden;font:13px/1.4 "Segoe UI",system-ui,sans-serif;color:#15202b;background:#eef1f4;display:grid;grid-template-rows:48px 1fr 300px}
+header{display:flex;align-items:center;gap:14px;padding:0 16px;background:#fff;border-bottom:1px solid #d5dbe1}
+.back{color:#075e5b;font-weight:600}.title{font-size:16px;font-weight:600}
+.chip{font-size:12px;font-weight:600;padding:2px 9px;border-radius:99px;background:#e1f0ef;color:#075e5b}
+.chip.warn{background:#fbecd3;color:#8a5304}.sp{flex:1}.muted{color:#56636f}
+.btn{border:1px solid #d5dbe1;border-radius:7px;padding:5px 11px;background:#fff}
+.primary{background:#0a7c78;border-color:#0a7c78;color:#fff;font-weight:600}
+.danger{border-color:#e9b5ac;color:#a5321f}
+.work{display:grid;grid-template-columns:56px 1fr;min-height:0}
+.rail{background:#15202b;display:flex;flex-direction:column;align-items:center;gap:6px;padding:10px 0}
+.rail i{width:36px;height:36px;border-radius:8px;background:#22303c;display:block}
+.rail i.on{background:#0a7c78}.rail hr{width:28px;border:0;border-top:1px solid #34424e;margin:4px 0}
+.stage{position:relative;background:#0d1217;display:flex;align-items:center;justify-content:center}
+.frame{width:820px;height:460px;background:#25313a;border-radius:4px;position:relative}
+.b{position:absolute;border:2px solid}.b span{position:absolute;top:-22px;left:-2px;font-size:12px;font-weight:600;color:#fff;padding:1px 6px}
+.opts{position:absolute;top:12px;left:50%;transform:translateX(-50%);background:rgba(21,32,43,.9);color:#fff;border-radius:9px;padding:6px 12px;display:flex;gap:14px}
+.dock{background:#fff;border-top:1px solid #d5dbe1;display:grid;grid-template-columns:1fr 300px;min-height:0}
+.tl{display:grid;grid-template-rows:44px 22px 1fr;min-width:0}
+.transport{display:flex;align-items:center;gap:8px;padding:0 14px;border-bottom:1px solid #eef1f4}
+.ruler{margin-left:180px;position:relative;border-bottom:1px solid #d5dbe1}
+.ruler b{position:absolute;top:0;bottom:-240px;width:2px;background:#15202b;left:22%}
+.lanes{overflow:hidden}
+.lane{display:grid;grid-template-columns:180px 1fr;height:30px;align-items:center;border-bottom:1px solid #f0f2f4}
+.lane .n{display:flex;gap:8px;align-items:center;padding-left:14px}
+.sw{width:11px;height:11px;border-radius:3px;display:inline-block}
+.track{position:relative;height:14px}
+.seg{position:absolute;top:0;height:14px;border-radius:3px}
+.seg.tr{opacity:.45}.flag{position:absolute;top:-3px;width:4px;height:20px;background:#e09a2c;border-radius:2px}
+.status{display:flex;height:10px;margin:6px 14px 0 194px;border-radius:3px;overflow:hidden}
+.side{border-left:1px solid #d5dbe1;padding:12px;display:flex;flex-direction:column;gap:10px}
+.side h3{font-size:12.5px}.cls{display:flex;gap:8px;align-items:center;padding:4px 6px;border-radius:6px}
+.cls.on{background:#e1f0ef;outline:1px solid #0a7c78}
+</style></head><body>
+<header><span class="back">← Projects</span><span class="title">pcb_panel</span><span class="chip">Object detection</span>
+<span class="btn">Job #1 · in progress ▾</span><span class="muted">Frame 12 of 53</span><span class="chip warn">To check</span>
+<span class="sp"></span><span class="muted">✓ All changes saved</span><span class="btn">?</span></header>
+<div class="work">
+  <nav class="rail"><i class="on"></i><i></i><hr><i></i><i></i><i></i><i></i><i></i><hr><i></i><i></i></nav>
+  <div class="stage">
+    <div class="opts"><span>Polygon</span><span class="muted" style="color:#9fb0bd">Click corners · Enter closes · Esc cancels</span><span>Class: ic_chip</span></div>
+    <div class="frame">
+      <div class="b" style="left:120px;top:90px;width:150px;height:110px;border-color:#2bb3a9"><span style="background:#2bb3a9">ic_chip</span></div>
+      <div class="b" style="left:380px;top:140px;width:90px;height:60px;border-color:#e0702c"><span style="background:#e0702c">capacitor</span></div>
+      <div class="b" style="left:560px;top:260px;width:180px;height:70px;border-color:#7a6ce0;border-style:dashed"><span style="background:#7a6ce0">connector</span></div>
+      <div class="b" style="left:250px;top:300px;width:60px;height:60px;border-color:#d43f7a"><span style="background:#d43f7a">led</span></div>
+    </div>
+  </div>
+</div>
+<section class="dock">
+  <div class="tl">
+    <div class="transport"><span class="btn">◀</span><span class="btn">▶</span><span class="btn">▷ Play 1×</span>
+      <span class="btn">Next to check</span><span class="btn">◀ Track</span><span class="btn">Track 20 ▶</span><span class="sp"></span>
+      <span class="btn danger">Delete frame</span><span class="btn primary">Confirm frame ⏎</span></div>
+    <div class="ruler"><b></b></div>
+    <div class="lanes">
+      <div class="lane"><span class="n"><i class="sw" style="background:#2bb3a9"></i>#1 ic_chip</span><div class="track"><i class="seg" style="left:0;width:30%;background:#2bb3a9"></i><i class="seg tr" style="left:30%;width:52%;background:#2bb3a9"></i><i class="flag" style="left:48%"></i></div></div>
+      <div class="lane"><span class="n"><i class="sw" style="background:#e0702c"></i>#2 capacitor</span><div class="track"><i class="seg" style="left:6%;width:20%;background:#e0702c"></i><i class="seg tr" style="left:26%;width:40%;background:#e0702c"></i></div></div>
+      <div class="lane"><span class="n"><i class="sw" style="background:#7a6ce0"></i>#3 connector</span><div class="track"><i class="seg tr" style="left:12%;width:70%;background:#7a6ce0"></i><i class="flag" style="left:61%"></i></div></div>
+      <div class="lane"><span class="n"><i class="sw" style="background:#d43f7a"></i>#4 led</span><div class="track"><i class="seg" style="left:18%;width:9%;background:#d43f7a"></i><i class="seg tr" style="left:27%;width:20%;background:#d43f7a"></i></div></div>
+      <div class="status"><i style="flex:11;background:#2f9e5b"></i><i style="flex:9;background:#27a79b"></i><i style="flex:24;background:#6aa6f2"></i><i style="flex:9;background:#dfe4e9"></i></div>
+    </div>
+  </div>
+  <aside class="side"><h3>Class</h3>
+    <div class="cls on"><i class="sw" style="background:#2bb3a9"></i>1 ic_chip</div><div class="cls"><i class="sw" style="background:#e0702c"></i>2 capacitor</div>
+    <div class="cls"><i class="sw" style="background:#7a6ce0"></i>3 connector</div><div class="cls"><i class="sw" style="background:#d43f7a"></i>4 led</div>
+    <h3>Find parts</h3><div style="display:flex;gap:6px"><span class="btn">Suggest</span><span class="btn">Find similar</span><span class="btn">By text</span></div>
+  </aside>
+</section>
+</body></html>

@@ -1,0 +1,43 @@
+{
+  "title": "Choose the annotator's layout",
+  "question": "Three layouts for the redesigned annotator, all in PartLabeler's own theme (your account's light/dark and accent still apply). The roll leads with the editor dock. Pick one, steer it, or re-roll.",
+  "options": [
+    {
+      "id": "dock",
+      "label": "Editor dock",
+      "kicker": "THE ROLL",
+      "lineage": "video editing suites, V7's per-label timeline segments",
+      "thesis": "The annotator as a video editor: the frame on top, every part a lane in the timeline below.",
+      "palette": ["#0d1217", "#ffffff", "#eef1f4", "#0a7c78", "#e09a2c", "#2f9e5b"],
+      "materials": ["system UI type", "account accent", "dark frame stage", "per-part timeline lanes"],
+      "viewport": "Slim header; canvas fills the top with a vertical tool rail (AI, Manual, View); below, a dock: transport row, then one lane per part showing where it is drawn, tracked or flagged, with classes beside it.",
+      "risk": "Many parts make many lanes: learners can drown unless lanes collapse to the selected part.",
+      "html": ".impeccable/mocks/decision/dock.html"
+    },
+    {
+      "id": "rail",
+      "label": "Rail and inspector",
+      "lineage": "CVAT, Label Studio, V7 annotation workviews",
+      "thesis": "The map annotators already know, rebuilt properly: tools left, inspector right, frames below.",
+      "palette": ["#0d1217", "#ffffff", "#eef1f4", "#0a7c78", "#e09a2c", "#2f9e5b"],
+      "materials": ["system UI type", "account accent", "dark frame stage", "status ribbon timeline"],
+      "viewport": "Left tool rail grouped AI / Manual / View with a contextual options bar above the frame; right inspector with tabs Classes, Parts, Find, Export; bottom transport with Confirm and Delete frame over the status ribbon.",
+      "risk": "Familiar to the point of anonymity: its character has to come from the ribbon and the finish.",
+      "html": ".impeccable/mocks/decision/rail.html"
+    },
+    {
+      "id": "modes",
+      "label": "Label and Review modes",
+      "lineage": "CVAT's workspace switcher, darkroom contact sheets",
+      "thesis": "Two workspaces behind one switch: draw in Label, judge in Review, so nobody faces everything at once.",
+      "palette": ["#0d1217", "#ffffff", "#eef1f4", "#0a7c78", "#e09a2c", "#2f9e5b"],
+      "materials": ["system UI type", "account accent", "dark frame stage", "contact-sheet filmstrip"],
+      "viewport": "Header with a Label | Review switch. Label: tool rail, class list, canvas. Review: canvas over a large filmstrip where flagged frames rise, with big Confirm and Delete frame.",
+      "risk": "A mode switch costs a keystroke, and experts may resent tools hidden while reviewing.",
+      "html": ".impeccable/mocks/decision/modes.html"
+    }
+  ],
+  "reroll": true,
+  "buildPath": { "value": "code" },
+  "steer": true
+}

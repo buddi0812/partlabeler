@@ -63,7 +63,8 @@ UNDO_WORDS = {"box": "drawing a box", "outline": "outlining a part", "delete": "
               "tracking": "tracking", "suggestions": "suggestions", "find similar": "find similar",
               "paint": "painting an outline", "outline boxes": "outlining boxes", "classes": "a class change",
               "smart brush": "a smart brush stroke", "find text": "find by text", "clear": "clearing parts",
-              "class swap": "a class swap", "model labels": "labeling with a model", "text labels": "annotating by text"}
+              "class swap": "a class swap", "model labels": "labeling with a model", "text labels": "annotating by text",
+              "reset": "the reset"}
 FORMAT_NAMES = {"yolo": "YOLO", "coco": "COCO", "cvat": "CVAT", "voc": "Pascal VOC", "labelstudio": "Label Studio",
                 "folders": "class folders", "csv": "CSV"}
 THUMB = 224                                               # px, longest side of grid thumbnails
@@ -542,6 +543,61 @@ class Session:
                         "Ctrl+Z brings it back", self._goto(msg["item"]), key="delete", plural="Deleted {n} boxes")
         self.points.pop((msg["item"], msg["obj"]), None)
         self.refresh(msg["item"])
+
+    def on_delete_frames(self, msg):
+        """Delete frames for good (Project.remove_items). Every frame number after them moves down, so everything this
+        session keeps per frame is dropped, the undo history included (an undo would restore labels onto the wrong
+        frame), and every open tab reloads."""
+        if self.running:
+            self.send({"type": "toast", "text": "Wait for the running job to finish, or stop it, then delete the frame"})
+            return
+        items = [int(i) for i in msg.get("items") or []]
+        where = self._frame(items[0]) if len(items) == 1 and 0 <= items[0] < len(self.p.items) else f"{len(items)} frames"
+        try:
+            res = self.p.remove_items(items)
+        except ValueError as e:
+            self.send({"type": "toast", "text": str(e)[:1].upper() + str(e)[1:]})
+            return
+        self.history.clear()
+        self.points.clear(); self.outlines.clear(); self.sorting.clear()
+        with self._frame_lock:
+            self._thumbs.clear(); self._frames.clear()
+        self.notify("warning", f"Deleted {where} for good",
+                    f"{res['labels']} label{'s' if res['labels'] != 1 else ''} went with it. This cannot be undone.")
+        self.send({"type": "reload", "removed": sorted(set(items))})   # every open tab reloads, each on its own frame
+
+    def on_delete_class(self, msg):
+        """A class and all its labels on every frame; the classes after it move up one number (so nothing before
+        it can be undone any more, and every open tab reloads)."""
+        if self.running:
+            self.send({"type": "toast", "text": "Wait for the running job to finish, or stop it, then delete the class"}); return
+        c = int(msg["cls"])
+        if not 0 <= c < len(self.p.classes):
+            return
+        name = self.p.classes[c]
+        res = self.p.set_labels([dict(l, **{"from": i}) for i, l in enumerate(self.p.labels()) if i != c])
+        self.history.clear()
+        self.points.clear(); self.outlines.clear(); self.sorting.clear()
+        self.notify("warning", f"Deleted class {name}",
+                    f"{res['removed']} label{'s' if res['removed'] != 1 else ''} of it went too. This cannot be undone.")
+        self.send({"type": "reload"})
+
+    def on_reset(self, msg):
+        """Start over: every label, image class and confirmation of this frame's task (scope "task") or of the
+        whole project ("project") goes, and their jobs are new again. Frames and classes stay. One undo step."""
+        if self.running:
+            self.send({"type": "toast", "text": "Wait for the running job to finish, or stop it, then reset"}); return
+        whole = msg.get("scope") == "project"
+        tids = [t["id"] for t in self.p.sources] if whole else [self.p.items[int(msg["item"])]["task"]]
+        items = [k for t in tids for k in range(*self.p.ranges[t])]
+        self._remember(items, "reset")
+        res = self.p.reset_labels(tids)
+        what = "the project" if whole else f"task {self.p.task_of(items[0])['name']}" if items else "the task"
+        self.notify("warning", f"Reset {what}", f"{res['labels']} label{'s' if res['labels'] != 1 else ''} removed from "
+                    f"{res['items']} frames; the jobs are new again. Ctrl+Z brings the labels back.")
+        self.send(self.project_msg())
+        self.send({"type": "item_changed", "items": items})
+        self.send(self.status_msg())
 
     def on_set_class(self, msg):
         """A part's class, on all its items; between states of one part (project "states"), on this item only."""

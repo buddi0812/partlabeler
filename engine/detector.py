@@ -131,11 +131,20 @@ def _gpu_resource_error(e: BaseException) -> bool:
 
 def _workers() -> int:
     """DataLoader worker processes. Windows starts workers by re-importing the main script, which fails when
-    the caller has none on disk (python - < script): then load data in the main process."""
+    the caller has none on disk (python - < script): then load data in the main process.
+
+    Linux workers are forked, not spawned - and by the time Teach builds the DataLoader, the RF-DETR
+    model has already been moved onto the GPU in this process, so CUDA already has a context open.
+    Forking a process with an open CUDA context routinely deadlocks the children (confirmed directly:
+    a real Teach run on a Linux cloud GPU hung with every worker sitting at 0% CPU indefinitely,
+    while the exact same code path is fine on Windows, where multiprocessing uses spawn instead of
+    fork - so this had never been exercised before). 0 workers loads data in the main process, same
+    as the Windows fallback above; the real fix is spawning workers before CUDA initializes (or with
+    multiprocessing_context="spawn"), which needs its own verification before relying on it here."""
     main = getattr(sys.modules.get("__main__"), "__file__", None)
     if main and not Path(main).exists():
         return 0
-    return 2 if sys.platform == "win32" else min(8, max(2, (os.cpu_count() or 2) // 2))   # Linux: e.g. a cloud GPU
+    return 2 if sys.platform == "win32" else 0
 
 
 def _model_class(size: str):

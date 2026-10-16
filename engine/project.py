@@ -32,6 +32,7 @@ import shutil
 import sqlite3
 import threading
 import time
+from collections import defaultdict
 from pathlib import Path
 from xml.sax.saxutils import escape, quoteattr
 
@@ -326,6 +327,82 @@ class Project:
         self._index()
         return {"task": t, "items": n, "labels": labels}
 
+    def remove_items(self, items) -> dict:
+        """Delete frames or images for good: their labels go, and the items after them move down so the numbering
+        stays continuous. A stored frame file is deleted; a frame read from the video leaves the video's index; a
+        picture of an image folder is only left out of the project (the folder is the person's own and is never
+        touched). Jobs shrink around the gap. Refuses to empty a task (delete the task instead).
+        Returns {"items", "labels"} removed."""
+        gone = sorted({int(i) for i in items})
+        if not gone:
+            raise ValueError("no frames to delete")
+        if gone[0] < 0 or gone[-1] >= len(self.items):
+            raise ValueError(f"frames must be 0-{len(self.items) - 1}")
+        tasks = [dict(t, jobs=[dict(j) for j in t.get("jobs") or []]) for t in self.sources]
+        by_task = defaultdict(list)
+        for i in gone:
+            by_task[self.items[i]["task"]].append(i)
+        for t in tasks:
+            mine = by_task.get(t["id"])
+            if not mine:
+                continue
+            a, b = self.ranges[t["id"]]
+            if len(mine) >= b - a:
+                raise ValueError(f"that would leave task {t['name']} with no frames: delete the task instead")
+            rel = [i - a for i in mine]
+            kept_jobs = []
+            for j in t["jobs"]:
+                j["start"] -= sum(r < j["start"] for r in rel)
+                j["stop"] -= sum(r <= j["stop"] for r in rel)
+                if j["stop"] >= j["start"]:
+                    kept_jobs.append(j)
+            t["jobs"] = kept_jobs or t["jobs"][:1]
+            its = [self.items[i] for i in mine]
+            if t["kind"] == "video" and t.get("format") == "video":
+                d = self.folder / t["frames"]
+                idx = json.loads((d / "index.json").read_text(encoding="utf-8"))
+                drop = {it["frame"] for it in its}
+                pairs = [(f, p) for f, p in zip(idx["frames"], idx["pts"]) if f not in drop]
+                idx["frames"], idx["pts"] = [f for f, _ in pairs], [p for _, p in pairs]
+                (d / "index.json").write_text(json.dumps(idx), encoding="utf-8")
+            elif t["kind"] == "video":
+                for it in its:
+                    Path(it["path"]).unlink(missing_ok=True)
+            else:
+                root = Path(t["source"])
+                t["removed"] = sorted(set(t.get("removed") or []) | {Path(it["path"]).relative_to(root).as_posix() for it in its})
+            if t["kind"] == "video" and t.get("info", {}).get("kept") is not None:
+                t["info"] = dict(t["info"], kept=t["info"]["kept"] - len(mine))
+        with self.db:
+            q = ",".join("?" * len(gone))
+            labels = self.db.execute(f"SELECT COUNT(*) FROM boxes WHERE item IN ({q})", gone).fetchone()[0]
+            labels += self.db.execute(f"SELECT COUNT(*) FROM tags WHERE item IN ({q})", gone).fetchone()[0]
+            for table in TABLES:
+                self.db.execute(f"DELETE FROM {table} WHERE item IN ({q})", gone)
+                for d in reversed(gone):                  # two steps per gap, so no row lands on a number still taken
+                    self.db.execute(f"UPDATE {table} SET item = item + ? WHERE item > ?", (OFFSET, d))
+                    self.db.execute(f"UPDATE {table} SET item = item - ? - 1 WHERE item >= ?", (OFFSET, OFFSET))
+        first = tasks[0]
+        self.set_meta(sources=tasks, kind=first["kind"], source=first["source"], every=first["every"])
+        self._index()
+        return {"items": len(gone), "labels": labels}
+
+    def reset_labels(self, task_ids) -> dict:
+        """Start these tasks over: every part, image class and confirmation goes, and their jobs are new again
+        (annotation, new). The frames and the classes stay. Returns {"items", "labels"} cleared."""
+        tids = {int(t) for t in task_ids}
+        spans = [self.ranges[t] for t in tids if t in self.ranges]
+        where = " OR ".join("item BETWEEN ? AND ?" for _ in spans) or "0"
+        args = [x for a, b in spans for x in (a, b - 1)]
+        with self.db:
+            labels = sum(self.db.execute(f"SELECT COUNT(*) FROM {t} WHERE {where}", args).fetchone()[0] for t in ("boxes", "tags"))
+            for table in TABLES:
+                self.db.execute(f"DELETE FROM {table} WHERE {where}", args)
+        now = time.time()
+        self.set_meta(sources=[dict(t, jobs=[dict(j, stage="annotation", state="new", state_set=now) for j in t.get("jobs") or []])
+                               if t["id"] in tids else t for t in self.sources])
+        return {"items": sum(b - a for a, b in spans), "labels": labels}
+
     def fill_info(self) -> bool:
         """Video details for tasks that have none (projects made before tasks): read once from the source and
         the stored frames, then saved. Returns True when something was added."""
@@ -499,7 +576,9 @@ class Project:
             else:
                 root = Path(t["source"])
                 prefix = "" if t["id"] == first else f"{t['name']}/"   # names stay unique across folders
-                files = sorted((p for p in root.rglob("*") if p.suffix.lower() in IMAGE_EXTS),
+                removed = set(t.get("removed") or [])               # pictures deleted from the project (remove_items)
+                files = sorted((p for p in root.rglob("*") if p.suffix.lower() in IMAGE_EXTS
+                                and p.relative_to(root).as_posix() not in removed),
                                key=_natural if t.get("sorting") == "natural" else None) if root.is_dir() else []
                 items += [{"name": prefix + str(p.relative_to(root).with_suffix("")).replace("\\", "/"), "path": p,
                            "frame": None, "task": t["id"]} for p in files]
@@ -619,7 +698,10 @@ class Project:
                 if moved and any(k != v for k, v in moved.items()):
                     case = " ".join(f"WHEN {k} THEN {v}" for k, v in moved.items())
                     self.db.execute(f"UPDATE {table} SET cls = CASE cls {case} END")
-        self.set_meta(classes=names, colors=[l.get("color") for l in new])
+        # parts that change look name their classes: follow renames, drop deleted ones (a group needs two states)
+        rename = {self.classes[k]: names[v] for k, v in moved.items()}
+        groups = [[rename[n] for n in g if n in rename] for g in self.meta.get("states") or []]
+        self.set_meta(classes=names, colors=[l.get("color") for l in new], states=[g for g in groups if len(g) >= 2])
         return {"labels": self.labels(), "removed": removed}
 
     def task_of(self, item: int) -> dict:
