@@ -336,7 +336,7 @@ backwards and **Shift+R** tracks to the start. **X** or **Stop** stops a running
 keeps the style of the boxes you drew. In a segmentation project tracking starts from each part's outline, so what
 you fixed by hand (a notch erased, an edge brushed) is what the tracker follows into the next frames; after fixing
 an outline, track again from that frame to redo the frames after it. Long videos are tracked in chunks, and if the
-GPU runs out of memory the chunk size is halved automatically. The done notice names the tracker used.
+GPU runs out of memory the chunk size is halved automatically.
 
 *Faster tracking (optional):* SAM 3.1 follows all parts of a frame in one pass, so it barely slows down with more
 parts (about 1.7 times as fast as SAM 3 with 4 parts on an RTX 3060, using half the GPU memory; it downloads 3.5 GB
@@ -407,7 +407,7 @@ export). Click **Unconfirm frame** to undo a confirmation.
 
 Some frames should not be in the dataset at all: a blurred frame, one where the camera was blocked, a duplicate.
 **Delete frame** (Shift+Delete) removes the frame you are on from the project **for good**, together with its parts.
-PartLabeler asks first; **Keep the frame** is the default. Every frame after it moves up one place, and the job and
+PartLabeler asks first: **Delete for good** deletes it, **Keep the frame** (the default) changes nothing. Every frame after it moves up one place, and the job and
 task get one frame shorter. It cannot be undone (Ctrl+Z does not bring it back), so to only skip a frame, leave it
 unconfirmed instead. A frame taken from a video is deleted from the project's stored frames. A picture from your own
 image folder stays in your folder: the project simply leaves it out from then on. The last frame of a task cannot be
@@ -532,17 +532,22 @@ it, which helps when the camera or distance changes. Leave it empty to search th
 change look** lists classes that are states of one part (see *Track through a video*). The Settings section also
 shows the device (GPU or CPU) and GPU memory in use.
 
-**Start over.** Under **Start over** on the same tab, **Reset this task…** removes every label, image class and
-confirmation from the task you are in, and makes its jobs new again (stage annotation, state new): a fresh task on
-the same frames with the same classes. **Reset the whole project…** does the same for every task. Both ask first;
-Ctrl+Z brings the labels back while the page stays open (the jobs stay new). A running job must finish or be stopped
-first. To keep a copy for good, make a backup first (see *Backup and restore*).
+## Start over: reset all annotations of a task or the project
+
+To begin again on the same frames, open the inspector's **Settings** tab and find **Start over**. **Reset this
+task…** removes every label, image class and confirmation from the task you are in, and makes its jobs new again
+(stage annotation, state new): a fresh task on the same frames with the same classes. **Reset the whole project…**
+does the same for every task. Both ask first (**Reset the task** or **Reset the project** does it, **Keep the
+labels** changes nothing); Ctrl+Z brings the labels back while the page stays open (the jobs stay
+new). A running job must finish or be stopped first. To keep a copy for good, make a backup first (see *Backup and
+restore*).
 
 ## Delete a class
 
-On the inspector's **Classes** tab, point at a class and click the **×** at the end of its row (on a touch screen
-it is always shown). PartLabeler asks first, then deletes the class together with every label of it in the whole
-project, on every frame and image; the classes after it move up one number (so their number keys change). It cannot
+Added a class by mistake, or a wrong class you no longer need? Remove it (get rid of it) on the inspector's
+**Classes** tab: point at the class and click the **×** at the end of its row (on a touch screen
+it is always shown). PartLabeler asks first (**Delete the class** or **Keep the class**), then deletes the class
+together with every label of it in the whole project, on every frame and image; the classes after it move up one number (so their number keys change). It cannot
 be undone. Classes can also be renamed, recoloured or removed on the project page (**Edit labels**).
 
 ## A reference for checking lit parts in production

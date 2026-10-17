@@ -519,7 +519,7 @@ export default function home(root) {
     <section class="h-hero" aria-labelledby="h-title">
       <div>
         <h1 id="h-title"><span class="h-in" style="--d:0">Box a part once.</span><span class="h-in" style="--d:1">Track it through the whole video.</span></h1>
-        <p class="h-lede h-in" style="--d:2">Click a part and SAM 3 outlines it. Tracking carries the boxes through the video, you confirm what's right,
+        <p class="h-lede h-in" style="--d:2">Click a part and it is outlined for you. Tracking carries the boxes through the video, you confirm what's right,
           and the dataset exports to YOLO, COCO, CVAT, Pascal VOC or Label Studio. Boxes, exact outlines or one class per image,
           with smart grouping to sort a messy folder. Everything runs on this computer.</p>
         <div class="h-actions h-in" style="--d:3">

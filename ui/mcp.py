@@ -198,6 +198,18 @@ def _run(sess, msg, wait_s=120) -> list[str]:
 
 
 # ---- projects ------------------------------------------------------------------------------------------
+@tool("How to do something in PartLabeler: the user guide's sections that best match a question (where a button "
+      "is, which key, what a feature does). Answer how-to questions from these, never from memory.", ["question"],
+      question=S("The person's question, in their own words"))
+def how_to(args):
+    from engine import assistant
+    from engine.accounts import box_managed
+    secs = assistant.safe_sections() if box_managed() else None   # a box: the guide cleaned like its screens
+    found = assistant.best_sections(str(args.get("question") or ""), 2, secs)
+    return {"sections": [{"title": t, "text": b[:3000]} for t, b in found]} if found else \
+        {"sections": [], "note": "The guide has nothing on that: say so instead of guessing."}
+
+
 @tool("List the projects in your projects folder with their type, labels and progress.")
 def list_projects(args):
     return {"projects": [{"name": s["name"], "type": s["task"], "labels": s["classes"], "tasks": len(s["tasks"]),

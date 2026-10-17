@@ -985,7 +985,7 @@ function render({ model, el }) {
             <span class="pl-zoom-v" aria-live="polite">100%</span><button type="button" data-a="zoomIn" aria-label="Zoom in" title="Zoom in (+, or Ctrl+wheel at the pointer)">${ic("zoomIn")}</button>
             <button type="button" data-a="zoomFit" title="Show the whole frame (Z)">Fit</button></div>
           <div class="pl-hint" hidden><span><b>Start here.</b> Pick a tool on the left and a class on the right (or press <kbd>1</kbd>–<kbd>9</kbd>),
-            then click a part: <b>Click to outline</b> lets SAM 3 find its edge for you. Every tool shows how it works above the picture;
+            then click a part: <b>Click to outline</b> finds its edge for you. Every tool shows how it works above the picture;
             <kbd>?</kbd> lists all the keys.</span>
             <button type="button" data-a="hideHint">Got it</button></div></div>
       </div>
@@ -1039,7 +1039,7 @@ function render({ model, el }) {
               <label class="pl-range">Sureness <input type="range" class="pl-tthr" min="0.2" max="0.9" step="0.05" value="0.5"
                 name="text-sureness" aria-label="Lowest sureness to keep"><span class="pl-tthr-v">0.50</span></label>
               <label class="pl-chk"><input type="checkbox" class="pl-tconf" name="text-confirmed"> Also confirmed frames</label>
-              <span class="pl-src">SAM 3 boxes every object you name; a new name becomes a class. What it finds is marked to check.</span></section>
+              <span class="pl-src">Every object you name is found and boxed; a new name becomes a class. What it finds is marked to check.</span></section>
           </div>
           <div class="pl-panel" data-panel="export" role="tabpanel" aria-label="Export" hidden>
             <section class="pl-export"><h2>Export dataset</h2>
@@ -1139,7 +1139,7 @@ function render({ model, el }) {
       <button type="button" data-a="closeHelp">Close</button></header>
       <div class="pl-help-grid">
         <h3>Tools</h3>
-        <div><span>Click to outline (SAM 3 finds the edge)</span><kbd>C</kbd></div>
+        <div><span>Click to outline (the edge is found for you)</span><kbd>C</kbd></div>
         <div><span>Select and adjust</span><kbd>V</kbd></div>
         <div><span>Box (press again: drag, two clicks, four edge points)</span><kbd>B</kbd></div>
         <div><span>Polygon</span><kbd>O</kbd></div>
@@ -1457,18 +1457,18 @@ function render({ model, el }) {
 
   // The bar above the picture: the active tool, how it works, and its options
   const HOWTO = {
-    click: () => "Click a part: SAM 3 finds its edge. M: larger outline · Shift/Alt+click: grow/shrink · Ctrl+click: select.",
+    click: () => "Click a part: its edge is found for you. M: larger outline · Shift/Alt+click: grow/shrink · Ctrl+click: select.",
     select: () => seg() ? "Click a part to select it, then pick a class, press Del, or fix it with the brush."
       : "Click a part to select it. Drag a handle to resize the box, or inside it to move it.",
     box: () => ({ drag: "Drag from one corner to the other.", two: "Click one corner, then the opposite one.",
-                  four: "Click the part's top, bottom, left and right edges." }[S.boxMode]) + (seg() ? " SAM 3 outlines it." : ""),
+                  four: "Click the part's top, bottom, left and right edges." }[S.boxMode]) + (seg() ? " The part inside is outlined for you." : ""),
     polygon: () => seg() ? "Click each corner; click the first one again (or Enter) to close."
       : "Click around the part, then the first corner again (or Enter): the box fits.",
     ellipse: () => "Drag around a round part. Hold Shift for a circle.",
     brush: () => seg() ? "Paint onto the selected outline, or a new part of the current class." : "Paint over the part: the box fits what you painted.",
     erase: () => "Erase from the selected outline (Ctrl+click it first). Erasing all of it deletes the part.",
-    smartBrush: () => "Paint roughly over what is missing: SAM 3 keeps only the part, so the paint stops at its edge.",
-    smartErase: () => "Erase roughly over what does not belong: SAM 3 keeps the part's own edge.",
+    smartBrush: () => "Paint roughly over what is missing: only the part is kept, so the paint stops at its edge.",
+    smartErase: () => "Erase roughly over what does not belong: the part's own edge stays.",
     pan: () => S.zoom > 1 ? "Drag to move around the frame. With any tool, hold Space and drag." : "Zoom in first (Ctrl+wheel or +), then drag to move around.",
   };
   function renderOpts() {
@@ -1715,8 +1715,8 @@ function render({ model, el }) {
       if (!S.data || S.busy || classify()) return;
       const t = view(), n = S.data.boxes?.length || 0, image = t.kind !== "video";
       confirmDanger(`Delete ${image ? "image" : "frame"} ${S.item - t.start + 1} for good?`,
-        `It leaves the project with its ${n} part${n === 1 ? "" : "s"}, and every ${image ? "image" : "frame"} after it `
-        + `moves up one place. ${image ? "The picture itself stays in your folder. " : ""}This cannot be undone.`,
+        `It leaves the project${n ? `, and its ${n} part${n === 1 ? " goes" : "s go"} with it` : ""}; every ${image ? "image" : "frame"} `
+        + `after it moves up one place. ${image ? "The picture itself stays in your folder. " : ""}This cannot be undone.`,
         "Keep the frame", "Delete for good", { type: "delete_frames", items: [S.item] });
     },
     resetTask: () => {

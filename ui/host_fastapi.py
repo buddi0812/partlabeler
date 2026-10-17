@@ -1058,7 +1058,9 @@ def create_project(body: dict = Body(...)) -> dict:
     src = Path(video or images)
     if not src.exists():
         raise HTTPException(400, f"Not found: {src}")
-    labels, parent, every = body.get("labels") or None, (body.get("parent") or "").strip() or None, int(body.get("every") or 5)
+    # "labels" is either the label constructor's list (read above) or a YOLO labels folder to import
+    labels = body["labels"] if isinstance(body.get("labels"), str) and body["labels"].strip() else None
+    parent, every = (body.get("parent") or "").strip() or None, int(body.get("every") or 5)
     task, frame_format = body.get("task") or "detect", body.get("frame_format") or "video"
     if task not in ("detect", "segment", "classify"):
         raise HTTPException(400, f"Unknown label type {task!r}")
@@ -1066,17 +1068,19 @@ def create_project(body: dict = Body(...)) -> dict:
         raise HTTPException(400, f"Unknown frame format {frame_format!r}")
 
     def job(progress, should_stop):
-        p = Project.create(folder, classes, video=video, images=images, every=every,
+        p = Project.create(folder, classes, video=video, images=images, every=every, colors=colors,
                            progress=lambda i, n, t: progress(i, n, t), task=task, frame_format=frame_format)
-        if parent:
-            p.set_meta(parent=parent)
-        res = {"name": name, "items": len(p.items)}
-        if labels:
-            progress(0, 0, "Importing labels")
-            res["imported"] = p.import_yolo(labels)
-        progress(1, 1, f"Created {name}: {len(p.items)} {'frames' if video else 'images'}")
-        p.db.close()
-        return res
+        try:
+            if parent:
+                p.set_meta(parent=parent)
+            res = {"name": name, "items": len(p.items)}
+            if labels:
+                progress(0, 0, "Importing labels")
+                res["imported"] = p.import_yolo(labels)
+            progress(1, 1, f"Created {name}: {len(p.items)} {'frames' if video else 'images'}")
+            return res
+        finally:
+            p.db.close()                                  # a failed import must not keep the folder locked
 
     def done(res):
         detail = f"{res['items']} {'frames' if video else 'images'}"

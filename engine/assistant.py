@@ -273,6 +273,7 @@ def clean_messages(messages) -> list[dict]:
 # ---- offline answers from the guide ------------------------------------------------------------
 STOP = set("a an and are be can do does for from how i in is it me my of on or the this to what when where "
            "which why with you your please pls explain tell show about".split())
+SAME = {"remov": "delet", "rid": "delet", "disca": "delet"}   # a question's word stem -> the guide's
 
 
 def sections() -> list[tuple[str, str]]:
@@ -280,19 +281,63 @@ def sections() -> list[tuple[str, str]]:
     return [(m.group(1).strip(), m.group(2).strip()) for m in re.finditer(r"^## (.+)\n([\s\S]*?)(?=^## |\Z)", text, re.M)]
 
 
+def best_sections(question: str, n: int = 1, secs=None) -> list[tuple[str, str]]:
+    """The guide sections that best match a question (title words count most), best first."""
+    secs = sections() if secs is None else secs
+    stems = [w[:5] for w in re.findall(r"[a-z0-9&+]+", (question or "").lower()) if w not in STOP and len(w) > 1]
+    stems += [SAME[s] for s in stems if s in SAME]          # everyday words find the guide's own
+    scored = [(sum(3 * (st in t.lower()) + min(b.lower().count(st), 4) * 0.5 for st in stems), -k) for k, (t, b) in enumerate(secs)]
+    return [secs[-k] for s, k in sorted(scored, reverse=True)[:n] if s > 0]
+
+
 def offline_answer(question: str) -> str:
-    words = [w for w in re.findall(r"[a-z0-9&+]+", (question or "").lower()) if w not in STOP and len(w) > 1]
-    stems = [w[:5] for w in words]
-    best, score = None, 0.0
-    for title, body in sections():
-        t, b = title.lower(), body.lower()
-        s = sum(3 * (st in t) + min(b.count(st), 4) * 0.5 for st in stems)
-        if s > score:
-            best, score = (title, body), s
+    best = best_sections(question)
     if not best:
         topics = ", ".join(t for t, _ in sections()[:12])
         return f"I couldn't find that in my guide. I can help with: {topics}."
-    return f"**{best[0]}**\n\n{best[1]}"
+    return f"**{best[0][0]}**\n\n{best[0][1]}"
+
+
+# ---- the guide as a box's operator may read it (local Rivet's how_to tool) ------------------------
+# On a box (accounts.box_managed()) the same rules as its screens: no model names, paths, ports, URLs or internal
+# ids. Developer-only sections are left out; model names become plain words; any sentence still carrying a path,
+# port, URL, code or id is dropped.
+DEV_ONLY = {"Start the app", "Team server: several people on one PartLabeler", "Use PartLabeler from AI apps and scripts (API)",
+            "A reference for checking lit parts in production", "Notebooks and Google Colab", "Install and requirements",
+            "Update PartLabeler", "Privacy and the helper", "Credits and licences"}
+PLAIN = [(r"SAM 3\.1", "the faster tracker"), (r"Segment Anything(?: 3(?:\.1)?)?|SAM 3|\bSAM\b", "the outline model"),
+         (r"DINOv3|\bDINO\b", "the matching model"), (r"RF-DETR", "the detector")]
+NOT_ON_A_BOX = re.compile(r"`|https?://|localhost|127\.0\.0\.1|[A-Za-z]:\\|~/|%\w+%|\.partlabeler|/api\b|/mcp\b|/ws/|"
+                          r"\b[\w-]+\.(?:json|py|bat|ps1|sh|md|txt|yaml|sqlite|onnx|pt|zip)\b|:\d{2,5}\b|\bports? \d|"
+                          r"\b[A-Z][A-Z0-9]*_[A-Z0-9_]+\b|Gemini|Colab|\bCUDA\b|\bcu1\d\d\b|SAM|DINO|RF-DETR|Qwen|llama|Gemma|CLIP")
+
+
+def customer_safe(body: str) -> str:
+    """A guide section as a box's operator may read it (see above); "" when nothing is left."""
+    for pat, plain in PLAIN:
+        body = re.sub(pat, plain, body)
+    blocks = []
+    for block in re.split(r"\n\s*\n", body):
+        units = []                                    # a paragraph, a list item or a table row, its lines joined
+        for line in block.splitlines():
+            if not units or re.match(r"\s*(?:[-*|]|\d+\.|#+)\s", line):
+                units.append(line.strip())
+            else:
+                units[-1] += " " + line.strip()
+        kept = []
+        for u in units:
+            lead = re.match(r"(?:[-*]|\d+\.|#+)\s+", u)
+            head, rest = (lead.group(0), u[lead.end():]) if lead else ("", u)
+            text = " ".join(s for s in re.split(r"(?<=[.!?:])\s+(?=[A-Z*(])", rest) if not NOT_ON_A_BOX.search(s))
+            if text.strip() and not text.startswith("|"):
+                kept.append(head + text)
+        if kept:
+            blocks.append("\n".join(kept))
+    return "\n\n".join(blocks).strip()
+
+
+def safe_sections() -> list[tuple[str, str]]:
+    return [(t, b) for t, b in ((t, customer_safe(b)) for t, b in sections() if t not in DEV_ONLY) if b]
 
 
 # ---- talking to Gemini ------------------------------------------------------------------------

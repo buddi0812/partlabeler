@@ -186,7 +186,11 @@ class Project:
         (folder / "project.json").write_text(json.dumps(meta, indent=1), encoding="utf-8")
         p = cls(folder)
         if video or images:
-            p.add_source(video=video, images=images, every=every, progress=progress, **task_options)
+            try:
+                p.add_source(video=video, images=images, every=every, progress=progress, **task_options)
+            except BaseException:
+                p.db.close()                              # or Windows keeps the folder locked (no trash) until a restart
+                raise
         return p
 
     @property

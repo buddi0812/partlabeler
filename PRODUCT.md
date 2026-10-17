@@ -46,6 +46,7 @@ SAM 3 click-to-outline and video tracking are built in, with no separate model s
 
 - Name: PartLabeler. The helper is Rivet, a small robot.
 - Voice: plain English, short sentences, the person's own words for things ("parts", "frames", "confirm"); no jargon, never a raw technical id or error dump shown to a person.
+- No model names on any screen (SAM 3, DINOv3, RF-DETR...): say what happens ("its edge is found for you") or "the outline model". Credits belong in docs/GUIDE.md and the README. A product embedding PartLabeler (Hawk-AI) treats this as a hard rule; tests/test_ui_text.py checks the page text.
 - Per-account appearance (theme and accent) is the person's choice and is honored everywhere.
 
 ## Evidence on Hand

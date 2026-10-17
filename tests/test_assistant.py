@@ -231,3 +231,30 @@ def test_tips_are_fixed_text_and_repeated_first_questions_are_cached(no_key):
     follow_up = [{"role": "user", "text": "How do I track?"}, {"role": "assistant", "text": "Press T."}, {"role": "user", "text": "and back?"}]
     list(assistant.reply(follow_up, key="AIza-test", client=client))
     assert len(calls) == 2                                                            # follow-ups are never cached
+
+
+LEAK = __import__("re").compile(r"SAM|Segment Anything|DINO|RF-DETR|Qwen|llama|Gemma|CLIP|Gemini|[A-Za-z]:\|~/|\.json|"
+                                r"\.py\b|https?://|:\d{2,5}\b|`|127\.0\.0\.1|localhost|\b[A-Z][A-Z0-9]*_[A-Z0-9_]+\b")
+
+
+def test_every_guide_section_a_box_shows_is_clean():
+    """local Rivet's how_to on a box: the guide as its screens would say it - no model names, paths, ports, URLs
+    or ids, in every section it can return, while the how-to parts stay."""
+    safe = assistant.safe_sections()
+    leaks = [(t, m.group(0)) for t, b in safe for m in [LEAK.search(f"{t}\n{b}")] if m]
+    assert not leaks and len(safe) > 25
+    assert "Shift+Delete" in dict(safe)["Delete a frame"] and "Four edge points" in dict(safe)["Manual tools: label without the AI"]
+
+
+@pytest.mark.parametrize("question, section", [
+    ("How do I delete a frame?", "Delete a frame"), ("How can I delete a class?", "Delete a class"),
+    ("How do I get rid of a class I added by mistake?", "Delete a class"),           # QA's everyday wording
+    ("How do I reset all annotations of a task?", "Start over: reset all annotations of a task or the project"),
+    ("How do I draw a polygon?", "Manual tools: label without the AI")])
+def test_how_to_finds_the_section_and_cleans_it_on_a_box(question, section, monkeypatch):
+    import engine.accounts as accounts_mod
+    from ui import mcp
+    assert mcp.how_to({"question": question})["sections"][0]["title"] == section
+    monkeypatch.setattr(accounts_mod, "app_config", lambda: {"box_managed": True})
+    got = mcp.how_to({"question": question})["sections"]
+    assert got[0]["title"] == section and not any(LEAK.search(s["text"]) for s in got)

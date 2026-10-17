@@ -76,6 +76,25 @@ def test_create_needs_classes_and_an_existing_source(client, tmp_path):
     assert "class names" in client.post("/api/projects", json={"name": "x", "images": str(tmp_path)}).json()["detail"]
 
 
+def test_create_with_a_label_list_and_images_then_trash_a_failed_one(client, tmp_path, images, video, monkeypatch):
+    labels = [{"name": "bolt", "color": "#ff0000"}, {"name": "nut", "color": "#00ff00"}]
+    r = client.post("/api/projects", json={"name": "qa", "images": str(images), "task": "segment", "labels": labels})
+    j = wait(client, r.json()["job"])                       # the list is the label constructor, not a YOLO folder
+    assert j["error"] is None and Project(tmp_path / "home" / "qa").labels()[0] == {"name": "bolt", "color": "#ff0000"}
+
+    def broken(self, folder):
+        raise ValueError("unreadable labels")
+    monkeypatch.setattr(Project, "import_yolo", broken)
+    (tmp_path / "yolo").mkdir()
+    r = client.post("/api/projects", json={"name": "bad", "video": str(video), "classes": "a", "labels": str(tmp_path / "yolo")})
+    assert wait(client, r.json()["job"])["error"]          # the import fails after the project was made...
+    assert client.post("/api/projects/bad/trash").status_code == 200   # ...and its database is closed, so it can go
+    (tmp_path / "broken.mp4").write_bytes(b"not a video")
+    with pytest.raises(Exception):                          # a first task that fails closes the database too
+        Project.create(tmp_path / "home" / "worse", ["a"], video=tmp_path / "broken.mp4")
+    __import__("shutil").rmtree(tmp_path / "home" / "worse")  # Windows refuses while the database is open
+
+
 def test_browse_and_classes_file(client, tmp_path, images):
     top = client.get("/api/browse").json()
     assert top["path"] == "" and top["dirs"]

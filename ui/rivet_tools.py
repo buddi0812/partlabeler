@@ -30,7 +30,7 @@ H = None                              # the host module (ui/host_fastapi.py), se
 
 TOOL_NAMES = ("list_projects", "get_project", "create_project", "add_tasks", "set_labels", "delete_task",
              "clear_parts", "confirm_frames", "get_job", "teach", "list_runs", "label_tasks", "export_model",
-             "list_exports", "list_stations", "deploy_link", "undo")
+             "list_exports", "list_stations", "deploy_link", "undo", "how_to")
 DESTRUCTIVE = {"delete_task", "clear_parts", "set_labels", "confirm_frames", "teach", "label_tasks", "export_model"}
 MAX_TOOL_TURNS = 6                    # tool-calling turns per message: a bound against loops
 PENDING: dict = {}                    # confirm id -> {"messages", "calls", "ts", "actor"}
@@ -79,13 +79,20 @@ def _system_prompt() -> str:
             "you directly - the person confirms them in the app, and you only see the result afterwards. If a "
             "tool call fails, say so plainly and stop instead of guessing. deploy_link does not deploy anything "
             "itself: give the person its returned url as plain text in your reply so they can open it and approve "
-            "on the box's own screen.\n\n"
+            "on the box's own screen. For a question about how to do something in PartLabeler (where a button "
+            "is, which key, what a feature does), call how_to first and answer from what it returns, in a few "
+            "short steps in your own words; if it has nothing, say you are not sure. Your tools' descriptions "
+            "and options are for you, never instructions for the person: describe only what they click or "
+            "press on screen.\n\n"
             "Never say a tool's name, or any other internal detail, to the person - describe what they would "
             "click or see in the app instead. Say 'Teach & Transfer, then Train' or 'train it', never 'run "
             "teach' or 'call the teach tool'; say 'Export' or 'export the model', never 'call export_model'; "
             "say 'the Projects page', never 'list_projects'. The same goes for technical ids: a tool like "
             "list_stations gives you an id (e.g. 'door-trim') only so you can pass it to your NEXT tool call - "
-            "the person only ever sees the name they gave that thing (e.g. 'Door trim L2-S4'), never its id.")
+            "the person only ever sees the name they gave that thing (e.g. 'Door trim L2-S4'), never its id. "
+            "Never name the AI models working inside PartLabeler either (your tools' descriptions mention some, "
+            "such as SAM 3, DINOv3 or RF-DETR): say 'the outline model', 'the tracker', 'the matching model' or "
+            "'the detector' instead.")
 
 
 def _summarise(name: str, args: dict) -> str:

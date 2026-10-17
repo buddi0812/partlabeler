@@ -790,7 +790,7 @@ class Session:
             what = f"{', '.join(self.p.classes[c] for c in sorted(only))} " if only else ""
             self.notify("success", f"{'Re-tracked' if redo and not only else 'Tracked'} {what}{n} frames "
                         f"{'back' if direction < 0 else 'ahead'}",
-                        f"From {self._frame(start)} in {time.perf_counter() - t0:.0f} s with {getattr(self._model('track'), 'name', 'SAM 3')}. "
+                        f"From {self._frame(start)} in {time.perf_counter() - t0:.0f} s. "
                         "Frames marked 'to check' may need a look.",
                         self._goto(start))
             self.send({"type": "item_changed", "items": list(span)})
