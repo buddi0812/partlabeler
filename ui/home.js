@@ -222,6 +222,7 @@ button:focus-visible, a:focus-visible, summary:focus-visible { outline:2px solid
 .h-runs { display:grid; gap:10px; margin-top:18px; }
 .h-runs > details { border:1px solid var(--line); border-radius:12px; padding:12px 14px; background:var(--paper); }
 .h-runs summary { cursor:pointer; display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+.h-support > summary { cursor:pointer; width:max-content; font-size:12.5px; color:var(--steel); margin:6px 0; }
 .h-report { font-size:12.5px; background:var(--alu); border-radius:10px; padding:10px 12px; max-height:360px; overflow:auto; white-space:pre-wrap;
   font-family:ui-monospace,"Cascadia Mono",Consolas,monospace; margin:10px 0; }
 .h-trash summary { cursor:pointer; font:600 17px var(--display); list-style:none; display:flex; gap:10px; align-items:baseline; }
@@ -579,7 +580,7 @@ export default function home(root) {
           Transfer then labels similar videos or image folders in the same format, for you to check in the annotator.</p>
       <ol class="h-rail">
         <li style="--i:0"><i>1</i><b>Teach</b><span>Trains a detector on your labeled video, on this computer.</span></li>
-        <li style="--i:1"><i>2</i><b>Prove</b><span>Scores it on frames it never trained on. Target: mAP50 of 0.90.</span></li>
+        <li style="--i:1"><i>2</i><b>Prove</b><span>Checks it on frames it never trained on: how well it learned, target 90 %.</span></li>
         <li style="--i:2"><i>3</i><b>Transfer</b><span>Labels similar videos or folders with the same classes and file names. Or skip training with a quick preview.</span></li>
         <li style="--i:3"><i>4</i><b>Review</b><span>Opens each result in the annotator to check and export.</span></li></ol>
       <div class="h-teach-off h-err" hidden>Teach &amp; Transfer is not installed: run the installer again without -NoTeach.</div>
@@ -589,9 +590,10 @@ export default function home(root) {
           <div class="h-field"><span>Labeled dataset folder</span>
             <div class="h-row"><input type="text" name="dataset" required aria-label="Labeled dataset folder" placeholder="Folder with images/, labels/ and classes.txt…"><button type="button" data-browse="dataset">Browse…</button></div></div>
           <label class="h-field"><span>Run name</span><input type="text" name="name" placeholder="e.g. line2_v1…"></label>
+          <details class="h-support"><summary>Details for support</summary>            <!-- support -->
           <div class="h-row" style="align-items:end">
             <label class="h-field"><span>Model size</span><select name="size"><option value="nano">Nano (fastest)</option><option value="small" selected>Small</option><option value="medium">Medium (best)</option></select></label>
-            <label class="h-field"><span>Epochs</span><input type="number" name="epochs" min="1" value="30"></label></div>
+            <label class="h-field"><span>Epochs</span><input type="number" name="epochs" min="1" value="30"></label></div></details>   <!-- support -->
           <label class="h-field"><span>Parent object (optional)</span><input type="text" name="parent" placeholder="e.g. engine block, circuit board…"></label>
           <div class="h-row"><button class="primary" type="submit">Start teaching</button></div>
           <div class="h-teachjob"></div>
@@ -863,13 +865,12 @@ export default function home(root) {
     if (keep) sel.value = keep;
     showQuick();
     $(".h-runs").innerHTML = runs.map((r) => {
-      const k = r.report?.knowledge || r.report?.held_out || {};
       const pass = r.report?.passed;
       const outs = r.outputs.map((o) => `<div class="h-src"><span title="${esc(o.path)}">${esc(o.name)}: ${o.summary ? `${o.summary.frames ?? "?"} frames, ${o.summary.boxes ?? "?"} boxes${o.summary.frames_to_check?.length ? `, ${o.summary.frames_to_check.length} to check` : ""}` : "in progress"}</span>
         <button type="button" data-review="${esc(o.path)}">Review in annotator</button></div>`).join("");
       return `<details><summary><b>${esc(r.name)}</b> ${r.mode === "quick" ? `<span class="h-chip">quick, no training</span>` : pass === true ? `<span class="h-chip ok">targets met</span>` : pass === false ? `<span class="h-chip warn">below target</span>` : r.ready ? "" : `<span class="h-chip">not finished</span>`}
-        ${k.mAP50 != null ? `<span class="h-sub">held-out mAP50 ${k.mAP50}</span>` : ""}</summary>
-        ${r.report_md ? `<div class="h-report">${esc(r.report_md)}</div>` : ""}${outs ? `<h3 style="font:600 15px var(--display);margin:10px 0 6px">Labeled outputs</h3><div style="display:grid;gap:6px">${outs}</div>` : ""}</details>`;
+        ${r.report?.knowledge_score != null ? `<span class="h-sub">How well it learned: ${Math.round(r.report.knowledge_score)} %</span>` : ""}</summary>
+        ${r.report_md ? `<details class="h-support"><summary>Details for support</summary><div class="h-report">${esc(r.report_md)}</div></details>` : ""}${outs ? `<h3 style="font:600 15px var(--display);margin:10px 0 6px">Labeled outputs</h3><div style="display:grid;gap:6px">${outs}</div>` : ""}</details>`;
     }).join("");
   }
   teachForm.addEventListener("submit", async (e) => {

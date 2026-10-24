@@ -30,6 +30,7 @@ def test_task_dataset_writes_confirmed_frames_as_boxes(tmp_path, video):
     assert (out / "labels" / f"{names[0]}.txt").read_text().split()[0] == "0"
     assert (out / "labels" / f"{names[1]}.txt").read_text() == ""
     assert (out / "classes.txt").read_text().split() == CLASSES
+    assert json.loads((out / "spans.json").read_text()) == {p.sources[0]["name"]: [0, 18]}   # the whole task
 
 
 def fake_run(tmp_path, monkeypatch, boxes):
@@ -70,7 +71,7 @@ def test_label_tasks_fills_unchecked_frames_and_keeps_part_ids(tmp_path, video, 
     a, b = p.ranges[t2]
     p.put(a + 3, 99, 2, [30, 30, 40, 40]); p.set_reviewed(a + 5)               # a person's frame and a confirmed one
     run = fake_run(tmp_path, monkeypatch, [(0, [1, 1, 10, 10], 0.9), (1, [20, 20, 30, 30], 0.8),
-                                           (2, [20, 20, 30, 31], 0.5)])        # a second label on the same box
+                                           (1, [20, 20, 30, 31], 0.5)])        # the same part twice
     s = Session(p, lambda m: None)
     said = s.call({"type": "label_tasks", "run": str(run), "tasks": [t2]})
     assert "Labeled 8 frames with run" in said[-1] and "16 parts to check" in said[-1]
@@ -87,3 +88,22 @@ def test_label_tasks_fills_unchecked_frames_and_keeps_part_ids(tmp_path, video, 
     s.call({"type": "undo"})
     s.call({"type": "undo"})
     assert p.boxes(a) == [] and [x["cls"] for x in p.boxes(a + 3)] == [2]
+
+
+
+def test_confirm_the_tracked_frames_takes_the_pre_labelled_ones(tmp_path, video, monkeypatch):
+    """Hawk-AI's "Pre-label with the last model" (2026-10-24): the model's sure parts rank as tracked (status 2), so the
+    job menu's "Confirm the tracked frames" (canvas.js: status 2 or 3, not flagged) takes them; an unsure one is
+    flagged and left for a person; the confirmed ones train the next run."""
+    p, (_, t2) = two_tasks(tmp_path, video)
+    a, b = p.ranges[t2]
+    run = fake_run(tmp_path, monkeypatch, [(0, [1, 1, 10, 10], 0.9)])
+    s = Session(p, lambda m: None)
+    s.call({"type": "label_tasks", "run": str(run), "tasks": [t2]})
+    p.db.execute("UPDATE boxes SET score=0.4 WHERE item=?", (a + 2,))           # one part the model was unsure of
+    st, flagged = p.statuses(), set(p.flags())
+    picked = [i for i in range(a, b) if st[i] in (2, 3) and i not in flagged]  # what the page sends
+    assert picked == [i for i in range(a, b) if i != a + 2]
+    s.call({"type": "review_many", "items": picked, "item": a})
+    assert all(p.is_reviewed(i) for i in picked) and not p.is_reviewed(a + 2)
+    assert task_dataset(p, t2, tmp_path / "ds")["frames"] == len(picked)

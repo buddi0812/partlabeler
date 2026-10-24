@@ -154,3 +154,199 @@ def test_the_python_client_against_a_running_server(v1, video, tmp_path):
         assert e.value.status == 401
     finally:
         server.should_exit = True
+
+
+def test_import_a_handed_over_project_once_per_source(v1):
+    """Hawk-AI's SOP studio hands over frames and its boxes (app-015-plan (b)): one project per station + demo
+    version, images as a task, boxes as parts to check; a second hand-over adds only the new images."""
+    c, _ = v1
+    b64 = base64.b64encode(jpeg()).decode()
+    body = {"name": "Door trim", "source": {"station": "l2-s4", "demo_version": 3}, "classes": ["clip", "door panel"],
+            "images": [{"name": "pin-1.jpg", "jpeg_b64": b64}, {"name": "run-2.jpg", "jpeg_b64": b64}],
+            "boxes": [{"image": "pin-1.jpg", "class": "door panel", "x": 0.25, "y": 0.25, "w": 0.5, "h": 0.5}]}
+    r = c.post("/api/v1/projects/import", json=body).json()
+    assert (r["project_id"], r["images_added"], r["boxes_added"], r["task"]) == ("Door trim", 2, 1, 1)
+    assert r["url"].endswith("/p/Door trim")
+    p = host.project("Door trim")
+    assert p.classes == ["clip", "door panel"] and sorted(p.statuses()) == [0, 2]      # the box: a part to check
+    again = c.post("/api/v1/projects/import", json={**body, "name": "Renamed", "classes": ["clip", "hinge"],
+                                                    "images": body["images"] + [{"name": "run-3.jpg", "jpeg_b64": b64}]}).json()
+    assert (again["project_id"], again["images_added"], again["task"]) == ("Door trim", 1, 2)
+    assert host.project("Door trim").classes == ["clip", "door panel", "hinge"]
+    other = c.post("/api/v1/projects/import", json={**body, "source": {"station": "l2-s4", "demo_version": 4}}).json()
+    assert other["project_id"] == "Door trim 2"
+    bad = {**body, "source": {"station": "x", "demo_version": 1}, "boxes": [{**body["boxes"][0], "class": "nope"}]}
+    assert c.post("/api/v1/projects/import", json=bad).status_code == 400
+    assert not (host.home() / "Door trim 3").exists()                     # refused before anything is stored
+    assert c.post("/api/v1/projects/import", json={**body, "images": [{"name": "a.jpg", "jpeg_b64": "bm90"}]}).status_code == 400
+
+
+def test_import_with_hawk_apis_service_key_lands_in_the_default_projects_folder(tmp_path, monkeypatch):
+    """hawk-api holds only the box's models_token: with it (local only) and no account, the hand-over goes into the
+    app's default projects folder, the one every account sees unless it picked its own."""
+    import engine.accounts as accounts_mod
+    monkeypatch.setattr(accounts_mod, "app_config", lambda: {"models_token": "right-token"})
+    body = {"name": "Door trim", "source": {"station": "l2-s4", "demo_version": 3}, "classes": ["clip"],
+            "images": [{"name": "pin-1.jpg", "jpeg_b64": base64.b64encode(jpeg()).decode()}], "boxes": []}
+    with app_client(tmp_path, signed_in=False) as c:
+        url = "/api/v1/projects/import"
+        assert c.post(url, json=body).status_code == 403
+        assert c.post(url, json=body, headers={"X-Hawk-Token": "wrong"}).status_code == 403
+        assert c.post(url, json=body, headers={"X-Hawk-Token": "right-token", "X-Forwarded-For": "10.0.0.5"}).status_code == 403
+        r = c.post(url, json=body, headers={"X-Hawk-Token": "right-token"})
+        assert r.status_code == 200 and r.json()["images_added"] == 1
+        assert (tmp_path / "home" / "Door trim" / "project.json").exists()
+        assert c.get(url).status_code == 401                 # only that exact POST is open: a project named "import" isn't
+        assert c.get("/api/v1/train/queue", headers={"X-Hawk-Token": "right-token"}).status_code == 200
+        assert c.get("/api/v1/train/queue").status_code == 403
+        assert c.post("/api/v1/projects/Door trim/train", json={}, headers={"X-Hawk-Token": "right-token"}).status_code == 400
+        assert c.get("/api/v1/projects/Door trim").status_code == 401        # the rest still needs an account
+
+
+def test_import_one_project_per_task_type_and_classify_takes_each_images_class(v1):
+    c, _ = v1
+    b64 = base64.b64encode(jpeg()).decode()
+    src = {"station": "l2-s4", "demo_version": 3}
+    det = c.post("/api/v1/projects/import", json={"name": "D4", "source": src, "classes": ["clip"],
+                                                  "images": [{"name": "a.jpg", "jpeg_b64": b64}]}).json()
+    seg = c.post("/api/v1/projects/import", json={"name": "D4 outlines", "type": "segment", "source": src, "classes": ["clip"],
+                                                  "images": [{"name": "a.jpg", "jpeg_b64": b64}]}).json()
+    assert det["project_id"] == "D4" and seg["project_id"] == "D4 outlines" and seg["images_added"] == 1
+    assert host.project("D4 outlines").task == "segment"
+    body = {"name": "D4 states", "type": "classify", "source": src, "classes": ["clip_seated", "clip_missing"],
+            "images": [{"name": "a.jpg", "jpeg_b64": b64, "class": "clip_seated"}, {"name": "b.jpg", "jpeg_b64": b64, "class": "clip_missing"},
+                       {"name": "c.jpg", "jpeg_b64": b64}]}
+    cls = c.post("/api/v1/projects/import", json=body).json()
+    assert (cls["project_id"], cls["images_added"], cls["classes_added"]) == ("D4 states", 3, 2)
+    p = host.project("D4 states")
+    assert p.task == "classify" and sorted(p.statuses()) == [0, 2, 2]      # two classes to check, one image without
+    assert c.post("/api/v1/projects/import", json={**body, "boxes": [{"image": "a.jpg", "class": "clip_seated", "x": 0, "y": 0, "w": .5, "h": .5}]}).status_code == 400
+    assert c.post("/api/v1/projects/import", json={**body, "images": [{"name": "d.jpg", "jpeg_b64": b64, "class": "nope"}]}).status_code == 400
+
+
+def test_the_training_queue_waits_for_room_then_teaches_and_exports(v1, monkeypatch):
+    """Setup flow v2: send a project to training; it waits while the GPU is full, then runs Teach and the export,
+    one at a time, and answers to the box's service key too. (Teach and the export stubbed: no GPU here.)"""
+    from engine import hw
+    from ui import trainq
+    c, _ = v1
+    b64 = base64.b64encode(jpeg()).decode()
+    body = {"name": "D4", "source": {"station": "l2-s4", "demo_version": 3}, "classes": ["clip"],
+            "images": [{"name": "a.jpg", "jpeg_b64": b64}],
+            "boxes": [{"image": "a.jpg", "class": "clip", "x": 0.2, "y": 0.2, "w": 0.3, "h": 0.3}]}
+    assert c.post("/api/v1/projects/import", json=body).status_code == 200
+    assert c.post("/api/v1/projects/D4/train", json={}).status_code == 400            # nothing confirmed yet
+    host.project("D4").set_reviewed(0)
+    free = {"gb": 0.5}
+    monkeypatch.setattr(hw, "free_memory_gb", lambda: free["gb"])
+    monkeypatch.setattr(trainq, "POLL_S", 0.2)
+    taught = []
+
+    def teach(b):
+        taught.append(b)
+        return {"run": b["name"], "job": host.start_job("teach", lambda progress, stop: (progress(1, 1, "epoch 1"),
+                                                       {"passed": True, "knowledge_score": 91.0})[1])}
+    monkeypatch.setattr(host, "teach", teach)
+    monkeypatch.setattr(host, "export_model", lambda b: {"job": host.start_job("export", lambda progress, stop: {"path": "x"})})
+    est = c.get("/api/v1/projects/D4/train/estimate").json()
+    assert est["frames"] == 1 and est["size"] == "small" and est["minutes"][0] <= est["minutes"][1] and est["need_gb"] > 1
+    r = c.post("/api/v1/projects/D4/train", json={"confirmed_only": True}).json()
+    assert r["position"] == 0 and r["state"] == "queued" and r["minutes"] == est["minutes"]
+
+    def until(ok, timeout=20):
+        t0 = time.time()
+        while not ok():
+            assert time.time() - t0 < timeout, "timed out"
+            time.sleep(0.1)
+    until(lambda: c.get(f"/api/v1/train/runs/{r['run']}").json()["state"] == "waiting_for_room")
+    w = c.get(f"/api/v1/train/runs/{r['run']}").json()
+    assert w["free_gb"] == 0.5 and w["need_gb"] > 1 and not taught
+    free["gb"] = 11.0                                                                # the box made room
+    until(lambda: c.get(f"/api/v1/train/runs/{r['run']}").json()["state"] == "done")
+    d = c.get(f"/api/v1/train/runs/{r['run']}").json()
+    assert (d["passed"], d["knowledge_score"], d["export_id"], d["progress"]) == (True, 91.0, r["run"], 1.0)
+    assert taught[0]["size"] == "small" and taught[0]["tasks"] == [1]
+    assert any(x["run"] == r["run"] for x in c.get("/api/v1/train/queue").json()["runs"])
+    assert c.get("/api/v1/train/runs/nope").status_code == 404
+    free["gb"] = 0.5                                                                 # no room: it waits, then is cancelled
+    r2 = c.post("/api/v1/projects/D4/train", json={}).json()
+    until(lambda: c.get(f"/api/v1/train/runs/{r2['run']}").json()["state"] == "waiting_for_room")
+    assert c.post(f"/api/v1/train/runs/{r2['run']}/cancel").json()["state"] == "cancelled"
+    time.sleep(0.5)
+    assert c.get(f"/api/v1/train/runs/{r2['run']}").json()["state"] == "cancelled" and len(taught) == 1
+
+
+def test_import_hawk_recordings_as_video_tasks_once_and_only_from_its_media_folder(v1, tmp_path, monkeypatch):
+    """Hawk-AI hands over its recordings as video tasks (Track works there): only videos in hawk_media_dir's
+    recorded/ or golden/, each once per project, every Nth frame, cut to the camera's work area when asked."""
+    c, _ = v1
+    import av
+    import engine.accounts as accounts_mod
+    media = tmp_path / "media"
+    (media / "recorded" / "cam1").mkdir(parents=True)
+    clip = media / "recorded" / "cam1" / "r1.mp4"
+    with av.open(str(clip), "w") as out:
+        s = out.add_stream("mpeg4", rate=10)
+        s.width, s.height, s.pix_fmt = 64, 48, "yuv420p"
+        for i in range(30):
+            fr = av.VideoFrame(64, 48, "yuv420p")
+            fr.pts = i
+            for p in s.encode(fr):
+                out.mux(p)
+        for p in s.encode():
+            out.mux(p)
+    real = accounts_mod.app_config
+    monkeypatch.setattr(accounts_mod, "app_config", lambda: {**real(), "hawk_media_dir": str(media)})
+    src = {"station": "pen", "demo_version": 0}
+    body = {"name": "Pen cycles", "source": src, "classes": ["pen_tube"],
+            "videos": [{"name": "r1", "task": "Cycle 1", "path": str(clip), "every": 3, "crop": [0, 0, 0.5, 1]}]}
+    r = c.post("/api/v1/projects/import", json=body).json()
+    assert (r["project_id"], r["videos_added"], r["images_added"]) == ("Pen cycles", 1, 0)
+    t, = host.project("Pen cycles").sources
+    assert (t["kind"], t["name"], t["every"], t["crop"], t["info"]["width"]) == ("video", "Cycle_1", 3, [0, 0, 0.5, 1], 32)   # task names: its own rule (no spaces)
+    assert c.post("/api/v1/projects/import", json=body).json()["videos_added"] == 0         # never twice
+    outside = tmp_path / "elsewhere.mp4"
+    outside.write_bytes(clip.read_bytes())
+    for bad in (str(outside), str(media / "recorded" / ".." / ".." / "elsewhere.mp4"), str(media / "recorded" / "cam1")):
+        r = c.post("/api/v1/projects/import", json={**body, "videos": [{"name": "x", "path": bad}]})
+        assert r.status_code == 400
+    assert len(host.project("Pen cycles").sources) == 1
+
+
+
+def test_prelabel_labels_the_new_recordings_with_a_finished_run_key_only(tmp_path, monkeypatch, video):
+    """Hawk-AI's "Pre-label with the last model" (2026-10-24): with hawk-api's key, the tasks with no confirmed frame get
+    the run's model labels (to check); a project with a part the model never learned is refused (422)."""
+    import json as _json
+    import time as _time
+    import supervision as sv
+    import engine.accounts as accounts_mod
+    from engine import detector
+    from engine.project import Project
+    monkeypatch.setattr(accounts_mod, "app_config", lambda: {"models_token": "right-token"})
+    monkeypatch.setattr(detector, "load", lambda *a, **k: object())
+    monkeypatch.setattr(detector, "predict", lambda model, img, thr: sv.Detections(
+        xyxy=np.array([[1, 1, 10, 10]], float), class_id=np.array([0]), confidence=np.array([0.9])))
+    with app_client(tmp_path, signed_in=False) as c:
+        p = Project.create(host.home() / "Pen bench cycles", ["pen"], video=video, every=2)   # task 1: done before
+        p.add_source(video=video, every=2)                                                 # task 2: a new recording
+        old, new = (t["id"] for t in p.sources)
+        p.set_reviewed(p.ranges[old][0])
+        run = host.runs_dir() / "Pen bench cycles_1"
+        run.mkdir(parents=True)
+        (run / "settings.json").write_text(_json.dumps({"classes": ["pen"], "checkpoint": "m.pth", "size": "small",
+                                                        "resolution": 640, "threshold": 0.5, "parent": None}))
+        url, key = "/api/v1/projects/Pen bench cycles/prelabel", {"X-Hawk-Token": "right-token"}
+        assert c.post(url, json={"run": run.name}).status_code == 403
+        r = c.post(url, json={"run": run.name}, headers=key)
+        assert r.status_code == 200 and r.json() == {"tasks": 1, "state": "started"}, r.text
+        q = host.project("Pen bench cycles")
+        t0 = _time.time()
+        while _time.time() - t0 < 30 and not all(q.boxes(k) for k in range(*q.ranges[new])):
+            _time.sleep(0.1)
+        assert all(q.boxes(k) and all(x["source"] == "imported" for x in q.boxes(k)) for k in range(*q.ranges[new]))
+        assert not any(q.boxes(k) for k in range(*q.ranges[old]))                          # a task with a confirmed frame
+        (run / "settings.json").write_text(_json.dumps({"classes": ["cap"], "checkpoint": "m.pth", "size": "small",
+                                                        "resolution": 640}))
+        assert c.post(url, json={"run": run.name}, headers=key).status_code == 422        # it never learned "pen"
+        assert c.post(url, json={"run": "nope"}, headers=key).status_code == 404

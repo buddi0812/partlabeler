@@ -36,6 +36,11 @@ STRONG = {
     "GaussNoise": {"std_range": (0.01, 0.05), "p": 0.2},
     "RandomGamma": {"gamma_limit": (80, 120), "p": 0.3},    # exposure
     "Affine": {"scale": (0.85, 1.15), "translate_percent": (-0.05, 0.05), "rotate": (-7, 7), "shear": (-5, 5), "p": 0.5},
+    "CLAHE": {"clip_limit": (2, 4), "tile_grid_size": (8, 8), "p": 0.4},          # local contrast: shine, uneven light
+    # a hand or a tool over part of the picture: 1-3 holes of 10-25 % of the training image (the work area) each; a
+    # part a hole hides entirely loses its label, one it hides in part keeps its visible part (train() makes rfdetr
+    # pass the boxes through it)
+    "CoarseDropout": {"num_holes_range": (1, 3), "hole_height_range": (0.1, 0.25), "hole_width_range": (0.1, 0.25), "p": 0.4},
 }
 MEDIUM = {
     "HueSaturationValue": {"hue_shift_limit": 30, "sat_shift_limit": 30, "val_shift_limit": 30, "p": 0.5},
@@ -43,7 +48,32 @@ MEDIUM = {
     "GaussianBlur": {"blur_limit": 3, "p": 0.1},
     "Affine": {"scale": (0.9, 1.1), "translate_percent": (-0.03, 0.03), "p": 0.3},
 }
-AUGS = ("strong", "medium", "off")
+# A worn camera (helmet, chest, head strap; Hawk-AI's "Worn" mounting): STRONG's colours and exposure, plus the
+# movement such a camera sees -- head turns and tilts, motion blur, the picture's angle changing, a compressed
+# wireless stream. Egocentric work blurs with random direction and kernel up to ~7-9 px and varies the viewpoint
+# (e.g. arXiv 1606.07256, 2112.07642); the numbers are ours, to be checked against the first worn station's score.
+WORN = {
+    **{k: STRONG[k] for k in ("HueSaturationValue", "RandomBrightnessContrast", "ToGray", "GaussNoise", "RandomGamma",
+                              "CLAHE", "CoarseDropout")},
+    "Affine": {"scale": (0.7, 1.3), "translate_percent": (-0.1, 0.1), "rotate": (-20, 20), "shear": (-10, 10), "p": 0.7},
+    "Perspective": {"scale": (0.02, 0.08), "p": 0.4},                 # the picture's angle: a head tilting
+    "MotionBlur": {"blur_limit": (3, 9), "p": 0.35},                  # a head turning mid-frame
+    "GaussianBlur": {"blur_limit": (3, 5), "p": 0.25},
+    "ImageCompression": {"compression_type": "jpeg", "quality_range": (60, 95), "p": 0.3},   # a wireless stream
+}
+AUGS = ("strong", "medium", "off", "worn")
+# Training (2026-10-24, research's list for Hawk-AI): longer, with more patience before an early stop; the pretrained
+# encoder moves more slowly than the new head (rfdetr's own default for it, 1.5e-4, is above the head's 1e-4).
+EPOCHS, PATIENCE, LR, LR_ENCODER = 80, 15, 1e-4, 5e-5
+MOUNTS = {"fixed": "strong", "worn": "worn", "off": "off"}    # Hawk-AI's "how the camera is mounted" -> a preset
+
+
+def boxes_through_holes() -> None:
+    """rfdetr passes the boxes only through the transforms it lists as moving pixels; CoarseDropout isn't listed, so a
+    part a hole hid entirely kept its label (a positive with nothing to see). Listed, albumentations drops that box and
+    trims one partly hidden to what is left (rfdetr's documented way to add one)."""
+    from rfdetr.datasets import transforms
+    transforms.GEOMETRIC_TRANSFORMS.add("CoarseDropout")
 
 
 def aug_config(classes, strength: str = "strong") -> dict:
@@ -53,7 +83,7 @@ def aug_config(classes, strength: str = "strong") -> dict:
         raise ValueError(f"unknown augmentation {strength!r}; choose one of {', '.join(AUGS)}")
     if strength == "off":
         return {}
-    aug = dict(STRONG if strength == "strong" else MEDIUM)
+    aug = dict({"strong": STRONG, "medium": MEDIUM, "worn": WORN}[strength])
     if not mirrored_pairs(classes):
         aug["HorizontalFlip"] = {"p": 0.5}
     return aug
@@ -112,7 +142,7 @@ def vram_shortfall_message(size: str, resolution: int, free_gb: float) -> str:
     from engine.accounts import box_managed
     needed = _vram_needed_gb(size, resolution, batch=1) + VRAM_MARGIN_GB     # fits_gpu's real threshold
     why = (" Ask Hawk's model and the live inspection also use it." if box_managed()
-           else " Close other programs that use the GPU and try again.")
+           else " Close other programs that use the graphics card and try again.")
     return f"The graphics card doesn't have enough free memory to train now (needs about {needed:.1f} GB, {free_gb:.1f} GB free).{why}"
 
 
@@ -155,8 +185,11 @@ def _model_class(size: str):
 
 
 def _hooks(epochs: int, progress, should_stop):
-    """PyTorch Lightning callback: progress every few batches (with the last held-out mAP50) and a clean stop."""
+    """PyTorch Lightning callback: progress every few batches, in the person's words (time left, never epochs or
+    scores: those are in the report), and a clean stop."""
+    import time
     from pytorch_lightning import Callback
+    t0 = time.time()
 
     class Hooks(Callback):
         def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
@@ -164,10 +197,9 @@ def _hooks(epochs: int, progress, should_stop):
                 trainer.should_stop = True
             nb = max(1, int(trainer.num_training_batches))
             if progress and (batch_idx % 5 == 0 or batch_idx + 1 == nb):
-                m = trainer.callback_metrics.get("val/mAP_50")
-                progress(trainer.current_epoch * nb + batch_idx + 1, epochs * nb,
-                         f"Training epoch {trainer.current_epoch + 1}/{epochs}"
-                         + (f" (held-out mAP50 {float(m):.3f})" if m is not None else ""))
+                done, total = trainer.current_epoch * nb + batch_idx + 1, epochs * nb
+                left = (time.time() - t0) * (total - done) / done / 60
+                progress(done, total, "Training…" + (f" about {max(1, round(left))} min left" if done / total > 0.02 else ""))
     return Hooks()
 
 
@@ -178,7 +210,7 @@ def best_checkpoint(out_dir) -> Path | None:
     return None
 
 
-def train(dataset_dir, out_dir, size: str = "small", epochs: int = 30, resolution: int = 640, aug: str = "strong",
+def train(dataset_dir, out_dir, size: str = "small", epochs: int = EPOCHS, resolution: int = 640, aug: str = "strong",
           resume=None, progress=None, should_stop=None) -> Path | None:
     """Fine-tune RF-DETR on a YOLO dataset (train/ and valid/ splits + data.yaml). Batch size follows the GPU
     memory free right now; with too little free it trains on the CPU - except when this computer is embedded
@@ -199,13 +231,14 @@ def train(dataset_dir, out_dir, size: str = "small", epochs: int = 30, resolutio
         if box_managed():                      # CPU training is too slow to be a real option on a box
             raise RuntimeError(vram_shortfall_message(size, resolution, free))
         if progress:
-            progress(0, epochs, f"Only {free:.1f} GB free on the GPU: training on the CPU (slow)")
+            progress(0, epochs, "Not enough graphics card memory free: training on the processor (slow)")
         device, free = "cpu", None
     batch, accum = batch_plan(size, resolution, free, n_train)
     if device == "cuda" and os.environ.get("PARTLABELER_BATCH"):   # e.g. a big cloud GPU: start high, halve on OOM
         batch = max(1, min(int(os.environ["PARTLABELER_BATCH"]), n_train))
         accum = max(1, EFFECTIVE_BATCH // batch)
     import rfdetr.training as rt
+    boxes_through_holes()
     hooks, build = _hooks(epochs, progress, should_stop), rt.build_trainer
 
     def build_with_hooks(*a, **k):
@@ -218,8 +251,9 @@ def train(dataset_dir, out_dir, size: str = "small", epochs: int = 30, resolutio
         rt.build_trainer = build_with_hooks      # rfdetr's train() takes no extra callbacks
         try:
             model.train(dataset_dir=str(dataset_dir), output_dir=str(out_dir), epochs=epochs, resolution=resolution,
-                        batch_size=batch, grad_accum_steps=accum, lr=1e-4, aug_config=aug_config(classes, aug),
-                        early_stopping=True, early_stopping_patience=8, checkpoint_interval=max(2, epochs),
+                        batch_size=batch, grad_accum_steps=accum, lr=LR, lr_encoder=LR_ENCODER,
+                        aug_config=aug_config(classes, aug), early_stopping=True, early_stopping_patience=PATIENCE,
+                        checkpoint_interval=max(2, epochs),
                         tensorboard=False, progress_bar=None, num_workers=_workers(), device=device,
                         resume=str(resume) if resume else None,
                         # held-out check every N epochs (the last one always); outline models score outlines at
@@ -234,7 +268,7 @@ def train(dataset_dir, out_dir, size: str = "small", epochs: int = 30, resolutio
                 raise RuntimeError(vram_shortfall_message(size, resolution, hw.free_memory_gb() or 0.0)) from e
             batch, accum = batch // 2, accum * 2
             if progress:
-                progress(0, epochs, f"Out of GPU memory: starting again with batch {batch} (x{accum} accumulation)")
+                progress(0, epochs, "The graphics card ran out of memory: starting again in smaller steps")
         finally:
             rt.build_trainer = build
             del model
@@ -348,7 +382,8 @@ def export_onnx(run_dir, out_dir=None, check_frames: int = 40, bundle_frames: in
     try:
         import onnxruntime as ort
     except ImportError:
-        raise RuntimeError('ONNX export needs the ONNX tools: pip install "rfdetr[onnx]==1.11.0" onnxconverter-common') from None
+        raise RuntimeError("The tools that prepare a model for production are missing: update PartLabeler, or run "
+                           "its installer again") from None     # the teach extra's rfdetr[onnx] + onnxconverter-common
     ort.disable_telemetry_events()                   # official Windows builds send usage telemetry (ETW) by default
     run_dir = Path(run_dir)
     s = json.loads((run_dir / "settings.json").read_text(encoding="utf-8"))

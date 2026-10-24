@@ -153,3 +153,31 @@ def test_smart_brush_and_eraser_stop_at_the_part_edge(tmp_path, monkeypatch):
     assert (p.mask(0, 1) == part).all()                          # the leak is gone, the part's own edge kept
     s.handle({"type": "undo"})
     assert (p.mask(0, 1) == leaky).all()
+
+
+def test_handed_over_classes_wait_for_a_confirm_and_unsure_pictures_wait_for_a_decision(tmp_path, monkeypatch):
+    """Classes another system handed over (imported) are confirmed with Y like suggestions; U marks pictures a person
+    isn't sure about: out of training (not confirmed) and of exports until a class number or Del decides them."""
+    monkeypatch.setitem(api._MODELS, "embed", ColourFeatures())
+    p = Project.create(tmp_path / "proj", ["red", "green", "blue"], images=folder(tmp_path, 2), task="classify")
+    msgs = []
+    s = Session(p, msgs.append)
+    p.set_tags([0, 1], 0, source="imported")
+    s.handle({"type": "tag", "of": "images", "keys": [2], "cls": 2})
+    s.handle({"type": "unsure", "keys": [2, 3]})
+    st = p.statuses()
+    assert (st[0], st[2], st[3]) == (2, 1, 1)                             # to confirm; flagged (its class kept as a hint)
+    assert p.tags()[2] == {"cls": 2, "source": "unsure", "score": None} and p.tags()[3]["cls"] is None
+    cards = {c["key"]: c for c in last(msgs, "cards")["cards"]}
+    assert cards[3]["source"] == "unsure" and cards[3]["cls"] is None
+    s.handle({"type": "accept_tags"})                                     # Y: the handed-over classes, not the unsure ones
+    st = p.statuses()
+    assert (st[0], st[1], st[2]) == (4, 4, 1)
+    out = p.export("csv", tmp_path / "out")
+    text = next((tmp_path / "out").rglob("*.csv")).read_text()
+    assert "img00" in text and "img02" not in text and "img03" not in text
+    s.handle({"type": "tag", "of": "images", "keys": [3], "cls": 1})       # a number decides it
+    assert p.statuses()[3] == 4
+    s.handle({"type": "suggest_tags"})                                    # an unsure picture never counts as an example
+    s.job.join()
+    assert out is not None

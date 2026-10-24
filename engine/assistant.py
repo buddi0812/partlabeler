@@ -304,7 +304,7 @@ def offline_answer(question: str) -> str:
 # port, URL, code or id is dropped.
 DEV_ONLY = {"Start the app", "Team server: several people on one PartLabeler", "Use PartLabeler from AI apps and scripts (API)",
             "A reference for checking lit parts in production", "Notebooks and Google Colab", "Install and requirements",
-            "Update PartLabeler", "Privacy and the helper", "Credits and licences"}
+            "Update PartLabeler", "Privacy and the helper", "Credits and licences", "Details for support"}
 PLAIN = [(r"SAM 3\.1", "the faster tracker"), (r"Segment Anything(?: 3(?:\.1)?)?|SAM 3|\bSAM\b", "the outline model"),
          (r"DINOv3|\bDINO\b", "the matching model"), (r"RF-DETR", "the detector")]
 NOT_ON_A_BOX = re.compile(r"`|https?://|localhost|127\.0\.0\.1|[A-Za-z]:\\|~/|%\w+%|\.partlabeler|/api\b|/mcp\b|/ws/|"

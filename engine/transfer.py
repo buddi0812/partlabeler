@@ -188,6 +188,17 @@ def _label_source(src: Path, kind: str, out: Path, model, finder, s: dict, every
     return summary
 
 
+def one_box_per_part(dets):
+    """(class, box, score, ...) best first -> one box per part, as Hawk-AI's own decoding (2026-10-24): a model still
+    learning puts several queries on one part (the same class, IoU >= 0.5: one kept). Only within a class -- the user's
+    ruling: two classes on nearly the same box are a tube inside its body, both kept."""
+    kept = []
+    for d in dets:
+        if all(d[0] != k[0] or _iou(d[1], k[1]) < 0.5 for k in kept):
+            kept.append(d)
+    return kept
+
+
 def _iou(a, b) -> float:
     ix = max(0.0, min(a[2], b[2]) - max(a[0], b[0]))
     iy = max(0.0, min(a[3], b[3]) - max(a[1], b[1]))
@@ -240,11 +251,7 @@ def label_project(project, run_dir, task_ids, outline=None, parent_every: int = 
                                                      float(y2 + crop[1])], float(p), j)
                                for j, ((x1, y1, x2, y2), c, p) in enumerate(zip(det.xyxy, det.class_id, det.confidence))
                                if int(c) in to_project), key=lambda d: -d[2])
-                kept = []                                     # one part, two labels on the same box: the surer one
-                for d in dets:
-                    if all(_iou(d[1], k[1]) < 0.7 for k in kept):
-                        kept.append(d)
-                dets = kept
+                dets = one_box_per_part(dets)
                 if own is not None:                           # in the frame's coordinates
                     masks = []
                     for d in dets:

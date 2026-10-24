@@ -104,6 +104,7 @@ const CSS = `
 .pl-modes { display:inline-flex; background:var(--bg); border-radius:8px; padding:2px; gap:2px; }
 .pl .pl-modes button { border:0; background:transparent; padding:3px 10px; font-size:12.5px; border-radius:6px; color:var(--muted); }
 .pl .pl-modes button:hover:not(:disabled) { background:var(--panel); border:0; color:var(--ink); }
+.pl-prop-l { align-self:center; padding:0 6px 0 8px; font-size:12.5px; font-weight:600; color:var(--ink); }
 .pl .pl-modes button[aria-pressed=true] { background:var(--panel); color:var(--ink); font-weight:600; box-shadow:0 1px 2px rgba(21,32,43,.14); }
 .pl-brush { display:inline-flex; gap:8px; align-items:center; font-size:13px; } .pl-brush input { width:120px; }
 .pl-bsize-v { font-variant-numeric:tabular-nums; color:var(--muted); min-width:44px; }
@@ -210,6 +211,7 @@ const CSS = `
 .pl .pl-filters button { padding:3px 10px; border-radius:99px; font-size:12.5px; }
 .pl .pl-filters button[aria-pressed=true] { background:var(--ink); color:var(--panel); border-color:var(--ink); }
 .pl-filters b { font-weight:600; font-variant-numeric:tabular-nums; margin-left:3px; opacity:.75; }
+.pl .pl-gonly { margin-left:auto; padding:2px 8px; border-radius:99px; font-size:12.5px; max-width:16em; }
 .pl-grid { overflow:auto; flex:1; min-height:0; overscroll-behavior:contain; display:flex; flex-direction:column; gap:14px; padding:2px 4px 8px 2px; }
 .pl-gsec h3 { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin:0 0 6px; font-size:13.5px; font-weight:600; position:sticky; top:0; background:var(--panel); z-index:1; padding:5px 0; }
 .pl-gsec h3 .pl-src { font-weight:400; }
@@ -945,7 +947,8 @@ function render({ model, el }) {
       <a class="pl-back" href="/" hidden>${ic("back")}Projects</a>
       <span class="pl-title">PartLabeler</span><span class="pl-chip pl-type" title="Project type"></span>
       <details class="pl-jobmenu" hidden><summary title="This job: its state, and the other jobs"></summary><div class="pl-jm">
-        <div class="pl-tools"><button type="button" class="primary" data-a="finishJob" title="Mark this job completed (and accepted)">Finish the job</button>
+        <div class="pl-tools"><button type="button" data-a="confirmTracked" title="Confirm every frame of this job that has tracked, pre-labelled or your own parts; empty frames and frames to check are left for you">Confirm the tracked frames</button>
+          <button type="button" class="primary" data-a="finishJob" title="Mark this job completed (and accepted)">Finish the job</button>
           <span class="pl-group"><button type="button" class="icon" data-a="prevJob" aria-label="Previous job" title="Previous job">${ic("prev")}</button><button type="button" class="icon" data-a="nextJob" aria-label="Next job" title="Next job">${ic("next")}</button></span></div>
         <label>Stage <select class="pl-jstage" aria-label="Job stage"><option>annotation</option><option>validation</option><option>acceptance</option></select></label>
         <label>State <select class="pl-jstate" aria-label="Job state"><option>new</option><option>in progress</option><option>rejected</option><option>completed</option></select></label>
@@ -975,6 +978,11 @@ function render({ model, el }) {
             <button type="button" data-polymode="new" aria-pressed="true">New part</button>
             <button type="button" data-polymode="add" aria-pressed="false">Add to selected</button>
             <button type="button" data-polymode="cut" aria-pressed="false">Cut from selected</button></span>
+          <span class="pl-modes pl-prop" role="group" aria-label="Propagate" hidden>
+            <span class="pl-prop-l">Propagate</span>
+            <button type="button" data-a="propagate" title="Copy the selected part (or every part on this frame) to the next frames, as many as Track uses (Ctrl+B). Move it on a later frame and the frames in between follow">Next <span class="pl-n-echo">20</span></button>
+            <button type="button" data-a="propagateAll" title="Copy it to the end of the task (Ctrl+Shift+B)">To the end</button>
+            <button type="button" data-a="partEnds" title="The selected part leaves the picture after this frame: its copies on the later frames go">Ends here</button></span>
           <label class="pl-brush" hidden>Size <input type="range" class="pl-bsize" min="1" max="120" value="${PREFS.brush || 12}" name="brush-size" aria-label="Brush size in pixels"><span class="pl-bsize-v">12 px</span></label>
           <span class="pl-howto"></span>
           <span class="pl-sp"></span>
@@ -1003,11 +1011,12 @@ function render({ model, el }) {
             <section class="pl-sort" hidden><h2>Sort</h2><div class="pl-tools">
               <button type="button" data-b="group" title="Put look-alikes together (G)">Group by look</button>
               <button type="button" data-b="suggestTags" class="pl-imgonly" title="Suggest a class for every image without one, from the ones you classed (S)">Suggest classes</button>
-              <button type="button" data-b="acceptTags" class="pl-imgonly" title="Keep the suggested classes: of the selected images, or all (Y)">Accept suggestions</button>
+              <button type="button" data-b="acceptTags" class="pl-imgonly" title="Keep the suggested and handed-over classes: of the selected images, or all (Y)">Accept suggestions</button>
+              <button type="button" data-b="markUnsure" class="pl-imgonly" title="Not sure: flag the selected images to decide later; they stay out of training and exports (U)">Unsure</button>
               <button type="button" data-b="odd" title="Find labels that disagree with their look-alikes">Check labels</button>
               <button type="button" data-b="closeGrid" class="pl-partsonly" title="Back to labeling frames (Esc)">Back to frames</button></div>
               <label class="pl-range pl-krange" hidden>Groups <input type="range" class="pl-k" min="1" value="1" name="groups" aria-label="Number of groups"><span class="pl-kv"></span></label>
-              <p class="pl-sortnote">Select pictures (click, Shift+click, Ctrl+click, Ctrl+A), then press a class number. Double-click to look closer.</p></section>
+              <p class="pl-sortnote">Select pictures (click, Shift+click, Ctrl+click, Ctrl+A), then press a class number, or U if you are not sure. Double-click to look closer.</p></section>
             <section><h2 id="pl-class-h">Class for new parts</h2>
               <input type="search" class="pl-filter" name="class-filter" autocomplete="off" placeholder="Filter classes…" aria-label="Filter classes" hidden>
               <div class="pl-list pl-classes" role="group" aria-labelledby="pl-class-h"></div>
@@ -1167,6 +1176,7 @@ function render({ model, el }) {
         <div><span>Track ahead / to the end</span><span><kbd>T</kbd> / <kbd>Shift</kbd>+<kbd>T</kbd></span></div>
         <div><span>Track back / to the start</span><span><kbd>R</kbd> / <kbd>Shift</kbd>+<kbd>R</kbd></span></div>
         <div><span>Re-track the next frames / to the end (replaces tracked parts)</span><span><kbd>U</kbd> / <kbd>Shift</kbd>+<kbd>U</kbd></span></div>
+        <div><span>Propagate the selected part (or all on the frame) to the next frames / to the end</span><span><kbd>Ctrl</kbd>+<kbd>B</kbd> / <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd></span></div>
         <div><span>Stop the running job</span><kbd>X</kbd></div>
         <h3>Find and review</h3>
         <div><span>Suggest parts from labeled frames</span><kbd>S</kbd></div>
@@ -1182,6 +1192,7 @@ function render({ model, el }) {
         <div><span>Move around when zoomed in</span><span>wheel, <kbd>Space</kbd>+drag, middle drag</span></div>
         <div><span>Sort parts / group by look</span><kbd>G</kbd></div>
         <div><span>Grid: give the selected pictures a class</span><span><kbd>1</kbd>–<kbd>9</kbd>, <kbd>0</kbd></span></div>
+        <div><span>Grid: not sure about the selected pictures (decide later)</span><kbd>U</kbd></div>
         <div><span>Grid: select all shown / clear class</span><span><kbd>Ctrl</kbd>+<kbd>A</kbd> / <kbd>Del</kbd></span></div>
         <div><span>Grid: look closer</span><span>Double-click, <kbd>Space</kbd></span></div>
       </div></dialog>
@@ -1197,7 +1208,7 @@ function render({ model, el }) {
               boxMode: "drag", polyMode: "new", shape: null, tab: "classes" };
   try { S.hintHidden = window.PL ? PREFS.hints === false : localStorage.getItem("pl-hint-hidden") === "1"; } catch {}
   try { S.tab = localStorage.getItem("pl-tab") || "classes"; } catch {}
-  const MUTATING = new Set(["box", "click", "cycle", "delete", "set_class", "swap_classes", "review", "accept", "undo", "settings", "paint", "smart_paint", "tag", "accept_tags", "add_class", "delete_frames", "delete_class", "reset"]);
+  const MUTATING = new Set(["box", "click", "cycle", "delete", "set_class", "swap_classes", "review", "review_many", "accept", "undo", "settings", "paint", "smart_paint", "tag", "accept_tags", "add_class", "delete_frames", "delete_class", "reset"]);
   let pendingDanger = null;                                      // what the confirm dialog sends when the person says yes
   function confirmDanger(title, body, keep, ok, msg) {
     const dlg = $(".pl-del-dlg");
@@ -1318,7 +1329,7 @@ function render({ model, el }) {
     for (const b of S.data?.boxes || []) {
       const [x1, y1, x2, y2] = b.box, col = colorOf(b.cls), on = b.obj === S.sel;
       const outlined = seg() && b.mask;
-      ctx.setLineDash(b.source === "tracked" ? [lw * 4, lw * 2] : b.source === "suggested" ? [lw, lw * 1.5] : outlined ? [lw * 1.2, lw * 2.4] : []);
+      ctx.setLineDash(b.source === "tracked" || b.source === "propagated" ? [lw * 4, lw * 2] : b.source === "suggested" ? [lw, lw * 1.5] : outlined ? [lw * 1.2, lw * 2.4] : []);
       if (on) { ctx.lineWidth = lw * 3; ctx.strokeStyle = "#fff"; ctx.strokeRect(x1, y1, x2 - x1, y2 - y1); }
       ctx.lineWidth = on ? lw * 1.8 : outlined ? lw * 0.6 : lw; ctx.strokeStyle = col;
       if (!outlined || on) ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
@@ -1429,7 +1440,8 @@ function render({ model, el }) {
     for (const b of boxes) here.set(b.cls, (here.get(b.cls) || 0) + 1);
     $(".pl-classes").innerHTML = !S.project ? "" : !cls.length ? `<span class="pl-empty">No classes yet: type one below${S.grid ? "; the selected pictures get it" : ""}.</span>` : shown.length ? shown.map(([c, i]) => `<div class="pl-rowwrap"><button type="button" class="pl-row" data-cls="${i}" aria-pressed="${i === S.cls}">
       <span class="pl-sw" style="background:${colorOf(i)}" aria-hidden="true"></span><span class="pl-key">${i < 10 ? (i + 1) % 10 : ""}</span>
-      <span class="pl-name" translate="no">${esc(c)}</span><span class="pl-n-here" title="Parts of this class on this frame">${S.grid ? "" : here.get(i) || ""}</span></button>
+      <span class="pl-name" translate="no">${esc(c)}</span><span class="pl-n-here" title="${S.grid ? "Confirmed pictures of this class" : "Parts of this class on this frame"}">${
+        S.grid ? [...S.grid.cards.values()].filter((x) => x.cls === i && isGiven(x)).length || "" : here.get(i) || ""}</span></button>
       <button type="button" class="pl-x" data-delcls="${i}"${S.busy ? " disabled" : ""} aria-label="Delete class ${esc(c)}" title="Delete this class and its labels">${ic("x")}</button></div>`).join("") : `<span class="pl-empty">No class matches “${esc(S.filter)}”.</span>`;
     $(".pl-boxes").innerHTML = boxes.length ? boxes.map((b) => `<div class="pl-rowwrap"><button type="button" class="pl-row" data-obj="${b.obj}" aria-pressed="${b.obj === S.sel}">
       <span class="pl-sw" style="background:${colorOf(b.cls)}" aria-hidden="true"></span><span class="pl-key">#${b.obj}</span>
@@ -1478,6 +1490,7 @@ function render({ model, el }) {
     $(".pl-boxmodes").hidden = S.tool !== "box";
     $(".pl-polymodes").hidden = !(seg() && (S.tool === "polygon" || S.tool === "ellipse"));
     $(".pl-brush").hidden = !["brush", "erase", "smartBrush", "smartErase"].includes(S.tool);
+    $(".pl-prop").hidden = !(S.data && video() && TOOLS.find((x) => x[0] === S.tool)?.[4] === "Manual" && !["erase", "smartErase"].includes(S.tool));
     el.querySelectorAll("[data-boxmode]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.boxmode === S.boxMode)));
     el.querySelectorAll("[data-polymode]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.polymode === S.polyMode)));
     const name = S.project?.classes?.[S.cls];
@@ -1529,9 +1542,13 @@ function render({ model, el }) {
     $('[data-a="prev"]').closest(".pl-group").hidden = cl; $('[data-a="review"]').hidden = cl; $('[data-a="deleteFrame"]').hidden = cl;
     $(".pl-strip").hidden = cl; $(".pl-legend").hidden = cl;
     if (cl) {
-      const n = (v) => S.statuses.filter((s) => s === v).length, given = n(4) + n(2), sugg = n(1);
+      const cards = S.grid?.of === "images" && S.grid.loaded ? [...S.grid.cards.values()] : null;
+      const n = (v) => S.statuses.filter((s) => s === v).length;
+      const [given, confirm, unsure] = cards ? [cards.filter(isGiven).length, cards.filter(toConfirm).length,
+        cards.filter((c) => c.source === "unsure").length] : [n(4), n(2) + n(1), 0];
       $(".pl-where").textContent = `${S.project.count} images`;
-      $(".pl-counts").textContent = `${given} classed, ${sugg} suggested, ${S.statuses.length - given - sugg} without a class`;
+      $(".pl-counts").textContent = `${given} confirmed, ${confirm} to confirm${unsure ? `, ${unsure} unsure` : ""}, `
+        + `${S.statuses.length - given - confirm - unsure} without a class`;
     }
   }
 
@@ -1678,10 +1695,14 @@ function render({ model, el }) {
   const trackN = () => Math.max(1, parseInt($(".pl-n").value, 10) || 20);
   const video = () => view().kind === "video";
   const track = (count, direction) => { if (video()) send({ type: "track", item: S.item, count, direction }); };
+  // CVAT's Propagate: the selected part (or every part on this frame) copied ahead; moving a copy later is a keyframe
+  const propagate = (count) => { if (video()) send({ type: "propagate", item: S.item, count, objs: S.sel != null ? [S.sel] : undefined }); };
   const actions = {
     prev: () => goto(S.target - 1), next: () => goto(S.target + 1), nextTodo, play: () => togglePlay(),
     track: () => track(trackN(), 1), trackAll: () => track(-1, 1),
     trackBack: () => track(trackN(), -1), trackBackAll: () => track(-1, -1),
+    propagate: () => propagate(trackN()), propagateAll: () => propagate(-1),
+    partEnds: () => { if (S.sel == null) { hint("Select the part first (V, then click it)"); return; } send({ type: "part_ends", item: S.item, obj: S.sel }); },
     retrack: () => { if (video()) send({ type: "track", item: S.item, count: trackN(), direction: 1, redo: true }); $(".pl-after").open = false; },
     retrackAll: () => { if (video()) send({ type: "track", item: S.item, count: -1, direction: 1, redo: true }); $(".pl-after").open = false; },
     clearAfter: () => {
@@ -1733,6 +1754,18 @@ function render({ model, el }) {
     },
     saveSettings: () => send({ type: "settings", parent: $(".pl-parent").value, states: $(".pl-states").value }),
     sortParts: () => openGrid("parts"),
+    confirmTracked: () => {                                 // the job's frames with tracked, pre-labelled or own parts, none flagged
+      const j = curJob();
+      if (!j) return;
+      const flagged = new Set(S.flags), items = [];
+      for (let i = j.start; i < j.end; i++) if ((S.statuses[i] === 2 || S.statuses[i] === 3) && !flagged.has(i)) items.push(i);
+      const left = S.flags.filter((f) => f >= j.start && f < j.end).length;
+      if (!items.length) { toast({ title: left ? `Nothing to confirm here: ${left} frame${left === 1 ? " is" : "s are"} flagged to check first.` : "Nothing to confirm: no tracked frames left in this job." }); return; }
+      if (!confirm(`Confirm ${items.length} tracked frame${items.length === 1 ? "" : "s"} in this job?` +
+                   (left ? ` ${left} frame${left === 1 ? "" : "s"} flagged to check stay for you to look at.` : "") + " Empty frames are left as they are. Ctrl+Z undoes it.")) return;
+      send({ type: "review_many", items, item: S.item });
+      $(".pl-jobmenu").open = false;
+    },
     finishJob: () => { const j = curJob(); if (j) { send({ type: "job_state", job: j.id, stage: "acceptance", state: "completed" }); $(".pl-jobmenu").open = false; } },
     prevJob: () => { const k = jobs().indexOf(curJob()); if (k > 0) openJob(jobs()[k - 1].id); },
     nextJob: () => { const k = jobs().indexOf(curJob()); if (k >= 0 && k < jobs().length - 1) openJob(jobs()[k + 1].id); },
@@ -1740,6 +1773,7 @@ function render({ model, el }) {
     group: () => send({ type: "sort", of: S.grid?.of || "images" }),
     suggestTags: () => send({ type: "suggest_tags" }),
     acceptTags: () => send({ type: "accept_tags", keys: S.grid?.sel.size ? [...S.grid.sel] : undefined }),
+    markUnsure: () => markUnsure(),
     odd: () => send({ type: "odd", of: S.grid?.of || "images" }),
     outlineHere: () => send({ type: "outline", item: S.item }),
     outlineAll: () => send({ type: "outline", item: S.item, all: true }),
@@ -1777,7 +1811,7 @@ function render({ model, el }) {
   });
   $(".pl-after").addEventListener("toggle", (e) => {
     if (!e.target.open) return;
-    $(".pl-n-echo").textContent = trackN();
+    echoN();
     for (const [sel, dflt] of [[".pl-swap-src", 0], [".pl-swap-dst", 1]]) {      // keep the picks while the list is the same
       const s = $(sel), was = s.value;
       s.innerHTML = (S.project?.classes || []).map((c, i) => `<option value="${i}">${esc(c)}</option>`).join("");
@@ -1796,7 +1830,10 @@ function render({ model, el }) {
   document.addEventListener("click", (e) => el.querySelectorAll("details.pl-jobmenu[open]").forEach((d) => { if (!d.contains(e.target)) d.open = false; }));
   $(".pl-bsize").addEventListener("input", (e) => { S.brush = +e.target.value; renderSide(); });
   $(".pl-bsize").addEventListener("change", (e) => savePref("brush", +e.target.value));           // remembered in the account
+  const echoN = () => el.querySelectorAll(".pl-n-echo").forEach((x) => { x.textContent = trackN(); });
   $(".pl-n").addEventListener("change", () => savePref("track_n", trackN()));
+  $(".pl-n").addEventListener("input", echoN);
+  echoN();
   $(".pl-addcls").addEventListener("submit", (e) => {
     e.preventDefault();
     const name = $(".pl-newcls").value.trim(); if (!name) return;
@@ -1833,6 +1870,8 @@ function render({ model, el }) {
     clearTimeout(kTimer); kTimer = setTimeout(() => send({ type: "sort", of: S.grid.of, k: +e.target.value }), 120);
   });
   el.addEventListener("change", (e) => {
+    const only = e.target.closest("[data-only]");
+    if (only && S.grid) { S.grid.only = only.value === "" ? null : +only.value; S.grid.shown = 400; renderGrid(); return; }
     const sel = e.target.closest("[data-gname]"); if (!sel || sel.value === "" || !S.grid) return;
     const G = S.grid, cls = +sel.value, keys = sections().find((x) => x.group === +sel.dataset.gname)?.keys || [];
     const todo = G.of === "images" ? keys.filter((k) => !isGiven(G.cards.get(k)) || G.cards.get(k).cls === cls) : keys;
@@ -1843,15 +1882,18 @@ function render({ model, el }) {
   el.addEventListener("dblclick", (e) => { const c = S.grid && e.target.closest("[data-card]"); if (c) peek(+c.dataset.card); });
 
   // ---- the grid: image classes, and sorting the parts of a box or outline project --------------
-  const FILTERS = { all: "All", none: "No class", sugg: "Suggested", given: "Classed", odd: "To check", unsure: "Unsure", dups: "Duplicates" };
-  const isGiven = (c) => c && c.cls != null && c.source !== "suggested";
+  const FILTERS = { all: "All", none: "No class", sugg: "To confirm", given: "Confirmed", odd: "To check", unsure: "Unsure", dups: "Duplicates" };
+  // Images: only a class a person gave counts as given; suggested and imported (handed over by another system) wait
+  // to be confirmed (Y), and "unsure" is a person's flag to decide later (U). Parts keep their box's source.
+  const isGiven = (c) => c && c.cls != null && (S.grid?.of === "parts" ? c.source !== "suggested" : c.source === "manual");
+  const toConfirm = (c) => c && c.cls != null && (c.source === "suggested" || c.source === "imported");
   const PASS = {
-    all: () => true, none: (c) => c.cls == null, sugg: (c) => c.source === "suggested", given: isGiven,
-    odd: (c) => S.grid.odd.has(c.key), unsure: (c) => S.grid.unsure.has(c.key), dups: (c) => S.grid.dupOf.has(c.key),
+    all: () => true, none: (c) => c.cls == null && c.source !== "unsure", sugg: toConfirm, given: isGiven,
+    odd: (c) => S.grid.odd.has(c.key), unsure: (c) => S.grid.unsure.has(c.key) || c.source === "unsure", dups: (c) => S.grid.dupOf.has(c.key),
   };
   function openGrid(of) {
     S.grid = { of, cards: new Map(), order: [], groups: null, unsure: new Set(), dups: [], dupOf: new Set(), odd: new Map(),
-               filter: "all", sel: new Set(), cur: null, anchor: null, shown: 400, visible: [], thumbs: new Map(), want: new Set() };
+               filter: "all", only: null, sel: new Set(), cur: null, anchor: null, shown: 400, visible: [], thumbs: new Map(), want: new Set() };
     S.sel = null; S.tool = /brush|erase/i.test(S.tool) ? "click" : S.tool;
     $(".pl-gtitle").textContent = of === "images" ? "Images" : "Parts";
     $(".pl-gridwrap").hidden = false; $(".pl-krange").hidden = true;
@@ -1867,10 +1909,11 @@ function render({ model, el }) {
     send({ type: "goto", item: S.target });                        // classes may have changed
   }
   function sections() {
-    const G = S.grid, pass = PASS[G.filter], tk = curJob() ? view() : null;
+    const G = S.grid, tk = curJob() ? view() : null;
+    const pass = (c) => PASS[G.filter](c) && (G.only == null || c.cls === G.only);
     const inTask = (c) => !tk || ((G.of === "images" ? c.key : c.item) >= tk.start && (G.of === "images" ? c.key : c.item) < tk.end);
     const keep = (keys) => keys.filter((k) => G.cards.has(k) && pass(G.cards.get(k)) && inTask(G.cards.get(k)));
-    if (G.filter === "sugg") return [{ title: "Suggested, least sure first", keys: keep(G.order).sort((a, b) => (G.cards.get(a).score ?? 0) - (G.cards.get(b).score ?? 0)) }];
+    if (G.filter === "sugg") return [{ title: "To confirm, least sure first (Y keeps them)", keys: keep(G.order).sort((a, b) => (G.cards.get(a).score ?? 0) - (G.cards.get(b).score ?? 0)) }];
     if (G.filter === "odd") return [{ title: "These look like another class (the one on the badge)", keys: [...G.odd.keys()].filter((k) => G.cards.has(k)) }];
     if (G.filter === "dups") return G.dups.map((d, i) => ({ title: `Near-duplicates ${i + 1}`, keys: d.filter((k) => G.cards.has(k)) }));
     if (G.groups) return G.groups.map((g, i) => ({ title: `Group ${i + 1}`, keys: keep(g), group: i })).filter((x) => x.keys.length);
@@ -1879,10 +1922,10 @@ function render({ model, el }) {
   function cardHtml(c) {
     const G = S.grid, cls = S.project.classes, name = c.cls != null ? cls[c.cls] ?? c.cls : "No class";
     const badge = G.odd.has(c.key) ? `<span class="pl-badge odd">Looks like ${esc(cls[G.odd.get(c.key)[0]])}</span>`
-      : G.dupOf.has(c.key) ? `<span class="pl-badge">Near-duplicate</span>` : G.unsure.has(c.key) ? `<span class="pl-badge">Unsure</span>` : "";
+      : G.dupOf.has(c.key) ? `<span class="pl-badge">Near-duplicate</span>` : G.unsure.has(c.key) || c.source === "unsure" ? `<span class="pl-badge">Unsure</span>` : "";
     const src = c.src || G.thumbs.get(c.key);
-    const sure = c.source === "suggested" && c.score != null ? ` ${Math.round(c.score * 100)}%` : "";
-    return `<button type="button" class="pl-card${c.source === "suggested" ? " sugg" : ""}${G.cur === c.key ? " cur" : ""}" data-card="${c.key}"
+    const sure = c.source === "suggested" && c.score != null ? ` ${Math.round(c.score * 100)}%` : c.source === "imported" ? " (to confirm)" : "";
+    return `<button type="button" class="pl-card${toConfirm(c) || c.source === "unsure" ? " sugg" : ""}${G.cur === c.key ? " cur" : ""}" data-card="${c.key}"
       aria-pressed="${G.sel.has(c.key)}" title="${esc(c.name)}"><img alt="${esc(c.name)}" loading="lazy" decoding="async" ${src ? `src="${esc(src)}"` : `data-need="${c.key}"`}>${badge}
       <span class="pl-card-cls">${c.cls != null ? `<i class="pl-sw" style="background:${colorOf(c.cls)}" aria-hidden="true"></i>` : ""}<span translate="no">${esc(name)}${sure}</span></span></button>`;
   }
@@ -1891,7 +1934,9 @@ function render({ model, el }) {
     const all = [...G.cards.values()], count = (f) => all.filter(PASS[f]).length;
     $(".pl-filters").innerHTML = Object.entries(FILTERS)
       .filter(([f]) => (G.of === "images" || !["none", "sugg"].includes(f)) && (f === "all" || f === G.filter || count(f) > 0))
-      .map(([f, t]) => `<button type="button" data-filter="${f}" aria-pressed="${f === G.filter}">${t}<b>${count(f)}</b></button>`).join("");
+      .map(([f, t]) => `<button type="button" data-filter="${f}" aria-pressed="${f === G.filter}">${t}<b>${count(f)}</b></button>`).join("")
+      + (S.project.classes.length > 1 ? `<select class="pl-gonly" data-only aria-label="Show one class only"><option value="">Every class</option>${
+        S.project.classes.map((n, i) => `<option value="${i}"${G.only === i ? " selected" : ""}>${esc(n)} (${all.filter((c) => c.cls === i).length})</option>`).join("")}</select>` : "");
     const secs = sections(), total = secs.reduce((n, x) => n + x.keys.length, 0);
     let budget = G.shown; G.visible = [];
     const cls = S.project.classes.map((n, i) => `<option value="${i}">${esc(n)}</option>`).join("");
@@ -1968,8 +2013,15 @@ function render({ model, el }) {
     else if (k === "g") actions.group();
     else if (k === "s" && G.of === "images") actions.suggestTags();
     else if (k === "y" && G.of === "images") actions.acceptTags();
+    else if (k === "u" && G.of === "images") markUnsure();
     else return false;
     return true;
+  }
+  function markUnsure() {
+    const G = S.grid, keys = G.sel.size ? [...G.sel] : G.cur != null ? [G.cur] : [];
+    if (!keys.length) { hint("Select pictures first: click, Shift+click or Ctrl+A"); return; }
+    send({ type: "unsure", keys });
+    hint("Marked unsure: kept out of training and exports until you press a class number or Del");
   }
   function tagSelectedClear() {
     const G = S.grid, keys = G.sel.size ? [...G.sel] : G.cur != null ? [G.cur] : [];
@@ -1995,7 +2047,9 @@ function render({ model, el }) {
     const dlg = $(".pl-peek"); if (!dlg.open) dlg.showModal();
     $(".pl-peek-t").textContent = c.name;
     const t = G.cards.get(k);
-    $(".pl-peek-c").innerHTML = t.cls != null ? `<span class="pl-chip ${isGiven(t) ? "rev" : ""}">${esc(S.project.classes[t.cls])}${isGiven(t) ? "" : " (suggested)"}</span>` : `<span class="pl-src">No class: press 1–9</span>`;
+    const why = isGiven(t) ? "" : t.source === "unsure" ? " (unsure)" : t.source === "imported" ? " (to confirm)" : " (suggested)";
+    $(".pl-peek-c").innerHTML = t.cls != null ? `<span class="pl-chip ${isGiven(t) ? "rev" : ""}">${esc(S.project.classes[t.cls])}${why}</span>`
+      : `<span class="pl-src">${t.source === "unsure" ? "Unsure: press 1–9 to decide" : "No class: press 1–9"}</span>`;
     const img = $(".pl-peek-img");
     img.src = web ? `${model.homeUrl}items/${encodeURIComponent(S.project.name)}/${k}.jpg` : G.thumbs.get(k) || "";
     if (!web) { S.target = k; send({ type: "goto", item: k }); }       // the item message brings the full picture
@@ -2309,6 +2363,7 @@ function render({ model, el }) {
     if (S.grid && gridKey(e)) { e.preventDefault(); return; }
     const k = e.key;
     if ((e.ctrlKey || e.metaKey) && k.toLowerCase() === "z") actions.undo();
+    else if ((e.ctrlKey || e.metaKey) && k.toLowerCase() === "b") { e.preventDefault(); e.shiftKey ? actions.propagateAll() : actions.propagate(); }
     else if (e.ctrlKey || e.metaKey || e.altKey) return;
     else if (/^[0-9]$/.test(k)) { setClass(k === "0" ? 9 : +k - 1); }
     else if (k === "ArrowRight" || k === "d") { e.shiftKey ? nextTodo() : goto(S.target + 1); }
@@ -2358,9 +2413,9 @@ function render({ model, el }) {
       else location.replace(`${model.homeUrl}p/${encodeURIComponent(S.project.name)}?item=${at}`);
     }
     else if (m.type === "grid" && S.grid?.of === m.of) {
-      S.grid.cards = new Map(m.cards.map((c) => [c.key, c])); S.grid.order = m.cards.map((c) => c.key); S.grid.loaded = true; renderGrid();
+      S.grid.cards = new Map(m.cards.map((c) => [c.key, c])); S.grid.order = m.cards.map((c) => c.key); S.grid.loaded = true; renderGrid(); renderSide(); renderTop();
     }
-    else if (m.type === "cards" && S.grid?.of === m.of) { for (const c of m.cards) S.grid.cards.set(c.key, c); renderGrid(); if ($(".pl-peek").open) peek(S.grid.peek); }
+    else if (m.type === "cards" && S.grid?.of === m.of) { for (const c of m.cards) S.grid.cards.set(c.key, c); renderGrid(); renderSide(); renderTop(); if ($(".pl-peek").open) peek(S.grid.peek); }
     else if (m.type === "groups" && S.grid?.of === m.of) {
       Object.assign(S.grid, { groups: m.groups, unsure: new Set(m.unsure), dups: m.dups, dupOf: new Set(m.dups.flat()) });
       const r = $(".pl-krange"), k = $(".pl-k"); r.hidden = m.max_k < 2; k.max = m.max_k; k.value = m.k;

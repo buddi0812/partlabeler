@@ -295,6 +295,8 @@ def test_teach_end_to_end_with_a_fake_detector(tmp_path, monkeypatch, fake_detec
     r = teach(src, run, epochs=1, resolution=320)
     assert r["passed"] and r["knowledge_score"] == 100.0 and r["held_out"]["mAP50"] == 1.0
     assert all(v["drop"] == 0 for v in r["held_out"]["stress"].values())
+    from engine.teach import STRESS
+    assert set(r["held_out"]["stress"]) == set(STRESS)                  # every colour stress check ran (2026-10-24)
     s = json.loads((run / "settings.json").read_text())
     assert (s["classes"], s["every"], s["naming"], s["checkpoint"]) == (
         ["left_lamp", "right_lamp", "bolt"], 5, "{stem}_f{frame:06d}", "model/checkpoint_best_total.pth")
@@ -403,7 +405,7 @@ def test_training_halves_the_batch_when_the_gpu_runs_out_of_memory(tmp_path, mon
     msgs = []
     out = detector.train(ds, tmp_path / "out", "small", epochs=1, progress=lambda d, t, text="": msgs.append(text))
     assert calls == [(4, 4), (2, 8)] and out.name == "checkpoint_best_total.pth" and len(released) == 2
-    assert any("Out of GPU memory: starting again with batch 2" in m for m in msgs)
+    assert any("ran out of memory: starting again in smaller steps" in m for m in msgs)
 
     def always_oom(self, batch_size, grad_accum_steps, **kw):
         calls.append((batch_size, grad_accum_steps))
@@ -459,7 +461,7 @@ def test_box_managed_refuses_to_train_on_a_too_small_gpu_instead_of_falling_back
     out = detector.train(ds, tmp_path / "out2", "nano", epochs=1, resolution=320,
                          progress=lambda d, t, text="": msgs.append(text))
     assert out.name == "checkpoint_best_total.pth"
-    assert any("training on the CPU" in m for m in msgs)
+    assert any("training on the processor" in m for m in msgs)
 
 
 def test_onnx_decode_scores_each_class_and_drops_background():
@@ -548,3 +550,138 @@ def test_outline_models_train_on_polygons_in_stages(tmp_path, monkeypatch, fake_
     assert left > 0 and kept_empty + left + held_empty == 10 and held_empty > 0   # held-out empties all kept
     with pytest.raises(ValueError, match="outlines"):
         teach(make_source(tmp_path / "boxes_only"), tmp_path / "run2", size="seg-small", resolution=384, stage="prepare")
+
+
+def test_the_worn_preset_is_fixed_plus_movement_and_builds_with_this_albumentations():
+    """Hawk-AI's mounting presets (2026-10-24): fixed = STRONG unchanged; worn keeps its colours and exposure and adds
+    turning, tilt, motion blur and JPEG noise -- names and arguments the installed albumentations takes."""
+    import albumentations as A
+    from engine import detector
+    assert detector.aug_config(["clip"], "strong") == {**detector.STRONG, "HorizontalFlip": {"p": 0.5}}
+    worn = detector.aug_config(["clip"], "worn")
+    for k in ("HueSaturationValue", "RandomBrightnessContrast", "RandomGamma"):
+        assert worn[k] == detector.STRONG[k]
+    assert worn["Affine"]["rotate"] == (-20, 20) and worn["Affine"]["shear"] == (-10, 10)
+    assert {"Perspective", "MotionBlur", "ImageCompression", "HorizontalFlip"} <= set(worn)
+    for name, kw in worn.items():
+        getattr(A, name)(**kw)                           # a wrong name or argument fails here, not mid-training
+    assert detector.MOUNTS == {"fixed": "strong", "worn": "worn", "off": "off"}
+
+
+def test_a_frame_keeps_its_side_of_the_check_set_as_more_frames_are_confirmed():
+    """Hawk-AI's "v2 vs v1" (2026-10-24): with the task's whole span, a frame held out in one run is held out in the
+    next, however many more frames were confirmed in between; without it, the cut moved with the confirmed list."""
+    from engine.teach import held_out_flags
+    spans = {"run1": [0, 990]}
+    every = [{"key": ("run1", f)} for f in range(0, 1000, 10)]          # 100 frames, all confirmed by run 2
+    some = every[::3]                                                     # a third confirmed by run 1
+    later = dict(zip([it["key"] for it in every], held_out_flags(every, spans=spans)))
+    first = dict(zip([it["key"] for it in some], held_out_flags(some, spans=spans)))
+    assert all(later[k] == h for k, h in first.items()) and any(first.values())
+    assert 0.15 < sum(later.values()) / len(later) < 0.25
+    assert any(held_out_flags(every[:5], spans=spans))                   # all in one block: cut as before
+
+
+def test_each_video_holds_back_its_own_part_of_the_cycle():
+    """Hawk-AI's recordings are the same work in the same order: the same blocks held back in every video never
+    trained on those phases of the cycle (2026-10-24). Each video turns its blocks by its place in the project, so
+    every phase is trained on in some videos and checked in others; adding a video changes nobody else's."""
+    from engine.teach import held_out_flags
+    spans = {"Run_1": [0, 99], "Cycle_1": [0, 99], "Cycle_2": [0, 99]}
+    items = sorted(({"key": (v, f)} for v in spans for f in range(100)), key=lambda it: it["key"])
+    held = dict(zip([it["key"] for it in items], held_out_flags(items, spans=spans)))
+    for b in range(10):                                                   # each block held back in at most 1 of 3
+        assert sum(any(held[(v, f)] for f in range(b * 10, b * 10 + 10)) for v in spans) <= 1
+    assert all(sum(not held[(v, f)] for v in spans) >= 2 for f in range(100))   # every place trained on in 2 of 3
+    assert all(0.15 <= sum(held[(v, f)] for f in range(100)) / 100 <= 0.25 for v in spans)
+    assert [f for f in range(100) if held[("Run_1", f)]] == list(range(20, 30)) + list(range(70, 80))   # the first: as before
+    more = {**spans, "Cycle_3": [0, 99]}
+    items4 = sorted(({"key": (v, f)} for v in more for f in range(100)), key=lambda it: it["key"])
+    held4 = dict(zip([it["key"] for it in items4], held_out_flags(items4, spans=more)))
+    assert all(held4[k] == h for k, h in held.items())
+    photos = {"photos": [0, 40], **spans}                                 # a first task with no confirmed frame
+    held5 = dict(zip([it["key"] for it in items], held_out_flags(items, spans=photos)))
+    assert held5 == held                                                  # turns count the videos in this run
+
+
+def test_a_runs_progress_only_moves_forward():
+    """Every step counts from 0 again; one run's bar never goes back (Hawk-AI's training track)."""
+    from engine.teach import band
+    seen = []
+    say = lambda d, t, text="": seen.append(d / t)                       # noqa: E731
+    a, b = band(say, 0.06, 0.15), band(say, 0.15, 0.85)
+    for d in (0, 5, 10):
+        a(d, 10, "Preparing the training set")
+    for d in (0, 3):
+        a(d, 3, "Painting training copies in other colours")              # a step inside prepare starts again
+    for d in (0, 15, 30):
+        b(d, 30, "Training")
+    assert seen == sorted(seen) and seen[0] == 0.06 and seen[-1] == 0.85
+    assert band(None, 0, 1) is None
+
+
+
+def test_compare_scores_both_models_on_the_same_unseen_check_frames(tmp_path, monkeypatch):
+    """Hawk-AI's "this version vs the one in use" (2026-10-24): the frames the old model trained on are left out, its
+    classes are matched by name (a part it never knew counts as missed), and both are scored the same way."""
+    from PIL import Image
+    import supervision as sv
+    from engine import detector
+    from engine.teach import compare
+    run, old = tmp_path / "run", tmp_path / "old"
+    for d in ("images", "labels"):
+        (run / "dataset" / "valid" / d).mkdir(parents=True)
+    for n in ("t_f000000", "t_f000010", "t_f000020"):
+        Image.new("RGB", (64, 64)).save(run / "dataset" / "valid" / "images" / f"{n}.jpg")
+        (run / "dataset" / "valid" / "labels" / f"{n}.txt").write_text("0 0.5 0.5 0.5 0.5\n1 0.2 0.2 0.2 0.2\n")
+    (old / "dataset").mkdir(parents=True)
+    (old / "settings.json").write_text(json.dumps({"classes": ["other", "door"], "checkpoint": "m.pth", "size": "small",
+                                                   "resolution": 640}))
+    (old / "dataset" / "prepared.json").write_text(json.dumps({"train": ["t_f000000"], "valid": []}))
+    monkeypatch.setattr(detector, "load", lambda *a, **k: "old")
+    def predict(model, ims, threshold):                       # both find the door; only the new one finds the cap
+        door = [16, 16, 48, 48]
+        return [sv.Detections(xyxy=np.array([door, [6.4, 6.4, 19.2, 19.2]] if model == "new" else [door], float),
+                              class_id=np.array([0, 1] if model == "new" else [1]),
+                              confidence=np.array([0.9, 0.9] if model == "new" else [0.9])) for _ in ims]
+    monkeypatch.setattr(detector, "predict", predict)
+    got = compare("new", run, old, ["door", "cap"])
+    assert got["frames"] == 2 and got["against"] == "old"                # the frame it trained on: left out
+    assert got["score"] == 100.0 and got["against_score"] == 50.0       # its door matched by name; cap: missed
+    assert got["unknown"] == ["cap"]
+    assert compare("new", run, tmp_path / "nothing", ["door", "cap"]) is None
+
+
+def test_pre_labels_give_one_box_per_part():
+    """As Hawk-AI's decoding (2026-10-24, the user's ruling): only within a class -- the same part twice (IoU >= 0.5)
+    -> one; two classes on the same box, or a tube inside its body, -> both."""
+    from engine.transfer import one_box_per_part
+    body, tube = [100, 100, 220, 400], [110, 120, 210, 380]                # tube inside body: IoU ~0.72
+    assert [(c, s) for c, _, s in one_box_per_part([(0, body, 0.9), (0, [104, 102, 224, 396], 0.6)])] == [(0, 0.9)]
+    assert [(c, s) for c, _, s in one_box_per_part([(0, body, 0.9), (1, body, 0.5)])] == [(0, 0.9), (1, 0.5)]
+    assert [(c, s) for c, _, s in one_box_per_part([(0, body, 0.9), (1, tube, 0.8)])] == [(0, 0.9), (1, 0.8)]
+
+
+
+def test_a_part_a_hole_hides_entirely_loses_its_label():
+    """Research's CoarseDropout (2026-10-24): rfdetr ran it without the boxes, so a hidden part stayed a positive label."""
+    import albumentations as A
+    import torch
+    from PIL import Image
+    from rfdetr.datasets import transforms
+    from engine.detector import boxes_through_holes, STRONG, WORN
+    assert "CLAHE" in STRONG and "CoarseDropout" in STRONG and "CLAHE" in WORN and "CoarseDropout" in WORN
+    boxes_through_holes()
+    hole = A.CoarseDropout(num_holes_range=(1, 1), hole_height_range=(0.99, 0.99), hole_width_range=(0.99, 0.99), p=1.0)
+    target = {"boxes": torch.tensor([[10.0, 10.0, 20.0, 20.0]]), "labels": torch.tensor([0]),
+              "area": torch.tensor([100.0]), "iscrowd": torch.tensor([0])}
+    out = transforms.AlbumentationsWrapper(hole)(Image.new("RGB", (100, 100), (128, 128, 128)), target)[1]
+    assert len(out["boxes"]) == 0 and len(out["labels"]) == 0
+
+
+def test_a_run_says_how_many_epochs_it_trained(tmp_path):
+    from engine.teach import epochs_run
+    assert epochs_run(tmp_path) is None
+    rows = ["epoch,step,val/mAP_50", "0,10,0.2", "0,10,", "1,20,0.4", "33,340,0.7", ""]
+    (tmp_path / "metrics.csv").write_text(chr(10).join(rows), encoding="utf-8")
+    assert epochs_run(tmp_path) == 34

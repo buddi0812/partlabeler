@@ -132,6 +132,50 @@ quick checks and evaluations.
 `type`: `detect` (boxes), `segment` (outlines; exports polygons/masks) or `classify` (one class per image). It
 answers `{"name": "yard-cams"}`. It needs at least one label; a name that already exists: **400**.
 
+### `POST /projects/import`: a project handed over with its images and seed boxes
+For a system that already has the frames and some boxes (Hawk-AI's SOP studio: "Make a labeling project").
+`{name, source: {station, demo_version}, classes: [...], images: [{name, jpeg_b64}], boxes: [{image, class, x, y,
+w, h}]}` (box shares 0-1 of its image, top-left corner) → `{project_id, url, images_added, boxes_added, task}`.
+The images become one new task; the boxes become parts to check ("imported"), never confirmed. Idempotent per
+`source`: the same station and demo version always land in the same project (its name is only used the first
+time); a second call adds the images it hasn't seen (by `name`) as another task and any new classes, and never
+makes a second project. 400: a box whose class isn't in `classes`, or an image that isn't a base64 JPEG (nothing
+is stored then). Waits until the task is added (up to 10 min).
+`type` (default detect): detect | segment | classify, the project's type. One project per station + demo version
++ type. classify takes no boxes: each image may carry its own `class` (one of `classes`), stored as a class to
+check; the answer then also says `classes_added`.
+Auth: an account's API token as every other call (the project goes into that account's projects folder), or -
+for hawk-api on the same box - header `X-Hawk-Token` matching app.json "models_token" with no account token,
+from this computer only (403 from another machine or with a wrong key). With the service key the project goes
+into the app's default projects folder (the service's `--home`, else app.json "home"): the one every account on
+that PartLabeler sees, unless the account picked its own folder in Settings.
+
+### `POST /projects/{name}/train`, `GET /train/queue`, `GET /train/runs/{run}`: the training queue
+Sends a project's confirmed frames to Teach and then exports the model for production, one run at a time in the
+order sent. Body `{confirmed_only: true, size?, epochs?, resolution?}` (size default: small, or seg-small for an
+outline project; a classify project trains its own classifier, below; no confirmed frames: 400) -> `{run, position, state}`.
+A run: `{run, project, state, position, progress 0-1, text, passed, knowledge_score, export_id, error, need_gb,
+free_gb, queued_at, started_at, finished_at}`; `state` is queued | waiting_for_room | running | done | failed.
+- `waiting_for_room`: the graphics card hasn't the memory the run needs (`need_gb`, Teach's measured peak at batch 1
+  plus 1 GB of headroom) free (`free_gb`). It starts by itself, checked every 10 s, as soon as there is: a caller may
+  simply wait, or make room (e.g. stop another model) when it sees the run queued.
+- `passed` and `knowledge_score` (0-100, Teach's own: held-out mAP50 x 100) come from Teach's proof; `export_id` is
+  the id `GET /models` lists. The queue survives a restart (a run the restart cut off is failed with that reason).
+- Every run ends `done`, `failed` or `cancelled`: a caller that paused something for it can always restore it.
+  `POST /train/runs/{run}/cancel`: a queued or waiting run ends at once, a running one at Teach's next safe point.
+- `GET /projects/{name}/train/estimate?size&epochs&resolution` before sending: `{frames, size, epochs, resolution,
+  minutes: [low, high], based_on, need_gb, free_gb}`. The minutes come from this computer's own finished runs of the
+  same size once it has some, else from a typical 12 GB card; the queued run carries the same `minutes`.
+- A classify project (engine/classifier.py): a head on frozen DINOv3 small features of its confirmed images with their
+  class, a fifth of each class held out to prove it (passed: balanced accuracy and every class's recall >= 0.90;
+  knowledge_score: balanced accuracy x 100), exported as one ONNX model, input `[1, 3, 224, 224]` RGB 0-1 (the part's
+  crop cut as the training images were, stretched; normalisation inside), output `probs [1, classes]`. Needs two
+  classes with two or more confirmed images each. Minutes, not hours; about 1.5 GB of graphics card memory.
+- `GET /models` also says each export's `task`: detect, segment or classify.
+- The batch size follows the free graphics card memory when the run starts (Teach's batch_plan, measured peaks):
+  with the whole 12 GB free, a small model at 640 px trains at batch 4.
+Auth: an account token, or hawk-api's `X-Hawk-Token` from this computer as for `/projects/import`.
+
 ### `GET /projects/{name}`: the project, its tasks and progress
 
 It answers `name`, `type`, `labels`, `formats` (exports available), `frames`, and `tasks`: `[{id, name, kind,

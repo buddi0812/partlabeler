@@ -326,7 +326,7 @@ def get_frame(args):
     return {**_where(p, item), "width": w, "height": h, "image_scale": round(scale, 4), "image_origin": [ox, oy],
             "note": "image pixel (u, v) = frame pixel (origin + (u, v) / image_scale)",
             "confirmed": p.is_reviewed(item), "status": STATUS[p.statuses()[item]], "parts": _parts(p, item),
-            **({"image_class": p.classes[t["cls"]]} if p.task == "classify" and (t := p.tags().get(item)) else {}),
+            **({"image_class": p.classes[t["cls"]]} if p.task == "classify" and (t := p.tags().get(item)) and t["cls"] is not None else {}),
             "_image": img}
 
 
@@ -354,7 +354,10 @@ def get_annotations(args):
             continue
         d = {**_where(p, i), "status": STATUS[st[i]], "confirmed": st[i] == 4, "parts": _parts(p, i, args.get("outlines"))}
         if i in tags:
-            d["image_class"] = p.classes[tags[i]["cls"]]
+            t = tags[i]
+            d["image_class"] = p.classes[t["cls"]] if t["cls"] is not None else None
+            if t["source"] == "unsure":
+                d["unsure"] = True
         out.append(d)
     return {"frames": out, "truncated": len(items) > 500}
 
@@ -545,7 +548,7 @@ def swap_classes(args):
       run=S("Name for the run (default: run_<date>)"), parent=S("Object the parts sit on, to crop to (e.g. 'car')"),
       size=S("nano | small (default) | medium; seg-nano | seg-small | seg-medium also outline the parts "
              "(projects with outlines)", enum=["nano", "small", "medium", "seg-nano", "seg-small", "seg-medium"]),
-      epochs=I("Training epochs (default 30)", minimum=1),
+      epochs=I("Training epochs at most (default 80; it stops early when no longer improving)", minimum=1),
       recolor={"type": "number", "description": "Share of training frames (0-1) that also get a copy with the object "
                "in another colour (parts untouched): for objects of colours not seen yet. Default 0"},
       crop=B("With parent: cut each frame to it (default true); false trains on whole frames, as production sees them "

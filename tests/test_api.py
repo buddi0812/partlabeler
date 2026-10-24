@@ -186,3 +186,16 @@ def test_opening_a_project_warms_up_the_click_model(tmp_path, video, monkeypatch
     msgs.clear()
     s.handle({"type": "warm_up"})                              # already loaded: nothing more to say
     assert [m for m in msgs if m["type"] == "loading"] == []
+
+
+def test_confirm_many_frames_at_once_is_one_undo_step(tmp_path, video):
+    """The job menu's "Confirm the tracked frames": the page sends the frames it picked; all confirmed, one undo."""
+    p = Project.create(tmp_path / "proj", CLASSES, video=video)
+    msgs = []
+    s = Session(p, msgs.append)
+    for item in (1, 2):
+        s.handle({"type": "box", "item": item, "cls": 0, "box": [1, 1, 9, 9]})
+    s.handle({"type": "review_many", "items": [1, 2, 99], "item": 1})          # a frame that isn't there: left out
+    assert last(msgs, "status")["statuses"] == [0, 4, 4, 0] and last(msgs, "item")["item"] == 1
+    s.handle({"type": "undo"})
+    assert not p.is_reviewed(1) and not p.is_reviewed(2)

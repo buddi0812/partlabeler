@@ -99,8 +99,9 @@ too). A program acts as your account, in your projects folder, and only while Pa
 
 The tools: list_projects, get_project, create_project, set_labels, trash_project; add_tasks, update_task, delete_task,
 set_job, get_job; get_frame (the image with every part numbered, plus the parts as JSON; crop zooms in),
-get_annotations; add_part (click points and/or a box; SAM 3 outlines it), edit_part, delete_parts, find_parts (words,
-SAM 3 text search), annotate_text (annotate by text: a frame, the rest of a task, a task or the project), find_similar, suggest, accept_suggestions; track; confirm_frames; set_image_class; undo; stop;
+get_annotations; add_part (click points and/or a box; its edge is found for you), edit_part, delete_parts, find_parts
+(find objects named in words), annotate_text (annotate by text: a frame, the rest of a task, a task or the project),
+find_similar, suggest, accept_suggestions; track; confirm_frames; set_image_class; undo; stop;
 status (progress and frames to check); clear_parts, swap_classes; frames_to_video; export, backup, import_backup;
 teach (train a detector on one task's confirmed frames), list_runs, label_tasks (label other tasks with it, as parts
 to check). Coordinates are pixels of the full-size frame.
@@ -229,7 +230,7 @@ Chosen once, when the project is made: a project holds one kind of label, and it
 
 - **Object detection**: a box around every part. The default.
 - **Segmentation** (instance segmentation): the exact shape of every part, as a mask ("outlines" in this guide). Everything that makes a box
-  makes an outline here: clicking, drawing a box (SAM 3 outlines the part inside it), tracking, Suggest and Find
+  makes an outline here: clicking, drawing a box (the part inside it is outlined for you), tracking, Suggest and Find
   similar. The brush and eraser fix edges. Exports hold polygons or masks.
 - **Classification**: one class per image, labeled on a grid of pictures with smart grouping ("image classes"
   in this guide). Good for sorting a messy folder (for example ok / scratch / dent, or one folder per part type).
@@ -273,7 +274,7 @@ dotted = suggestions.
 
 1. Pick the class first: click it on the **Classes** tab or press its number key (1–9, 0 for the tenth,
    [ and ] to step through longer lists). The options bar above the frame shows the current class.
-2. Click the part in the image. SAM 3 outlines it and draws a tight box. It picks the smallest outline;
+2. Click the part in the image. Its edge is found for you and a tight box is drawn. It picks the smallest outline;
    press **M** for the next larger one (for example the whole assembly instead of one bolt).
 3. To fix a box: Ctrl+click selects it, then Shift+click grows it and Alt+click shrinks it.
 4. Picking a class while a box is selected re-labels that box. **Del** deletes the selected box, **Esc**
@@ -312,8 +313,24 @@ What the shapes become depends on the project:
   irregular parts.
 - **Segmentation:** a polygon or an ellipse is the part's exact outline. **New part** (the default) makes a new
   part of the current class. **Add to selected** joins the shape to the selected outline. **Cut from selected**
-  takes it away, for example to cut a hole. A box drawn by hand is outlined by SAM 3, as before. The brush and
+  takes it away, for example to cut a hole. A box drawn by hand is outlined for you, as before. The brush and
   eraser are explained under Outlines below.
+
+### Propagate and keyframes (by hand, like CVAT tracks)
+
+In a video, a part placed by hand can follow it through the frames without the outline model:
+
+1. Select the part (or select nothing to take every part on the frame) and press **Ctrl+B**, or **Propagate:
+   Next N** in the options bar of a manual tool. It is copied, as the same part, to the next frames (as many as
+   **Track** is set to); **Ctrl+Shift+B** or **To the end** copies it to the end of the task. The copies are drawn
+   dashed and listed as *propagated*.
+2. Go to a later frame where the part has moved and drag its box into place. That frame becomes a **keyframe**:
+   the copies between two keyframes move along a straight line from one to the other, and the copies after the
+   last keyframe stay where you left it. Outlines keep the earlier keyframe's shape, fitted to the new box.
+3. Where the part leaves the picture, select it and press **Ends here**: its copies on the later frames go.
+
+Only the copies ever move: boxes you placed yourself, tracked parts and confirmed frames are never changed. Each
+step is one Ctrl+Z.
 
 Every drag adds a new part of the current class; to change an existing box, use its handles (below). Picking a class
 re-labels a part only when you selected it yourself (Ctrl+click, the Select tool, a click on the Parts tab, or a click
@@ -332,17 +349,14 @@ meanwhile wait for it and then go through.
 
 Label every part on one frame, then press **T** (or **Ahead ▶**) to track those boxes ahead by the number of
 frames in the box next to it (20 by default); **Shift+T** tracks to the end. **R** / **◀ Back** tracks
-backwards and **Shift+R** tracks to the start. **X** or **Stop** stops a running job. Tracking uses SAM 3 and
-keeps the style of the boxes you drew. In a segmentation project tracking starts from each part's outline, so what
+backwards and **Shift+R** tracks to the start. **X** or **Stop** stops a running job. Tracking keeps the style of
+the boxes you drew. In a segmentation project tracking starts from each part's outline, so what
 you fixed by hand (a notch erased, an edge brushed) is what the tracker follows into the next frames; after fixing
 an outline, track again from that frame to redo the frames after it. Long videos are tracked in chunks, and if the
 GPU runs out of memory the chunk size is halved automatically.
 
-*Faster tracking (optional):* SAM 3.1 follows all parts of a frame in one pass, so it barely slows down with more
-parts (about 1.7 times as fast as SAM 3 with 4 parts on an RTX 3060, using half the GPU memory; it downloads 3.5 GB
-the first time). In tests it sometimes lost a part where SAM 3 held on (the outline spread over the background; such
-frames are marked *to check*), so it is off by default. To try it, put `"tracker": "sam3.1"` in
-`~/.partlabeler/app.json` (or set `PARTLABELER_TRACKER=sam3.1`) and restart the app.
+*Faster tracking (optional):* a faster tracker exists but is off by default, because in tests it sometimes lost a part
+(see Details for support).
 
 **What tracking carries.** Tracking follows the parts on the frame you start from, and only those: a class that is
 not on that frame is not added further on (useful when parts come and go, such as lamps switching on and off: a
@@ -418,15 +432,15 @@ classification projects do not have this button.
 
 In a segmentation project the tools on the left are:
 
-1. **Click to outline** (C): click a part and SAM 3 outlines it; **M** steps to the next larger outline, Shift+click
-   adds to it and Alt+click takes away from it, as for boxes.
-2. **Box** (B): place a box around a part (drag, two clicks or four edge points); SAM 3 outlines the part inside it.
+1. **Click to outline** (C): click a part and its edge is found for you; **M** steps to the next larger outline,
+   Shift+click adds to it and Alt+click takes away from it, as for boxes.
+2. **Box** (B): place a box around a part (drag, two clicks or four edge points); the part inside it is outlined for you.
 3. **Polygon** (O) and **Ellipse** (L): draw the outline yourself, as a new part or added to or cut from the
    selected outline (see Manual tools above).
 4. **Brush** (P): paint onto the selected outline (Ctrl+click an outline to select it). With nothing selected,
    the brush paints a new part of the current class.
 5. **Eraser** (E): erase from the selected outline. Erasing all of it deletes the part.
-6. **Smart brush** (Shift+P): paint roughly over what is missing. The outline model (SAM 3) looks at the part and
+6. **Smart brush** (Shift+P): paint roughly over what is missing. The outline model looks at the part and
    the stroke, and only what it sees as the part is added: the paint stops at the part's edge even when the
    brush spills over it. With nothing selected it starts a new part.
 7. **Smart eraser** (Shift+E): erase roughly over what does not belong (a spill onto the background or a
@@ -448,16 +462,21 @@ polygons (holes are not kept there). Boxes without an outline are left out and c
 A classification project opens as a grid of pictures instead of one frame at a time.
 
 - **Select** pictures: click one, Shift+click a range, Ctrl+click to add or remove, Ctrl+A for everything shown.
-  Then press a class number (1–9, 0) or click the class on the Classes tab. Del clears the class.
+  Then press a class number (1–9, 0) or click the class on the Classes tab. Del clears the class. A class you give
+  counts as **confirmed**; the Classes tab shows how many confirmed pictures each class has.
+- **Unsure** (U, under Sort): not sure about some pictures? Flag them to decide later. They stay out of training and
+  exports until you press a class number (or Del) for them; **Unsure** lists them.
+- **Every class ▾** (beside the filters) shows one class only, with each class's count.
 - **New class…** (under Class): adds a class; the selected pictures get it straight away.
-- **Group by look** (G): puts look-alike pictures together (DINOv3 features, nothing leaves the computer).
+- **Group by look** (G): puts look-alike pictures together (nothing leaves the computer).
   The **Groups** slider under Sort gives fewer or more groups; it starts at the best fit. Each group has
   **Select all** and **Give all a class…**, so naming a group labels all of it at once (pictures you already
   classed yourself keep their class).
 - **Suggest classes** (S): once at least two classes have pictures, it suggests a class for the others. It only
   suggests where a picture looks like pictures of that class; the rest stay without a class. Check the dotted
-  cards (**Suggested** lists the least sure first), **Accept suggestions** (Y), then suggest again: each round
-  reaches further.
+  cards (**To confirm** lists the least sure first), **Accept suggestions** (Y), then suggest again: each round
+  reaches further. Classes another system handed over with the pictures (for example Hawk-AI's SOP studio) also
+  show dotted, "(to confirm)", and Y confirms them the same way.
 - **Check labels**: lists pictures whose class disagrees with their look-alikes (likely mistakes) under
   **To check**, with the class they look like on the badge.
 - **Duplicates** lists near-identical pictures after grouping; **Unsure** lists pictures that fit no group well.
@@ -481,17 +500,17 @@ look-alikes. **Back to frames** (Esc) returns to the annotator.
 
 ## Find parts: Suggest, Find similar, Accept all
 
-- **Suggest** (S) proposes boxes that look like parts you already labeled on other frames or images
-  (DINOv3 matching). It learns from up to 30 labeled frames: for every class, the ones nearest to this frame, so a
+- **Suggest** (S) proposes boxes that look like parts you already labeled on other frames or images. It learns
+  from up to 30 labeled frames: for every class, the ones nearest to this frame, so a
   class labeled long ago is still found. Label a few examples first. Works in image folders and videos.
 - **Find similar** (F): select one box first (Ctrl+click), then F finds more copies of that part on the
-  same frame (SAM 3).
+  same frame.
 - Suggestions are dotted boxes. **Accept all** (Y) keeps them all; select one and press Del to drop it.
   Suggestions you never accept are left out of the export.
 
 ## Annotate by text
 
-Name the objects and SAM 3 boxes every one it sees, with no labeling first: common things such as car, truck, truck
+Name the objects and PartLabeler boxes every one it sees, with no labeling first: common things such as car, truck, truck
 cabin, wheel, bus, person, license plate, headlight, door, window, forklift, pallet, box or helmet, or any short
 phrase (one or two words work best).
 
@@ -611,13 +630,13 @@ It is optional and is the only part of PartLabeler that trains a model.
 
 1. **Teach**: pick a labeled dataset folder (YOLO format: `images/`, `labels/` and `classes.txt` or
    `data.yaml`). PartLabeler analyses the labels, holds back about 20% of the frames in time blocks, and
-   trains an RF-DETR detector on your computer (Nano is fastest, Medium is the most accurate; 30 epochs by
-   default). This can take from minutes to about an hour.
-2. **Prove**: the trained model labels the held-back frames and is scored against your labels (mAP50, recall
-   and a colour stress test). Targets: held-out mAP50 at least 0.90, recall at least 0.90, and at most a
-   10-point drop when colours change. The report says whether the targets are met. The stress test repaints
-   every held-back frame several times and can take a while; **Stop** during it skips the rest and still
-   saves the model and the report.
+   trains a detector on your computer (Nano is fastest, Medium is the most accurate). This can take from minutes
+   to about an hour.
+2. **Prove**: the trained model labels the held-back frames and is scored against your labels, plus a colour
+   stress test. Targets: how well it learned at least 90 %, at least 90 % of the parts found, and at most a
+   10-point drop when colours change (exact scores: see Details for support). The report says whether the targets
+   are met. The stress test repaints every held-back frame several times and can take a while; **Stop** during it
+   skips the rest and still saves the model and the report.
 3. **Transfer**: choose the finished Teach run, add the videos or image folders to label and click
    **Start labeling**. Each output folder looks exactly like the source dataset (same classes, same file
    naming), plus a preview video and a list of frames to check. With **Check along tracks (videos)** ticked
@@ -643,7 +662,8 @@ held-back frames. When most frames show no part (a lamp that is off most of the 
 trains on 1 in 3 of those empty frames, which is much faster; the held-back frames are all kept. To train on another
 machine, such as a cloud GPU, `teach(..., stage="prepare")` stops once the
 run folder holds the prepared training set; copy the folder there and call `teach(None, run_folder, ...,
-stage="train")` with the same settings. The model's parts (in segmentation projects outlined by the model itself for a `seg-` run, else by SAM 3) land on every frame nobody labeled or
+stage="train")` with the same settings. The model's parts (in segmentation projects outlined by the model itself
+for a `seg-` run, else outlined for you) land on every frame nobody labeled or
 confirmed, shown dashed like tracked parts with the model's confidence; parts that jump or go missing, and parts
 the model was unsure of (under 0.6), are marked *to check*. When the model gives one part two labels, the surer one
 stays. Check them, fix, confirm; Ctrl+Z removes a whole labeling run.
@@ -657,33 +677,11 @@ extra boxes to delete, so check every frame in the annotator (**Review in annota
 use Teach. From the command line: `python -m engine.cli quick <dataset> <video> --run <folder>`.
 
 **The model in production**: `partlabeler export-model <run>` writes a folder to copy to the production machine
-(`<run>/export`): the model as ONNX (`rfdetr-<size>.onnx`, plus an FP16 copy for TensorRT 11 and newer, which
-take precision from the model file), `model.json` (the classes, the confidence threshold, how
-to prepare a frame: stretched to the model's size, ImageNet mean and std; and how to read the outputs),
-`build_engine.py` and `check/` (held-out frames with the trained model's boxes and scores, every class). The export
-itself is checked against the trained model on held-out frames. For the lowest latency, run `python build_engine.py`
-on the production machine: it builds a TensorRT engine there (engines only run on the GPU and TensorRT version they
-were built with) in FP16 at the builder's highest optimization level, prints the engine's time per frame, and checks
-that it gives the trained model's parts and boxes on the `check/` frames (`--fp32` if FP16 ever fails the check).
-INT8 is not used: it can cost accuracy. The export needs the ONNX tools: `pip install "rfdetr[onnx]==1.11.0"
-onnxconverter-common`. Several cameras seen at the same moment (for example the left and right side of a car) can
-share one engine call: `partlabeler export-model <run> --batch 2` fixes the batch at 2 (one launch for both frames).
-A run trained elsewhere (Colab) is checked on its labeled source frames when its held-out frames are not on this PC.
-For outline models, `python build_engine.py --boxes-only` builds the engine without the outline output (the `onnx`
-package prunes it first): the same boxes and scores, faster (about 15% on an RTX 3060 at 960 px), for production code
-that needs only the parts' boxes.
-
-The export folder also gets `partcheck.py` and `lampcheck.py`, the production runtime: `Engine` runs a built
-engine with the least latency (the frame uploaded once, prepared and decoded on the GPU in one CUDA graph, only the
-parts' numbers coming back; outlines only when asked), and `Camera` judges each lamp function of one camera with a
-part reference (above): ON when its parts are found (or blinking), OK unless a part fails the reference check by its
-vote (steady parts 3 of the last 5 checks; blinking parts 2 of the last 3 blinks, each checked on its fullest frame).
-Parts are judged only while the object is in place (most steady parts where the reference has them: nothing is
-judged while a car drives in), and steady faults wait a settle time after a function switches (lamps change state).
-`python partcheck.py config.json STATION CAMERA=VIDEO ...` tries it on recordings and prints the timings.
+(`<run>/export`): the finished model, its settings, a set of check frames and the tools to run it there. What is in
+it and how to build the fastest version on the production machine are under Details for support.
 
 A parent object can be given in Teach too; the model then looks only inside it. If a run stops, starting it
-again resumes from the last epoch. If Teach & Transfer is greyed out, it was not installed: run the
+again carries on where it stopped. If Teach & Transfer is greyed out, it was not installed: run the
 installer again without `-NoTeach`.
 
 **Deploy to a Hawk-AI station.** Ask Rivet to deploy a finished export to a station by name; it replies with a
@@ -793,7 +791,7 @@ Polygon: Enter or double-click closes it, Backspace takes back a corner ·
 Shift+Delete: delete this frame for good (asks first) · T / Shift+T: track ahead /
 to the end · R / Shift+R: track back / to the start · U / Shift+U: re-track ahead / to the end · X: stop · S: suggest · F: find similar · Y: accept all · W: annotate by text ·
 N: notifications · ?: all shortcuts. Ctrl+wheel / + / −: zoom · Z: whole frame · Space+drag or wheel: move when zoomed. G: sort parts (grid: group
-by look). Grid: 1–9 and 0 give the selected pictures a class · Ctrl+A select all shown · Del clear · Space or
+by look). Grid: 1–9 and 0 give the selected pictures a class · U unsure · Ctrl+A select all shown · Del clear · Space or
 double-click: closer look · Esc: clear the selection, then back to frames.
 
 ## Notebooks and Google Colab
@@ -845,12 +843,12 @@ that fails, run the installer again (it is safe to rerun and keeps your projects
 
 ## Why PartLabeler
 
-- SAM 3 click-to-box and video tracking are built in; no separate model server to set up.
+- Click-to-box and video tracking are built in; no separate model server to set up.
 - It runs on your own machine and is free (Apache-2.0). Labeling sends no images or labels anywhere.
 - Native Windows install with one double-click: no Docker, no WSL.
 - It runs inside notebooks, including Google Colab's free T4, where web-UI tools are not allowed.
 - Teach & Transfer learns one labeled video and labels similar ones on your own GPU, and proves its accuracy
-  on held-out frames first (0.936 held-out mAP50 on the example dataset).
+  on frames it never trained on first (94 % on the example dataset).
 - It exports all five common formats: YOLO, COCO, CVAT XML, Pascal VOC and Label Studio, for boxes and outlines.
 - Boxes, outlines (segmentation) and image classes in one tool, with smart grouping that sorts a messy folder of
   pictures, and a check that finds labels which disagree with their look-alikes.
@@ -867,6 +865,64 @@ for the newest version number (nothing about you or your projects is sent; set P
 check only when you click the button). Rivet, the helper robot, is the only feature that sends anything you type: it sends your typed question, the chat so far and which screen
 you are on (for example "annotator, frame 12 of 400") to Google Gemini. It never sends images, labels,
 project names or class names. Without a Gemini API key, Rivet answers from this guide offline.
+
+## Details for support
+
+For the person who installs, supports or connects PartLabeler. The rest of this guide leaves these technical terms
+out on purpose.
+
+### Teach & Transfer: targets and the proof
+
+Teach trains an RF-DETR detector on the computer (sizes from Nano to Medium; 30 epochs by default). Prove scores the
+trained model on the held-back frames (about 20% of the frames, held back in time blocks) with mAP50, recall and a
+colour stress test. The targets are held-out mAP50 at least 0.90, recall at least 0.90, and at most a 10-point drop
+when colours change; the report says whether they are met. The stress test repaints every held-back frame several
+times; **Stop** during it skips the rest and still saves the model and the report. If a run stops, starting it again
+resumes from the last epoch. On the example dataset the result was 0.936 held-out mAP50.
+
+### Exports for production
+
+`partlabeler export-model <run>` writes a folder to copy to the production machine (`<run>/export`): the model as
+ONNX (`rfdetr-<size>.onnx`, plus an FP16 copy for TensorRT 11 and newer, which take precision from the model file),
+`model.json` (the classes, the confidence threshold, how to prepare a frame: stretched to the model's size, ImageNet
+mean and std; and how to read the outputs), `build_engine.py` and `check/` (held-out frames with the trained model's
+boxes and scores, every class). The export itself is checked against the trained model on held-out frames. For the lowest latency, run `python build_engine.py`
+on the production machine: it builds a TensorRT engine there (engines only run on the GPU and TensorRT version they
+were built with) in FP16 at the builder's highest optimization level, prints the engine's time per frame, and checks
+that it gives the trained model's parts and boxes on the `check/` frames (`--fp32` if FP16 ever fails the check).
+INT8 is not used: it can cost accuracy. The export needs the ONNX tools: `pip install "rfdetr[onnx]==1.11.0"
+onnxconverter-common`. Several cameras seen at the same moment (for example the left and right side of a car) can
+share one engine call: `partlabeler export-model <run> --batch 2` fixes the batch at 2 (one launch for both frames).
+A run trained elsewhere (Colab) is checked on its labeled source frames when its held-out frames are not on this PC.
+For outline models, `python build_engine.py --boxes-only` builds the engine without the outline output (the `onnx`
+package prunes it first): the same boxes and scores, faster (about 15% on an RTX 3060 at 960 px), for production code
+that needs only the parts' boxes.
+
+The export folder also gets `partcheck.py` and `lampcheck.py`, the production runtime: `Engine` runs a built
+engine with the least latency (the frame uploaded once, prepared and decoded on the GPU in one CUDA graph, only the
+parts' numbers coming back; outlines only when asked), and `Camera` judges each lamp function of one camera with a
+part reference (above): ON when its parts are found (or blinking), OK unless a part fails the reference check by its
+vote (steady parts 3 of the last 5 checks; blinking parts 2 of the last 3 blinks, each checked on its fullest frame).
+Parts are judged only while the object is in place (most steady parts where the reference has them: nothing is
+judged while a car drives in), and steady faults wait a settle time after a function switches (lamps change state).
+`python partcheck.py config.json STATION CAMERA=VIDEO ...` tries it on recordings and prints the timings.
+
+### Faster tracking (optional)
+
+Tracking uses SAM 3 by default. SAM 3.1 follows all parts of a frame in one pass, so it barely slows down with more
+parts (about 1.7 times as fast as SAM 3 with 4 parts on an RTX 3060, using half the GPU memory; it downloads 3.5 GB
+the first time). In tests it sometimes lost a part where SAM 3 held on (the outline spread over the background; such
+frames are marked *to check*), so it is off by default. To try it, put `"tracker": "sam3.1"` in
+`~/.partlabeler/app.json` (or set `PARTLABELER_TRACKER=sam3.1`) and restart the app.
+
+### The models inside
+
+- **SAM 3** finds a part's edge from a click or a box (Click to outline, Box, the smart brush and eraser), tracks parts
+  through a video, finds more copies of a part (Find similar) and finds the objects named in words (Annotate by text;
+  the API's `add_part` and `find_parts`).
+- **DINOv3** powers matching and grouping: Suggest, Group by look, Suggest classes, Check labels and Sort parts.
+- **RF-DETR** is the detector Teach & Transfer trains.
+- Licences for all of them are under Credits and licences.
 
 ## Credits and licences
 

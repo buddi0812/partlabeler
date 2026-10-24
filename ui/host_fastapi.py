@@ -245,6 +245,8 @@ def safe_name(name: str) -> str:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     state["loop"] = asyncio.get_running_loop()
+    from ui import trainq
+    trainq.load()                    # now, not at import: the service's --home is set by then (the queue lives there)
     yield
 
 
@@ -264,6 +266,21 @@ async def revalidate_ui(request, call_next):
 
 
 OPEN = ("/login", "/api/auth/", "/ui/", "/api/v1/health", "/api/v1/models")  # reachable before signing in
+# exact POSTs that check a service key themselves (ui/v1.py service_key) when no account signed in
+SERVICE_ROUTES = ("POST /api/v1/projects/import", "POST /api/v1/projects/*/train", "GET /api/v1/projects/*/train/estimate",
+                  "GET /api/v1/train/queue", "GET /api/v1/train/runs/*", "POST /api/v1/train/runs/*/cancel",
+                  "POST /api/v1/projects/*/prelabel")
+
+
+def _service_route(method: str, path: str) -> bool:
+    """One of SERVICE_ROUTES (`*` = one path segment): it checks the service key itself when nobody signed in."""
+    parts = path.split("/")
+    for r in SERVICE_ROUTES:
+        m, pat = r.split(" ", 1)
+        want = pat.split("/")
+        if m == method and len(want) == len(parts) and all(w in ("*", p) for w, p in zip(want, parts)) and all(parts[1:]):
+            return True
+    return False
 
 
 @app.middleware("http")
@@ -274,7 +291,7 @@ async def signed_in(request, call_next):
     bearer = auth[7:].strip() if auth[:7].lower() == "bearer " else None
     user = accounts().user_for_token(bearer) if bearer else accounts().user_for(request.cookies.get(COOKIE))
     path = request.url.path
-    if user is None and not path.startswith(OPEN):
+    if user is None and not path.startswith(OPEN) and not _service_route(request.method, path):
         if bearer:
             return JSONResponse({"detail": "Unknown or revoked API token (Settings → API access)"}, status_code=401)
         if request.method == "GET" and not path.startswith(("/api/", "/items/", "/thumbs/", "/previews/", "/mcp")):
@@ -1201,6 +1218,9 @@ def teach(body: dict = Body(...)) -> dict:
         if not dataset.is_dir():
             raise HTTPException(400, "Pick the labeled dataset folder (with images/ and labels/)")
     kw = {k: body[k] for k in ("size", "epochs", "resolution") if body.get(k)}
+    from engine.detector import AUGS
+    if body.get("aug") and body["aug"] not in AUGS:
+        raise HTTPException(400, f"unknown augmentation {body['aug']!r}; choose one of {', '.join(AUGS)}")
     if kw.get("resolution"):
         from engine.detector import check_resolution
         try:
@@ -1216,23 +1236,25 @@ def teach(body: dict = Body(...)) -> dict:
                     for tid in tasks or [] if sources_by_id[tid].get("camera_id")} or None
 
     def job(progress, should_stop):
-        for t in tasks or []:
-            from engine.teach import task_dataset
-            if task_dataset(p, t, dataset, progress, should_stop) is None:
+        from engine.teach import band, task_dataset
+        for i, t in enumerate(tasks or []):                   # the source frames: the run's first 5 %
+            if task_dataset(p, t, dataset, band(progress, 0.05 * i / len(tasks), 0.05 * (i + 1) / len(tasks)), should_stop) is None:
                 return {"status": "stopped", "step": "source"}
         return run_teach(dataset, runs_dir() / name, parent=parent, progress=progress, should_stop=should_stop,
                          recolor=recolor, crop_to_parent=crop, task_cameras=task_cameras,
-                         project=body.get("project") or None,
+                         project=body.get("project") or None, aug=body.get("aug") or "strong",
+                         compare_to=str(runs_dir() / safe_name(body["compare_to"])) if body.get("compare_to")
+                         and (runs_dir() / safe_name(body["compare_to"]) / "settings.json").exists() else None,
                          **{k: (int(v) if k != "size" else v) for k, v in kw.items()})
 
     def done(res):
         res = res or {}
         if res.get("status") == "stopped":
-            note("warning", f"Teach run {name} stopped", "Start it again to resume from the last epoch")
+            note("warning", f"Teach run {name} stopped", "Start it again to carry on where it stopped")
             return
-        held = (res.get("held_out") or {}).get("mAP50")
+        score = res.get("knowledge_score")
         note("success" if res.get("passed", True) else "warning", f"Teach run {name} finished",
-             (f"Held-out mAP50 {held:.2f}. " if isinstance(held, (int, float)) else "") + "Next: Transfer it to similar videos.",
+             (f"How well it learned: {round(score)} %. " if isinstance(score, (int, float)) else "") + "Next: Transfer it to similar videos.",
              action=folder_action((runs_dir() / name).resolve()))
 
     return {"job": start_job("teach", job, done, f"Teach run {name} failed"), "run": name}
@@ -1280,8 +1302,7 @@ def export_model(body: dict = Body(...)) -> dict:
         p = (res or {}).get("parity") or {}
         folder = Path((res or {}).get("path") or run).resolve().parent
         note("success", f"Exported {run.name} for production",
-             f"Checked on {p.get('frames', 0)} held-out frames: {p.get('missing', 0)} missing, "
-             f"largest box difference {p.get('worst_px', '?')} px.",
+             f"Checked on {p.get('frames', 0)} frames it never trained on: {p.get('missing', 0)} missed.",
              action=folder_action(folder))
 
     return {"job": start_job("export", job, done, f"Exporting {run.name} failed")}
@@ -1327,7 +1348,7 @@ def models_for_deploy() -> list:
         settings, report = _read_json(run_dir / "settings.json"), _read_json(run_dir / "report.json")
         name = settings.get("project") or Path(settings.get("source") or run_dir.name).name
         prep = report.get("prepare") or {}
-        out.append({"id": run_dir.name, "name": name,
+        out.append({"id": run_dir.name, "name": name, "task": m.get("task") or ("segment" if m.get("outlines") else "detect"),
                     "created": datetime.fromtimestamp(mf.stat().st_mtime).astimezone().isoformat(),
                     "classes": m.get("classes"), "crop": m.get("crop"), "parent": m.get("parent"),
                     "resolution": m.get("resolution"), "threshold": m.get("threshold"), "parity": m.get("parity"),

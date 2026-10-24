@@ -362,12 +362,18 @@ class Session:
         if mask is not None and not mask.any():
             self.send({"type": "toast", "text": "No part found inside that box; draw it around the whole part"})
             return
-        self._remember([msg["item"]], "box")
+        task = range(*self.p.ranges[self.p.items[msg["item"]]["task"]])       # moving a propagated part: a keyframe,
+        copies = [] if msg.get("obj") is None else [                          # its copies then follow (Project.follow)
+            k for k in self.p.items_with(obj) if k in task and (r := self.p._row(k, obj)) and r["source"] == "propagated"]
+        self._remember([msg["item"], *copies], "box")
         self.p.put(msg["item"], obj, cls, msg["box"], "manual", mask=mask)
+        followed = self.p.follow(obj, task) if copies else []
         self.points.pop((msg["item"], obj), None)
         if mask is not None:
             self.send({"type": "select", "item": msg["item"], "obj": obj})
         self.refresh(msg["item"])
+        if followed:
+            self.send({"type": "item_changed", "items": followed})
 
     def on_paint(self, msg):
         """Brush or eraser on an outline: the page sends the part's whole edited mask as a PNG crop at (x, y).
@@ -619,6 +625,18 @@ class Session:
             self.notify("info", f"Unconfirmed {self._frame(msg['item'])}", "", self._goto(msg["item"]))
         self.refresh(msg["item"])
 
+    def on_review_many(self, msg):
+        """Confirm many frames at once (the job menu's "Confirm the tracked frames": the page picks them and says
+        how many first). One undo step; `item`, the frame on screen, is sent again."""
+        items = sorted({int(i) for i in msg.get("items") or [] if 0 <= int(i) < len(self.p.items)})
+        if not items:
+            return
+        self._remember(items, "confirm")
+        for i in items:
+            self.p.set_reviewed(i, True)
+        self.notify("success", f"Confirmed {len(items)} frame{'' if len(items) == 1 else 's'}", "Saved to the project")
+        self.refresh(int(msg["item"]) if msg.get("item") is not None else items[0])
+
     def on_accept(self, msg):
         n = sum(b["source"] == "suggested" for b in self.p.boxes(msg["item"]))
         self._remember([msg["item"]], "accept")
@@ -868,6 +886,45 @@ class Session:
                     f"{which}, {'before' if (msg.get('direction') or 1) < 0 else 'after'} {self._frame(item)}"
                     + (". Ctrl+Z brings them back" if n else ""), self._goto(item))
         self.send({"type": "item_changed", "items": changed})
+        self.send(self.status_msg())
+
+    def on_propagate(self, msg):
+        """CVAT's Propagate (Ctrl+B): copy parts of this frame (objs; none given = every part on it) to the next `count`
+        frames of its task (-1: to its end), as the same parts. Moving a copy later makes it a keyframe and the copies
+        in between follow (Project.follow). Frames where a person placed that part, and confirmed frames, are kept."""
+        item = msg["item"]
+        objs = [int(o) for o in msg.get("objs") or []] or [b["obj"] for b in self.p.boxes(item) if b["source"] != "suggested"]
+        if not objs:
+            self.send({"type": "toast", "text": "No parts on this frame to propagate: label one first"})
+            return
+        span = self._span(item, msg.get("count", -1), 1)
+        if span is None:
+            return
+        self._remember(list(span), "propagate")
+        changed = sorted({k for o in objs for k in self.p.propagate(o, item, span)})
+        n = len(objs)
+        self.notify("info", f"Propagated {n} part{'s' if n != 1 else ''} to {len(changed)} frame{'s' if len(changed) != 1 else ''}",
+                    "Move it on a later frame and the frames in between follow. Ctrl+Z takes it back.", self._goto(item))
+        self.send({"type": "item_changed", "items": changed})
+        self.send(self.status_msg())
+
+    def on_part_ends(self, msg):
+        """CVAT's "outside": the part leaves the picture after this frame, so its propagated copies on the later frames
+        of the task go (a person's own placements of it stay). One undo step."""
+        item, obj = msg["item"], int(msg["obj"])
+        end = self.p.ranges[self.p.items[item]["task"]][1]
+        later = [k for k in self.p.items_with(obj) if item < k < end and not self.p.is_reviewed(k)
+                 and (r := self.p._row(k, obj)) and r["source"] == "propagated"]
+        if not later:
+            self.send({"type": "toast", "text": "This part has no propagated copies after this frame"})
+            return
+        self._remember(later, "ends")
+        for k in later:
+            self.p.delete(k, obj)
+        self.notify("info", f"The part ends at {self._frame(item)}",
+                    f"Removed its copies from {len(later)} later frame{'s' if len(later) != 1 else ''}. Ctrl+Z brings them back.",
+                    self._goto(item))
+        self.send({"type": "item_changed", "items": later})
         self.send(self.status_msg())
 
     def on_suggest(self, msg):
@@ -1173,14 +1230,24 @@ class Session:
         self.send({"type": "cards", "of": of, "cards": self._cards(of, keys)})
         self.send(self.status_msg())
 
+    def on_unsure(self, msg):
+        """A person marks pictures as unsure (images only): out of training and exports until decided."""
+        keys = [int(k) for k in msg.get("keys", [])]
+        if not keys:
+            return
+        self._remember(keys, "classes")
+        self.p.set_unsure(keys)
+        self.send({"type": "cards", "of": "images", "cards": self._cards("images", keys)})
+        self.send(self.status_msg())
+
     def on_accept_tags(self, msg):
-        keys = [int(k) for k in msg.get("keys") or [k for k, t in self.p.tags().items() if t["source"] == "suggested"]]
+        keys = [int(k) for k in msg.get("keys") or [k for k, t in self.p.tags().items() if t["source"] in ("suggested", "imported")]]
         self._remember(keys, "accept")
         n = self.p.accept_tags(keys)
         self.send({"type": "cards", "of": "images", "cards": self._cards("images", keys)})
         self.send(self.status_msg())
         if n:
-            self.notify("success", f"Accepted {n} suggested class{'es' if n != 1 else ''}", "")
+            self.notify("success", f"Confirmed {n} class{'es' if n != 1 else ''}", "")
 
     def on_suggest_tags(self, msg):
         """Suggest a class for every image nobody has classed yet, from the images already classed."""
@@ -1189,7 +1256,7 @@ class Session:
             keys, v = self._vectors("images", lambda d, n: self.send({"type": "progress", "task": "Reading images",
                                                                        "done": d, "total": n}))
             tags = self.p.tags()
-            labeled = {k: t["cls"] for k, t in tags.items() if t["source"] != "suggested"}
+            labeled = {k: t["cls"] for k, t in tags.items() if t["source"] not in ("suggested", "unsure") and t["cls"] is not None}
             got = predict(v, labeled)
             if got is None:
                 self.send({"type": "toast", "text": "Give at least one image of two different classes first"})
@@ -1221,7 +1288,8 @@ class Session:
             from engine.sort import odd_ones
             keys, v = self._vectors(of, lambda d, n: self.send({"type": "progress", "task": "Reading", "done": d, "total": n}))
             if of == "images":
-                labeled = {i: t["cls"] for i, t in self.p.tags().items() if t["source"] != "suggested" and i < len(keys)}
+                labeled = {i: t["cls"] for i, t in self.p.tags().items()
+                           if t["source"] not in ("suggested", "unsure") and t["cls"] is not None and i < len(keys)}
                 pos = {k: i for i, k in enumerate(keys)}
                 idx = {pos[k]: c for k, c in labeled.items()}
             else:

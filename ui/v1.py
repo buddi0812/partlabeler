@@ -4,6 +4,8 @@ stable paths under /api/v1, JSON in and out. docs/INTEGRATION.md is the contract
     GET  /api/v1/health                                   up and which version (no token: for deploy probes)
     POST /api/v1/annotate                                 one image + object names -> parts (stateless)
     POST /api/v1/projects                                 create {name, type, labels}
+    POST /api/v1/projects/import                          a project handed over: images + seed boxes, one per source
+    POST /api/v1/projects/{name}/train  GET /api/v1/train/queue  GET /api/v1/train/runs/{run}   the training queue
     GET  /api/v1/projects/{name}                          the project, its tasks and progress
     POST /api/v1/projects/{name}/uploads                  a video or images (multipart) -> a new task (a job)
     POST /api/v1/projects/{name}/annotate-text            SAM 3 by text on a frame / rest of a task / task / project
@@ -23,11 +25,14 @@ uploads instead.
 
 /api/v1/models is the one exception to all of the above: a same-box service (hawk-api, hawk-ai-internal §12.3)
 calls it with header `X-Hawk-Token` matching app.json "models_token" instead of an account token, and it refuses
-a remote caller even with the right token (its "onnx_path" is an absolute path on this computer).
+a remote caller even with the right token (its "onnx_path" is an absolute path on this computer). POST
+/api/v1/projects/import takes the same service key (local only) as well as an account token; with the key, the
+project goes into the app's default projects folder.
 """
 import asyncio
 import base64
 import io
+import json
 import os
 import re
 import shutil
@@ -39,9 +44,11 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
 from starlette.background import BackgroundTask
 from PIL import Image
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
-from ui import mcp
+from ui import mcp, trainq
 
 H = None                                                  # the host module (ui/host_fastapi.py), set by mount()
 LOOPBACK = {"127.0.0.1", "::1", "localhost", "testclient"}
@@ -56,6 +63,17 @@ def remote(request: Request) -> bool:
     """From another machine, or relayed by a proxy (whose own address is this computer)."""
     client = request.client.host if request.client else ""
     return client not in LOOPBACK or any(h in request.headers for h in ("x-forwarded-for", "forwarded"))
+
+
+def service_key(request: Request) -> None:
+    """hawk-api's service key: header X-Hawk-Token matching app.json "models_token", from this computer only."""
+    import hmac
+    from engine.accounts import app_config
+    token = app_config().get("models_token")
+    if not token or not hmac.compare_digest(request.headers.get("x-hawk-token", ""), token):
+        raise HTTPException(403, "Missing or wrong X-Hawk-Token")
+    if remote(request):
+        raise HTTPException(403, "This route is local-only (127.0.0.1), even with a valid token")
 
 
 def tool(name: str, args: dict, request: Request | None = None):
@@ -121,13 +139,7 @@ def models_for_deploy(request: Request) -> dict:
     """Finished exports, for hawk-api's deploy picker (hawk-ai-internal §12.3) - the one /api/v1 route that
     answers to a service key (app.json "models_token" as header X-Hawk-Token) instead of an account token, and
     stays local-only even with the right key: onnx_path is an absolute path on this computer."""
-    import hmac
-    from engine.accounts import app_config
-    token = app_config().get("models_token")
-    if not token or not hmac.compare_digest(request.headers.get("x-hawk-token", ""), token):
-        raise HTTPException(403, "Missing or wrong X-Hawk-Token")
-    if remote(request):
-        raise HTTPException(403, "This route is local-only (127.0.0.1), even with a valid token")
+    service_key(request)
     return {"models": H.models_for_deploy()}
 
 
@@ -192,6 +204,275 @@ async def annotate(request: Request):
 @router.post("/projects")
 def create_project(body: ProjectIn, request: Request):
     return tool("create_project", body.model_dump(), request)
+
+
+class ImportImage(BaseModel):
+    name: str
+    jpeg_b64: str
+    cls: str | None = Field(None, alias="class", description="classify: the image's class (one of `classes`)")
+
+
+class ImportBox(BaseModel):
+    image: str = Field(..., description="The name of one of the images")
+    cls: str = Field(..., alias="class")
+    x: float = Field(..., ge=0, le=1)
+    y: float = Field(..., ge=0, le=1)
+    w: float = Field(..., gt=0, le=1)
+    h: float = Field(..., gt=0, le=1)
+
+
+class ImportVideo(BaseModel):
+    name: str = Field(..., min_length=1, max_length=120, description="The recording's id: added once per project")
+    task: str | None = Field(None, max_length=120, description="The task's name (default: `name`)")
+    path: str = Field(..., description="The recording's file on this computer, under hawk_media_dir's recorded/ or golden/")
+    every: int = Field(1, ge=1, description="Keep every Nth frame (Hawk-AI asks for 3 per second of the recording)")
+    crop: list[float] | None = Field(None, description="[x, y, w, h] shares of the frame: the camera's work area")
+    camera_id: str | None = None
+
+
+HAWK_VIDEO_DIRS = ("recorded", "golden")                 # Hawk-AI's recorded cycles and studio runs, nothing else
+
+
+def hawk_video(path: str) -> Path:
+    """A recording Hawk-AI hands over: a video file in its media folder's recorded/ or golden/ (app.json
+    "hawk_media_dir", written by its installer). Anything else is refused, before anything is stored."""
+    from engine.accounts import app_config
+    root = app_config().get("hawk_media_dir")
+    p = Path(path).resolve()
+    if root and p.is_file() and p.suffix.lower() in VIDEO_EXTS and \
+            any(p.is_relative_to((Path(root) / d).resolve()) for d in HAWK_VIDEO_DIRS):
+        return p
+    raise HTTPException(400, f"{Path(path).name!r} is not one of this box's recordings")
+
+
+class ImportSource(BaseModel):
+    station: str
+    demo_version: int
+
+
+class ImportIn(BaseModel):
+    name: str
+    type: Literal["detect", "segment", "classify"] = "detect"
+    source: ImportSource
+    classes: list[str] = Field(..., min_length=1)
+    images: list[ImportImage] = Field(default_factory=list, max_length=2000)
+    videos: list[ImportVideo] = Field(default_factory=list, max_length=50, description="Recordings, each a video task (Track works there)")
+    boxes: list[ImportBox] = Field(default_factory=list, description="Seed labels: x, y, w, h shares of the image")
+
+
+@router.post("/projects/import")
+def import_project(body: ImportIn, request: Request):
+    """A labeling project handed over from another system (Hawk-AI's SOP studio, hawk-ai-internal app-015-plan (b)):
+    its images become one new task, its boxes parts to check ("imported"). The same source (station + demo
+    version) always lands in the same project: a second call adds the images it hasn't seen, never a second project."""
+    if H.USER.get() is None:                             # no account: hawk-api's service key, into the default folder
+        service_key(request)
+    key = {**body.source.model_dump(), "type": body.type}                  # one project per station + version + type
+    same = lambda src: isinstance(src, dict) and {"type": "detect", **src} == key      # noqa: E731 (older: detect)
+    name = next((f.parent.name for f in sorted(H.home().glob("*/project.json"))
+                 if same(json.loads(f.read_text(encoding="utf-8")).get("import_source"))), None)
+    known = H.project(name).classes if name else []
+    ok = lambda c: c in body.classes or c in known      # noqa: E731
+    if body.type == "classify" and body.boxes:
+        raise HTTPException(400, "a classify project takes each image's `class`, not boxes")
+    if not all(ok(b.cls) for b in body.boxes) or not all(im.cls is None or ok(im.cls) for im in body.images):
+        raise HTTPException(400, "every box's and image's class must be one of `classes`")
+    from engine.recordings import valid_crop
+    vseen = set(H.project(name).meta.get("import_videos", [])) if name else set()
+    videos = [(v, hawk_video(v.path)) for v in body.videos if v.name not in vseen]   # checked before anything is stored
+    if any(v.crop is not None and not valid_crop(v.crop) for v, _ in videos):
+        raise HTTPException(400, "a video's crop must be [x, y, w, h] shares inside the frame")
+    seen = set(H.project(name).meta.get("import_images", [])) if name else set()
+    stems, new = set(), []                                # checked before anything is stored
+    for im in body.images:
+        stem = re.sub(r"[^\w.-]", "_", Path(im.name).stem)[-100:] or "image"
+        if im.name in seen or stem in stems:
+            continue
+        try:
+            data = base64.b64decode(im.jpeg_b64.split(",", 1)[-1], validate=True)
+            Image.open(io.BytesIO(data)).verify()
+        except Exception:
+            raise HTTPException(400, f"image {im.name!r} is not a base64 JPEG")
+        stems.add(stem)
+        new.append((im.name, stem, data, im.cls))
+    if name is None:
+        base = re.sub(r'[\\/:*?"<>|]', "_", body.name).strip(" .") or "import"
+        name = next(n for n in (base if i == 1 else f"{base} {i}" for i in range(1, 1000)) if not (H.home() / n).exists())
+        tool("create_project", {"name": name, "type": body.type, "labels": body.classes}, request)
+    p = H.project(name)
+    p.set_meta(import_source=key)
+    missing = [c for c in dict.fromkeys(body.classes) if c not in p.classes]
+    if missing:
+        tool("set_labels", {"project": name, "labels": p.classes + missing}, request)
+    out = {"project_id": name, "url": f"{str(request.base_url).rstrip('/')}/p/{name}", "images_added": len(new), "boxes_added": 0,
+           "videos_added": 0}
+    for v, path in videos:                                # one task each, through the app's own add-task path
+        opts = {"sources": [{"path": str(path), "camera_id": v.camera_id, "crop": v.crop}], "name": v.task or v.name,
+                "every": v.every, "frames": "jpg" if v.crop else None}   # a crop needs stored frames
+        job = tool("get_job", {"job": H.create_tasks(name, opts)["job"], "wait_s": 600})
+        if not job["finished"] or job["error"]:
+            raise HTTPException(500, f"adding {v.name} did not finish: {job['error'] or job['text']}")
+        vseen.add(v.name)
+        H.project(name).set_meta(import_videos=sorted(vseen))
+        out["videos_added"] += 1
+    if not new:
+        return out
+    folder = H.home() / "_uploads" / re.sub(r"[^\w.-]", "_", name) / f"{time.strftime('%Y%m%d_%H%M%S')}_{os.urandom(3).hex()}"
+    labels = folder.parent / (folder.name + "_labels")
+    folder.mkdir(parents=True)
+    labels.mkdir()
+    lines: dict[str, list[str]] = {}
+    by_name = {n: s for n, s, *_ in new}
+    for b in body.boxes:
+        if b.image in by_name:
+            w, h = min(b.w, 1 - b.x), min(b.h, 1 - b.y)
+            lines.setdefault(by_name[b.image], []).append(f"{p.classes.index(b.cls)} {b.x + w / 2:.6f} {b.y + h / 2:.6f} {w:.6f} {h:.6f}")
+    for _, stem, data, _ in new:
+        (folder / f"{stem}.jpg").write_bytes(data)
+    for stem, ls in lines.items():
+        (labels / f"{stem}.txt").write_text("\n".join(ls) + "\n", encoding="utf-8")
+    task = f"{body.source.station} v{body.source.demo_version}"
+    job = tool("add_tasks", {"project": name, "sources": [str(folder)], "name": task, "wait_s": 600})
+    if not job["finished"] or job["error"]:
+        raise HTTPException(500, f"adding the images did not finish: {job['error'] or job['text']}")
+    p = H.project(name)
+    tid = max(t["id"] for t in p.sources)
+    items = range(*p.ranges[tid])
+    out["boxes_added"] = p.import_yolo(labels, items=items)["boxes"]
+    shutil.rmtree(labels, ignore_errors=True)
+    for c in {c for *_, c in new if c}:                   # classify: each image's class, as a class to check
+        p.set_tags([k for k in (p._match(stem, items) for _, stem, _, c2 in new if c2 == c) if k is not None],
+                   p.classes.index(c), source="imported")
+    out["classes_added"] = sum(1 for *_, c in new if c)
+    p.set_meta(import_images=sorted(seen | {n for n, *_ in new}))
+    H.refresh(name)
+    return {**out, "task": tid}
+
+
+class TrainIn(BaseModel):
+    confirmed_only: bool = Field(True, description="Teach learns from the confirmed frames only (the one choice)")
+    size: str | None = Field(None, description="Default: small (detect) or seg-small (segment)")
+    epochs: int | None = Field(None, ge=1)
+    resolution: int | None = Field(None, ge=320)
+    augmentation: Literal["fixed", "worn", "off"] = Field("fixed", description="How the camera is mounted: fixed (today's "
+                                                          "strong set), worn (more turning, tilt and motion blur), off")
+    compare_to: str | None = Field(None, description="An earlier run of this project (its export id, e.g. the model a "
+                                   "station runs now): the report compares both on the same check frames")
+
+
+@router.post("/projects/{name}/train")
+def train(name: str, body: TrainIn, request: Request):
+    """Send a project's confirmed frames to the training queue (ui/trainq.py): Teach, then the export for production.
+    One run at a time; GET /api/v1/train/runs/{run} follows it."""
+    if H.USER.get() is None:
+        service_key(request)
+    if not body.confirmed_only:
+        raise HTTPException(400, "Teach learns from confirmed frames only")
+    H.get_project(name)                                  # 404
+    p = H.project(name)
+    size = "classify" if p.task == "classify" else body.size or ("seg-small" if p.task == "segment" else "small")
+    from engine.detector import SIZES, check_resolution
+    if size != "classify" and size not in SIZES:
+        raise HTTPException(400, f"size: one of {', '.join(SIZES)}")
+    if body.resolution and size != "classify":
+        try:
+            check_resolution(body.resolution, size)
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from None
+    frames = p.statuses().count(4)
+    if not frames:
+        raise HTTPException(400, "no confirmed frames yet: confirm the frames whose labels are right, then send it")
+    from engine.detector import MOUNTS
+    r = trainq.enqueue(name, H.USER.get(), size, body.epochs, body.resolution, frames=frames, aug=MOUNTS[body.augmentation],
+                         compare_to=body.compare_to)
+    return {"run": r["run"], "position": r["position"], "state": r["state"], "minutes": r["minutes"]}
+
+
+class PrelabelIn(BaseModel):
+    run: str = Field(description="A finished run of this project (its export id): its model labels the frames")
+    tasks: list[str] | None = Field(None, description="Task names; default: the tasks with no confirmed frame yet "
+                                    "(new recordings)")
+
+
+PRELABEL_GB = 1.5                                        # graphics card memory a model needs to label frames
+
+
+@router.post("/projects/{name}/prelabel")
+def prelabel(name: str, body: PrelabelIn, request: Request):
+    """Pre-label a project's new recordings with one of its finished runs (Hawk-AI's "Pre-label with the last model",
+    2026-10-24): the model's parts, to check, on every frame nobody labeled or confirmed (the label_tasks job, one
+    undo step). 422: the project has parts the model never learned (label those by hand); 409: something runs in
+    the project, or the graphics card has no room now."""
+    if H.USER.get() is None:
+        service_key(request)
+    H.get_project(name)                                  # 404
+    run = H.runs_dir() / H.safe_name(body.run)
+    try:
+        st = json.loads((run / "settings.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        raise HTTPException(404, f"no finished run {body.run!r}") from None
+    if "checkpoint" not in st:
+        raise HTTPException(400, f"{body.run} has no model that labels parts")
+    sess = H.session(name)
+    p = sess.p
+    if new := [c for c in p.classes if c not in st["classes"]]:
+        raise HTTPException(422, f"the model never learned {', '.join(new)}: label those by hand")
+    from engine import hw
+    free = hw.free_memory_gb()
+    if free is not None and free < PRELABEL_GB:
+        raise HTTPException(409, "the graphics card has no room now; try again when it is free")
+    tids = [t["id"] for t in p.sources if (t["name"] in body.tasks if body.tasks is not None
+                                           else not any(p.is_reviewed(k) for k in range(*p.ranges[t["id"]])))]
+    if not tids:
+        return {"tasks": 0, "state": "nothing"}
+    try:
+        sess.call({"type": "label_tasks", "run": str(run), "tasks": tids}, wait=0)
+    except RuntimeError as e:                            # another job runs in the project
+        raise HTTPException(409, str(e)) from None
+    return {"tasks": len(tids), "state": "started"}
+
+
+@router.get("/projects/{name}/train/estimate")
+def train_estimate(name: str, request: Request, size: str | None = None, epochs: int | None = None,
+                   resolution: int | None = None):
+    """Before sending it: how long a run of this project should take (minutes as [low, high]) and the graphics
+    card memory it needs (need_gb) against what is free now (free_gb)."""
+    if H.USER.get() is None:
+        service_key(request)
+    H.get_project(name)
+    p = H.project(name)
+    size = size or ("classify" if p.task == "classify" else "seg-small" if p.task == "segment" else "small")
+    est = trainq.estimate(p.statuses().count(4), size, epochs, resolution)
+    _, need, free = trainq.room(size, est["resolution"])
+    return {**est, "need_gb": need, "free_gb": free}
+
+
+@router.get("/train/queue")
+def train_queue(request: Request):
+    if H.USER.get() is None:
+        service_key(request)
+    return {"runs": trainq.queue()}
+
+
+@router.post("/train/runs/{run}/cancel")
+def train_cancel(run: str, request: Request):
+    """Cancel a run: queued or waiting ends now; running stops at Teach's next safe point. Ends as "cancelled"."""
+    if H.USER.get() is None:
+        service_key(request)
+    r = trainq.cancel(run)
+    if r is None:
+        raise HTTPException(404, f"No training run {run}")
+    return r
+
+
+@router.get("/train/runs/{run}")
+def train_run(run: str, request: Request):
+    if H.USER.get() is None:
+        service_key(request)
+    r = trainq.get(run)
+    if r is None:
+        raise HTTPException(404, f"No training run {run}")
+    return r
 
 
 @router.get("/projects/{name}")
@@ -309,7 +590,7 @@ async def run_tool(name: str, request: Request, body: dict | None = None):
 def mount(app, host) -> None:
     """Add /api/v1 and the network guard to the app (the signed_in middleware checks the token first)."""
     global H
-    H = host
+    H = trainq.H = host
     app.include_router(router)
 
     @app.middleware("http")

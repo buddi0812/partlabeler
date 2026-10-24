@@ -12,6 +12,7 @@ import hashlib
 import json
 import shutil
 import time
+import zlib
 from collections import Counter, defaultdict
 from itertools import groupby
 from pathlib import Path
@@ -71,6 +72,11 @@ def task_dataset(project, task_id: int, out, progress=None, should_stop=None) ->
     (out / "classes.txt").write_text("\n".join(project.classes) + "\n", encoding="utf-8")
     a, b = project.ranges[task_id]
     todo = [k for k in range(a, b) if project.is_reviewed(k)]
+    first, last = project.items[a].get("frame"), project.items[b - 1].get("frame")   # the task's whole span, so
+    spans_file = out / "spans.json"                                                  # its check set stays put
+    spans = json.loads(spans_file.read_text(encoding="utf-8")) if spans_file.exists() else {}
+    spans[project.task_of(a)["name"]] = [first, last] if first is not None and last is not None else [0, b - a - 1]
+    spans_file.write_text(json.dumps(spans), encoding="utf-8")
     boxes = empty = 0
     for n, k in enumerate(todo):
         if should_stop and should_stop():
@@ -256,12 +262,24 @@ def analyse(dataset_dir, resolution: int = 640) -> dict:
 
 
 # ---- prepare --------------------------------------------------------------------------------
-def held_out_flags(items, held_out: float = 0.2) -> list[bool]:
+def held_out_flags(items, held_out: float = 0.2, spans: dict | None = None) -> list[bool]:
     """time_blocks per video (names ending in _fNNNNNN, grouped by what comes before), so every video of a
-    source made of several (e.g. several tasks) is tested; images without frame numbers form one group."""
-    flags = []
-    for _, group in groupby(items, key=lambda it: it["key"][0] if it["key"][1] >= 0 else ""):
-        flags += time_blocks(len(list(group)), held_out)
+    source made of several (e.g. several tasks) is tested; images without frame numbers form one group.
+    `spans` ({video: [first frame, last frame]}, a project task's whole span): its frames are held out by their
+    place in the whole video, so a frame stays in (or out of) the check set however many of its neighbours are
+    confirmed by the next run; a video with no held-out frame that way is cut as before.
+    Each video holds back its own blocks, turned by its place among this source's videos in `spans` (the order the
+    project's tasks came in: stable as more come; the first keeps the old blocks, so an earlier run still shares
+    check frames with this one): recordings of the same work in the same order would otherwise never train on the
+    same phases of the cycle. A video not in `spans` turns by its name's hash."""
+    present = {it["key"][0] for it in items if it["key"][1] >= 0}
+    flags, order = [], {v: i for i, v in enumerate(v for v in spans or {} if v in present)}
+    for v, group in groupby(items, key=lambda it: it["key"][0] if it["key"][1] >= 0 else ""):
+        group = list(group)
+        lo, hi = (spans or {}).get(v) or (0, 0)
+        turn = order[v] if v in order else zlib.crc32(v.encode()) if v else 0
+        mine = time_blocks(hi - lo + 1, held_out, at=[it["key"][1] - lo for it in group], turn=turn) if v and hi > lo else []
+        flags += mine if any(mine) else time_blocks(len(group), held_out, turn=turn)
     return flags
 
 
@@ -272,15 +290,29 @@ def _inside(row, crop, W: int, H: int) -> bool:
         (cy + h / 2) * H <= crop[3]
 
 
-def time_blocks(n: int, held_out: float = 0.2, blocks: int = 10) -> list[bool]:
+def time_blocks(n: int, held_out: float = 0.2, blocks: int = 10, at: list[int] | None = None, turn: int = 0) -> list[bool]:
     """Held-out flags for n frames in time order: whole blocks of neighbouring frames, spread over the
-    source, so the test is not near-duplicates of training frames."""
+    source, so the test is not near-duplicates of training frames. `at`: flags for these places (0..n-1) only.
+    `turn`: the chosen blocks moved on by this many (each video its own, held_out_flags)."""
     if not 0 < held_out < 1:
         raise ValueError("held_out must be between 0 and 1")
     blocks = max(2, min(blocks, n))
     k = min(blocks - 1, max(1, round(held_out * blocks)))
-    chosen = {int((j + 0.5) * blocks / k) for j in range(k)}
-    return [int(i * blocks / n) in chosen for i in range(n)]
+    chosen = {(int((j + 0.5) * blocks / k) + turn) % blocks for j in range(k)}
+    return [int(i * blocks / n) in chosen for i in (range(n) if at is None else at)]
+
+
+def band(progress, lo: float, hi: float):
+    """A step's own progress(done, total, text) as its share lo..hi of the whole run: every step counts from 0,
+    and one run's bar must only move forward."""
+    if progress is None:
+        return None
+    best = [lo]
+
+    def say(done, total, text=""):
+        best[0] = max(best[0], lo + (hi - lo) * (min(1.0, done / total) if total else 1.0))
+        progress(round(1000 * best[0]), 1000, text)
+    return say
 
 
 def yolo_line(c: int, x1, y1, x2, y2, W, H) -> str | None:
@@ -374,7 +406,8 @@ def prepare(dataset_dir, out, parent: str | None = None, held_out: float = 0.2, 
     items = [it for it in source_items(root) if it["label"] is not None]
     if len(items) < 2:
         raise ValueError(f"{root}: need at least 2 labeled images")
-    held = held_out_flags(items, held_out)
+    spans = json.loads((root / "spans.json").read_text(encoding="utf-8")) if (root / "spans.json").exists() else None
+    held = held_out_flags(items, held_out, spans)
     key = hashlib.sha1(json.dumps([str(root.resolve()), parent, held_out, classes, [it["name"] for it in items]]
                                   + ([recolor] if recolor else []) + ([] if crop_to_parent else ["whole"])
                                   + (["polygons"] if polygons else []) + ([f"empty/{empty_every}"] if empty_every > 1 else [])
@@ -617,10 +650,12 @@ def _map(preds, targets):
     return MeanAveragePrecision().update(preds, targets).compute()
 
 
-def prove(model, valid_dir, classes, progress=None, should_stop=None) -> dict:
+def prove(model, valid_dir, classes, progress=None, should_stop=None, stress: bool = True,
+          remap: dict | None = None) -> dict:
     """Agreement with the source labels on held-out frames: mAP50, mAP50-95, the confidence threshold with
     the best micro F1, recall/precision per class at it, and the colour stress test (Stop skips the rest of it).
-    Frames are read in small batches, never all held in memory."""
+    Frames are read in small batches, never all held in memory. `stress` False: no colour stress test. `remap`
+    ({the model's class: these classes' index}): a model with other classes; what it finds outside them is left out."""
     from engine import detector
     valid_dir = Path(valid_dir)
     files = sorted(p for p in (valid_dir / "images").iterdir() if p.suffix.lower() in IMAGE_EXTS)
@@ -637,6 +672,8 @@ def prove(model, valid_dir, classes, progress=None, should_stop=None) -> dict:
             ims = [Image.open(f).convert("RGB") for f in files[i:i + batch]]
             got = detector.predict(model, [change(im, t) for im, t in zip(ims, targets[i:])] if change else ims,
                                    threshold=0.01)
+            if remap is not None:
+                got = [_remap(d, remap) for d in got]
             for k, d in enumerate(got):
                 if d.mask is not None:                         # outlines: measured now, not kept (memory)
                     if not change:
@@ -657,14 +694,14 @@ def prove(model, valid_dir, classes, progress=None, should_stop=None) -> dict:
                         "AP50": round(ap50[c], 3) if c in ap50 else None}
                  for c, name in enumerate(classes)}
     TP, FP, FN = sum(tp.values()), sum(fp.values()), sum(fn.values())
-    stress = {}
-    for k, (name, fn_) in enumerate(STRESS.items()):
+    stressed = {}                                            # not `stress`: that is the argument (c878a32 hid it)
+    for k, (name, fn_) in enumerate(STRESS.items() if stress else ()):
         if should_stop and should_stop():
             break
         if progress:
             progress(k, len(STRESS), f"Colour stress test: {name}")
         vm = _map(predict(fn_), targets)
-        stress[name] = {"mAP50": round(float(vm.map50), 3), "drop": round(100 * float(m.map50 - vm.map50), 1)}
+        stressed[name] = {"mAP50": round(float(vm.map50), 3), "drop": round(100 * float(m.map50 - vm.map50), 1)}
     iou_c = defaultdict(list)
     for c, v in outlines:
         iou_c[c].append(v)
@@ -675,7 +712,52 @@ def prove(model, valid_dir, classes, progress=None, should_stop=None) -> dict:
             "outline_IoU": round(float(np.mean([v for _, v in outlines])), 3) if outlines else None,
             "mAP50_95": round(float(m.map50_95), 3), "threshold": th, "f1_sweep": sweep,
             "f1": sweep[th], "recall": round(TP / max(TP + FN, 1), 3), "precision": round(TP / max(TP + FP, 1), 3),
-            "per_class": per_class, "stress": stress}
+            "per_class": per_class, "stress": stressed}
+
+
+def _remap(d, remap: dict):
+    d = d[np.isin(d.class_id, list(remap))]
+    d.class_id = np.array([remap[int(c)] for c in d.class_id], dtype=int)
+    return d
+
+
+def compare(model, run_dir: Path, against: Path, classes, progress=None) -> dict | None:
+    """Hawk-AI's "this version vs the one in use" (2026-10-24): this run's model and `against` (an earlier run of the
+    project) scored the way prove() scores, on the same frames -- this run's check frames that `against` never trained
+    on. Its parts are matched by name; a part it never knew counts as missed. None: nothing to compare with."""
+    from engine import detector, hw
+    try:
+        st = json.loads((against / "settings.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if "checkpoint" not in st:                               # a classify run, or one that never finished
+        return None
+    prep = against / "dataset" / "prepared.json"
+    seen = set(json.loads(prep.read_text(encoding="utf-8"))["train"]) if prep.exists() else set()
+    valid, sub = run_dir / "dataset" / "valid", run_dir / "compare"
+    files = [p for p in sorted((valid / "images").iterdir()) if p.suffix.lower() in IMAGE_EXTS and p.stem not in seen]
+    if not files:
+        return None
+    shutil.rmtree(sub, ignore_errors=True)
+    for d in ("images", "labels"):
+        (sub / d).mkdir(parents=True)
+    for p in files:
+        shutil.copyfile(p, sub / "images" / p.name)
+        shutil.copyfile(valid / "labels" / (p.stem + ".txt"), sub / "labels" / (p.stem + ".txt"))
+    if progress:
+        progress(0, 2, "Comparing it with the model in use")
+    new = prove(model, sub, classes, stress=False)
+    old_model = detector.load(against / st["checkpoint"], st["size"], st["resolution"])
+    try:
+        if progress:
+            progress(1, 2, "Comparing it with the model in use")
+        old = prove(old_model, sub, classes, stress=False,
+                    remap={i: classes.index(n) for i, n in enumerate(st["classes"]) if n in classes})
+    finally:
+        del old_model
+        hw.free_gpu_memory()
+    return {"against": against.name, "frames": len(files), "score": round(100 * new["mAP50"], 1),
+            "against_score": round(100 * old["mAP50"], 1), "unknown": [c for c in classes if c not in st["classes"]]}
 
 
 # ---- run folder -----------------------------------------------------------------------------
@@ -704,16 +786,28 @@ def _train_step(run_dir: Path, prep: dict, size, epochs, resolution, aug, progre
     if ckpt is None:
         return None
     _write_json(done, {"params": params, "checkpoint": ckpt.name, "minutes": round((time.perf_counter() - t) / 60, 1),
-                       "resumed_from": resume.name if resume else None})
+                       "resumed_from": resume.name if resume else None, "epochs_run": epochs_run(out)})
     for f in out.glob("*.ckpt"):             # resume state only (~0.5 GB each); the .pth weights stay
         f.unlink()
     return ckpt
 
 
-def teach(dataset_dir, run_dir, parent: str | None = None, size: str = "small", epochs: int = 30,
+def epochs_run(out: Path) -> int | None:
+    """How many epochs a training ran (rfdetr's metrics.csv in its folder): it stops early when no longer improving."""
+    import csv
+    try:
+        with open(Path(out) / "metrics.csv", newline="", encoding="utf-8") as f:
+            seen = [int(float(r["epoch"])) for r in csv.DictReader(f) if r.get("epoch")]
+    except (OSError, ValueError, KeyError):
+        return None
+    return max(seen) + 1 if seen else None
+
+
+def teach(dataset_dir, run_dir, parent: str | None = None, size: str = "small", epochs: int | None = None,
           resolution: int = 640, held_out: float = 0.2, aug: str = "strong", progress=None,
           should_stop=None, recolor: float = 0.0, crop_to_parent: bool = True, stage: str = "all",
-          empty_every: int = 1, task_cameras: dict | None = None, project: str | None = None) -> dict:
+          empty_every: int = 1, task_cameras: dict | None = None, project: str | None = None,
+          compare_to: str | None = None) -> dict:
     """Analyse, prepare, train and prove; writes settings.json, report.json and report.md into run_dir and
     returns the report ({"status": "stopped", ...} when should_stop ended it early). A "seg-" size also outlines
     the parts (trained on the source's polygons/). To train on another machine (e.g. a cloud GPU): stage "prepare"
@@ -725,8 +819,12 @@ def teach(dataset_dir, run_dir, parent: str | None = None, size: str = "small", 
     "crop", or to refuse export if one camera's tasks were cut differently.
 
     `project` (the project this run was built from, when any - a run from a raw dataset folder has none):
-    carried into settings.json as-is; hawk-ai-internal §12.3's /api/v1/models uses it as a run's display name."""
+    carried into settings.json as-is; hawk-ai-internal §12.3's /api/v1/models uses it as a run's display name.
+
+    `compare_to` (an earlier run folder of the same project, e.g. the model a station runs now): compare() puts both
+    models' scores on the same frames in the report's "compare"."""
     from engine import detector, hw
+    epochs = epochs or detector.EPOCHS
     if stage not in ("all", "prepare", "train"):
         raise ValueError(f"unknown stage {stage!r}")
     if size not in detector.SIZES:
@@ -735,32 +833,37 @@ def teach(dataset_dir, run_dir, parent: str | None = None, size: str = "small", 
     detector.aug_config([], aug)
     run_dir = Path(run_dir)
     run_dir.mkdir(parents=True, exist_ok=True)
-    say = progress or (lambda *a: None)
+    say = band(progress, 0.05, 0.06) or (lambda *a: None)    # the run's shares (the source frames have 0..0.05)
     if stage == "train":
         analysis = json.loads((run_dir / "analysis.json").read_text(encoding="utf-8"))
         prep = json.loads((run_dir / "dataset" / "prepared.json").read_text(encoding="utf-8"))
         dataset_dir = Path(analysis["source"])
     else:
         dataset_dir = Path(dataset_dir).resolve()
-        say(0, 4, "Analysing the source labels")
+        say(0, 1, "Analysing the source labels")
         analysis = analyse(dataset_dir, resolution)
         _write_json(run_dir / "analysis.json", analysis)
-        say(1, 4, "Preparing the training set")
-        prep = prepare(dataset_dir, run_dir / "dataset", parent, held_out, progress, should_stop, recolor,
+        say(1, 1, "Preparing the training set")
+        prep = prepare(dataset_dir, run_dir / "dataset", parent, held_out, band(progress, 0.06, 0.15), should_stop, recolor,
                        crop_to_parent, polygons=detector.is_seg(size), empty_every=empty_every)
         if prep is None:
             return {"status": "stopped", "step": "prepare", "run_dir": str(run_dir)}
         if stage == "prepare":
             return {"status": "prepared", "run_dir": str(run_dir), "train_frames": len(prep["train"]),
                     "held_out_frames": len(prep["valid"]), "boxes": prep["boxes"]}
-    say(2, 4, "Training")
-    ckpt = _train_step(run_dir, prep, size, epochs, resolution, aug, progress, should_stop)
+    learn = band(progress, 0.15, 0.85)
+    if learn:
+        learn(0, 1, "Training")
+    ckpt = _train_step(run_dir, prep, size, epochs, resolution, aug, learn, should_stop)
     if ckpt is None:
         return {"status": "stopped", "step": "train", "run_dir": str(run_dir)}
-    say(3, 4, "Proving on held-out frames")
+    check = band(progress, 0.85, 1.0)
+    if check:
+        check(0, 1, "Checking it on frames it never trained on")
     model = detector.load(ckpt, size, resolution)
     try:
-        proof = prove(model, run_dir / "dataset" / "valid", analysis["classes"], progress, should_stop)
+        proof = prove(model, run_dir / "dataset" / "valid", analysis["classes"], check, should_stop)
+        versus = compare(model, run_dir, Path(compare_to), analysis["classes"], check) if compare_to else None
     finally:
         del model
         hw.free_gpu_memory()
@@ -805,7 +908,8 @@ def teach(dataset_dir, run_dir, parent: str | None = None, size: str = "small", 
               "prepare": {k: prep[k] for k in ("parent", "held_out", "boxes", "parent_coverage")} |
                          {"train_frames": len(prep["train"]), "held_out_frames": len(prep["valid"]),
                           "parent_missing": len(prep["parent_missing"])},
-              "analysis": {k: v for k, v in analysis.items() if k != "warnings"}, "settings": settings}
+              "analysis": {k: v for k, v in analysis.items() if k != "warnings"}, "settings": settings,
+              "compare": versus}
     _write_json(run_dir / "settings.json", settings)
     _write_json(run_dir / "report.json", report)
     (run_dir / "report.md").write_text(report_md(report), encoding="utf-8")

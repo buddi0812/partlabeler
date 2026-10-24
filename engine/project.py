@@ -788,10 +788,10 @@ class Project:
 
     def statuses(self) -> list[int]:
         """Per item: 0 empty, 1 suggestions only, 2 tracked/imported, 3 has manual boxes, 4 reviewed.
-        Image classes: 0 none, 1 suggested, 2 imported, 4 given by a person."""
+        Image classes: 0 none, 1 suggested or marked unsure, 2 imported, 4 given by a person."""
         out = [0] * len(self.items)
-        rank = {"suggested": 1, "tracked": 2, "imported": 2, "manual": 3}
-        if self.task == "classify":
+        rank = {"suggested": 1, "unsure": 1, "tracked": 2, "imported": 2, "manual": 3}
+        if self.task == "classify":                       # unsure: a person flagged it to decide later
             for item, source in self.db.execute("SELECT item, source FROM tags"):
                 if item < len(out):
                     out[item] = 4 if source == "manual" else rank.get(source, 2)
@@ -987,8 +987,17 @@ class Project:
     def accept_tags(self, items) -> int:
         with self.db:
             self._touch(items)
-            return sum(self.db.execute("UPDATE tags SET source='manual' WHERE item=? AND source='suggested'",
-                                       (i,)).rowcount for i in items)
+            return sum(self.db.execute("UPDATE tags SET source='manual' WHERE item=? AND source IN ('suggested', "
+                                       "'imported') AND cls IS NOT NULL", (i,)).rowcount for i in items)
+
+    def set_unsure(self, items) -> None:
+        """A person isn't sure about these images: flagged to decide later (a class number or clearing decides),
+        any class they had kept as a hint; out of training and exports until then."""
+        with self.db:
+            self._touch(items)
+            for item in items:
+                self.db.execute("INSERT INTO tags VALUES (?, NULL, 'unsure', NULL) ON CONFLICT(item) DO UPDATE SET "
+                                "source='unsure', score=NULL", (item,))
 
     # ---- import / export ------------------------------------------------------------------
     def _match(self, stem: str, scope=None):
@@ -1272,7 +1281,7 @@ class Project:
         accepted are left out (still guesses)."""
         tags, keep = self.tags(), set(items)
         for item, t in sorted(tags.items()):
-            if t["source"] == "suggested" or item >= len(self.items) or item not in keep:
+            if t["source"] in ("suggested", "unsure") or t["cls"] is None or item >= len(self.items) or item not in keep:
                 continue
             it = self.items[item]
             path = self.file_of(item)
@@ -1366,6 +1375,55 @@ class Project:
         self.meta.update(values)
         (self.folder / "project.json").write_text(json.dumps(self.meta, indent=1), encoding="utf-8")
 
+    # ---- tracks by hand (CVAT's Propagate and tracks): copies of a part follow its keyframes ----------------------
+    # A keyframe is a frame where a person placed the part (source "manual"). Propagate copies a part to later frames
+    # as source "propagated"; moving one of those makes it a keyframe, and the copies then follow a straight line
+    # between keyframes and keep the last keyframe's place after it. Only propagated copies are ever changed: a
+    # person's own parts, tracked ones and confirmed frames stay as they are.
+    def _row(self, item: int, obj: int) -> dict | None:
+        return next((b for b in self.boxes(item) if b["obj"] == obj), None)
+
+    def propagate(self, obj: int, start: int, items) -> list[int]:
+        """Copy part `obj` of frame `start` to each of `items` (the same part: id and class); returns the frames
+        changed. A frame where a person placed that part, or a confirmed frame, is left alone."""
+        src = self._row(start, obj)
+        if src is None:
+            return []
+        mask, changed = self.mask(start, obj), []
+        for k in items:
+            cur = self._row(k, obj)
+            if self.is_reviewed(k) or (cur and cur["source"] == "manual"):
+                continue
+            self.put(k, obj, src["cls"], src["box"], "propagated", mask=mask)
+            changed.append(k)
+        return changed
+
+    def follow(self, obj: int, items) -> list[int]:
+        """Re-place the propagated copies of `obj` within `items` (one task) from its keyframes: in between two, on
+        the straight line between them; after the last, where the last left it; before the first, unchanged.
+        Outlines take the earlier keyframe's shape, fitted to the new box. Returns the frames changed."""
+        scope = set(items)
+        rows = {k: r for k in self.items_with(obj) if k in scope and (r := self._row(k, obj))}
+        keys = sorted(k for k, r in rows.items() if r["source"] == "manual")
+        changed = []
+        for k, r in sorted(rows.items()):
+            if r["source"] != "propagated" or self.is_reviewed(k):
+                continue
+            prev = max((x for x in keys if x < k), default=None)
+            if prev is None:
+                continue
+            nxt = min((x for x in keys if x > k), default=None)
+            a = rows[prev]["box"]
+            b = rows[nxt]["box"] if nxt is not None else a
+            t = 0.0 if nxt is None else (k - prev) / (nxt - prev)
+            box = [p + (q - p) * t for p, q in zip(a, b)]
+            if all(abs(p - q) < 0.01 for p, q in zip(box, r["box"])):
+                continue
+            mask = self.mask(prev, obj)
+            self.put(k, obj, r["cls"], box, "propagated", mask=None if mask is None else _fit_mask(mask, a, box))
+            changed.append(k)
+        return changed
+
     def items_with(self, obj: int) -> list[int]:
         return [r[0] for r in self.db.execute("SELECT item FROM boxes WHERE obj=? ORDER BY item", (obj,))]
 
@@ -1396,6 +1454,22 @@ class Project:
 
 
 # ---- tasks: frames, video details, linked export images -------------------------------------------
+def _fit_mask(mask: np.ndarray, src, dst) -> np.ndarray:
+    """An outline moved and scaled from box `src` to box `dst` (pixels x1 y1 x2 y2) on a frame of the same size:
+    how a propagated outline follows its keyframes."""
+    h, w = mask.shape
+    sx1, sy1, sx2, sy2 = (int(round(v)) for v in src)
+    sx1, sy1, sx2, sy2 = max(0, sx1), max(0, sy1), min(w, max(sx1 + 1, sx2)), min(h, max(sy1 + 1, sy2))
+    dx1, dy1 = int(round(dst[0])), int(round(dst[1]))
+    dw, dh = max(1, int(round(dst[2] - dst[0]))), max(1, int(round(dst[3] - dst[1])))
+    crop = Image.fromarray(mask[sy1:sy2, sx1:sx2].astype(np.uint8) * 255).resize((dw, dh), Image.NEAREST)
+    out = np.zeros((h, w), bool)
+    x1, y1, x2, y2 = max(0, dx1), max(0, dy1), min(w, dx1 + dw), min(h, dy1 + dh)
+    if x2 > x1 and y2 > y1:
+        out[y1:y2, x1:x2] = np.asarray(crop)[y1 - dy1:y2 - dy1, x1 - dx1:x2 - dx1] > 127
+    return out
+
+
 def _now() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%S")
 
