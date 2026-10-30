@@ -93,7 +93,7 @@ const CSS = `
 .pl .pl-tool { display:grid; grid-template-columns:20px minmax(0,1fr) auto; gap:9px; align-items:center; width:100%; padding:6px 8px;
   border:1px solid transparent; border-radius:8px; background:none; text-align:left; font-size:13.5px; }
 .pl .pl-tool:hover:not(:disabled) { background:var(--hover); border-color:transparent; }
-.pl .pl-tool[aria-pressed=true] { background:var(--ink); color:var(--panel); border-color:var(--ink); }
+.pl .pl-tool[aria-pressed=true], .pl .pl-tool[aria-pressed=true]:hover { background:var(--ink); color:var(--panel); border-color:var(--ink); }
 .pl .pl-tool[aria-pressed=true] kbd { background:transparent; color:inherit; border-color:color-mix(in srgb, currentColor 40%, transparent); }
 .pl-tool span { overflow:hidden; text-overflow:ellipsis; }
 .pl-work { display:grid; grid-template-rows:auto minmax(0,1fr); grid-template-columns:minmax(0,1fr); min-width:0; min-height:0; }
@@ -1069,6 +1069,9 @@ function render({ model, el }) {
                 <textarea class="pl-states" name="part-states" rows="2" autocomplete="off" spellcheck="false" placeholder="e.g. bright, dim"></textarea></label>
               <span class="pl-src pl-parentf">Classes that are states of one part, one part per line (e.g. a lamp that is bright or dim).
                 Tracking then gives each frame the state its confirmed examples match. With left_/right_ classes, the shared name covers both sides.</span>
+              <label class="pl-chk pl-sizef"><input type="checkbox" class="pl-keepsize" name="keep-size"> Tracking keeps the box size you drew</label>
+              <span class="pl-src pl-sizef">For parts that stay the same size on screen (a fixed camera, a rigid part): tracked boxes follow the part
+                but keep the width and height of the box on the frame you track from, so you don't have to resize every frame.</span>
               <div class="pl-tools"><button type="button" data-b="saveSettings">Save settings</button></div></section>
             <section><h2>Start over</h2>
               <p class="pl-src">Removes every label, image class and confirmation, and makes the jobs new again: a fresh start on the
@@ -1559,11 +1562,13 @@ function render({ model, el }) {
     else if ((S.project.formats || []).includes(PREFS.export_format)) fmt.value = PREFS.export_format;
     $(".pl-parent").value = S.project.parent || "";
     $(".pl-states").value = S.project.states || "";
+    $(".pl-keepsize").checked = !!S.project.keep_size;
     $(".pl-typeline").textContent = `Project type: ${TASK_NAMES[S.project.task] || "Object detection"} (chosen when the project was made; its exports follow it).`;
     $(".pl-type").textContent = TASK_NAMES[S.project.task] || "Object detection";
     $(".pl-revonly").closest("label").hidden = classify();              // suggested classes are never exported
 
     el.querySelectorAll(".pl-parentf").forEach((n) => (n.hidden = classify()));
+    el.querySelectorAll(".pl-sizef").forEach((n) => (n.hidden = S.project.task !== "detect"));   // outlines: the box is the outline's
     $(".pl-version").innerHTML = (S.project.version ? `PartLabeler version ${esc(S.project.version)}.` : "")
       + (web ? ` <a href="${model.homeUrl}#update">Check for updates</a>` : " Update: rerun Step 3 of the notebook.");
     const back = $(".pl-back"); back.hidden = !web; if (web) back.href = model.homeUrl;
@@ -1752,7 +1757,8 @@ function render({ model, el }) {
         + "in every task, goes, and every job is new again. The frames and classes stay. Ctrl+Z brings the labels back while this page is open.",
         "Keep the labels", "Reset the project", { type: "reset", scope: "project" });
     },
-    saveSettings: () => send({ type: "settings", parent: $(".pl-parent").value, states: $(".pl-states").value }),
+    saveSettings: () => send({ type: "settings", parent: $(".pl-parent").value, states: $(".pl-states").value,
+      keep_size: $(".pl-keepsize").checked }),
     sortParts: () => openGrid("parts"),
     confirmTracked: () => {                                 // the job's frames with tracked, pre-labelled or own parts, none flagged
       const j = curJob();

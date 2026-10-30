@@ -900,6 +900,15 @@ class Project:
             self._touch([item])
             self.db.execute("UPDATE boxes SET source='manual' WHERE item=? AND source='suggested'", (item,))
 
+    def keep_size(self, item: int, box, size) -> list[float]:
+        """`box`'s centre with `size` (w, h), moved back inside the picture: tracking with the project setting
+        keep_size follows a rigid part but keeps the box a person drew (SAM's boxes grow and shrink a little)."""
+        W, H = self.image_size(item)
+        w, h = min(size[0], W), min(size[1], H)
+        x1 = min(max((box[0] + box[2] - w) / 2, 0.0), W - w)
+        y1 = min(max((box[1] + box[3] - h) / 2, 0.0), H - h)
+        return [x1, y1, x1 + w, y1 + h]
+
     def put_tracked(self, item: int, results: dict, replace: bool = False, only=None, confirmed: bool = False) -> None:
         """Replace this item's tracked boxes for the given objects; manual/reviewed boxes are kept.
         results: {obj: (cls, box or None, score[, mask])}; a mask replaces the box with its own.

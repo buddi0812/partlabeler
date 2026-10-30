@@ -167,3 +167,27 @@ def test_tracking_writes_while_a_person_confirms(tmp_path, video):
     for t in threads:
         t.join()
     assert not errors, errors[:1]
+
+
+class GrowingTracker:
+    """The part's box 2 px wider and taller each frame, its centre 6 px further right (as SAM's boxes breathe)."""
+    def track(self, project, start, count, on_item, should_stop, direction=1, masks=False, only=None):
+        b = next(b for b in project.boxes(start) if b["source"] != "suggested")
+        x1, y1, x2, y2 = b["box"]
+        for n, k in enumerate(range(start + 1, start + count + 1), 1):
+            on_item(k, {b["obj"]: (b["cls"], [x1 + 5 * n, y1 - n, x2 + 7 * n, y2 + n], 0.9)})
+        return count
+
+
+def test_tracking_can_keep_the_box_size_drawn(tmp_path, video, monkeypatch):
+    monkeypatch.setitem(api._MODELS, "track", GrowingTracker())
+    p = Project.create(tmp_path / "proj", CLASSES, video=video, every=2)      # 10 frames of 64 x 48
+    s = Session(p, lambda m: None)
+    s.call({"type": "box", "item": 0, "cls": 0, "box": [10, 10, 20, 18]})
+    s.call({"type": "track", "item": 0, "count": 3})
+    assert p.boxes(3)[0]["box"] == [25, 7, 41, 21]                            # off by default: the tracker's box
+    s.call({"type": "settings", "keep_size": True})
+    assert s.project_msg()["keep_size"] is True
+    s.call({"type": "track", "item": 0, "count": 9, "redo": True})
+    assert p.boxes(3)[0]["box"] == [28, 10, 38, 18]                           # follows the part, 10 x 8 as drawn
+    assert p.boxes(9)[0]["box"] == [54, 10, 64, 18]                           # kept inside the picture

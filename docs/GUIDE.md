@@ -365,6 +365,12 @@ for it, that is drew it or confirmed the frame. Frames you confirmed are never c
 appears later (a lamp lights up), label it on the first frame where it shows, or press **S** (Suggest) there to
 find it from your earlier examples, then track from that frame.
 
+**Boxes that keep their size.** A tracked box comes from the part's outline, so it can grow or shrink a little from
+frame to frame (a hand in front of the part, a shadow). For a rigid part at a fixed distance from the camera, tick
+**Settings → Tracking keeps the box size you drew** (object detection projects): tracked boxes then follow the part
+but keep the width and height of its box on the frame you track from. For a part you would rather place by hand,
+**Propagate** with keyframes (see *Manual tools*) also keeps the boxes steady.
+
 **Parts that change look.** One part can have classes for its states: a lamp that is bright or dim, low or high
 beam, a light that is on or off. Tell the project in **Settings → Parts that change look**, one part per line with
 its states (for example `lamp_bright, lamp_dim` and on the next line `beam_low, beam_high`; any number of states;
@@ -548,7 +554,8 @@ In the annotator, open the inspector's **Settings** tab (these belong to the pro
 preferences are on the Settings page of the account menu). The **parent object** is the thing the
 parts sit on (for example "engine block" or "circuit board"). When it is set, Suggest searches only inside
 it, which helps when the camera or distance changes. Leave it empty to search the whole image. **Parts that
-change look** lists classes that are states of one part (see *Track through a video*). The Settings section also
+change look** lists classes that are states of one part (see *Track through a video*). **Tracking keeps the box size
+you drew** (object detection) stops tracked boxes from growing or shrinking (same section). The Settings section also
 shows the device (GPU or CPU) and GPU memory in use.
 
 ## Start over: reset all annotations of a task or the project

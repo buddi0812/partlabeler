@@ -214,7 +214,7 @@ class Session:
         return {"type": "project", "name": self.p.meta["name"], "kind": self.p.meta["kind"], "task": self.p.task,
                 "classes": self.p.classes, "count": len(self.p.items),
                 "names": [it["name"] for it in self.p.items], "parent": self.p.meta.get("parent") or "",
-                "states": states.text(self.p.meta.get("states") or [], self.p.classes),
+                "keep_size": bool(self.p.meta.get("keep_size")), "states": states.text(self.p.meta.get("states") or [], self.p.classes),
                 "device": hw.describe(), "formats": list(self.p.formats), "task": self.p.task, "version": version,
                 "tasks": self.tasks_msg(), "frame_format": self.p.meta.get("frame_format", "jpg"),
                 "colors": [c or None for c in (self.p.meta.get("colors") or [])],
@@ -712,19 +712,21 @@ class Session:
             self.on_tag({"of": msg.get("of", "images"), "keys": msg["keys"], "cls": self.p.classes.index(name)})
 
     def on_settings(self, msg):
-        """Project settings (the parent object, parts that change look). The project type is chosen once, when the
-        project is made."""
+        """Project settings (the parent object, parts that change look, tracking keeps the box size drawn). The project
+        type is chosen once, when the project is made."""
         parent = (msg.get("parent") or "").strip() or None
         try:
             groups = states.parse(msg.get("states") or "", self.p.classes) if "states" in msg else self.p.meta.get("states") or []
         except ValueError as e:
             self.notify("error", "Settings not saved", f"Parts that change look: {e}")
             return
-        self.p.set_meta(parent=parent, states=groups)
+        keep = bool(msg["keep_size"]) if "keep_size" in msg else bool(self.p.meta.get("keep_size"))
+        self.p.set_meta(parent=parent, states=groups, keep_size=keep)
         self.send(self.project_msg())
         self.notify("success", "Settings saved",
                     (f"Parent object: {parent}" if parent else "Parent object: none (suggestions search the whole image)")
-                    + (f". {len(groups)} part{'s' if len(groups) != 1 else ''} that change look" if groups else ""))
+                    + (f". {len(groups)} part{'s' if len(groups) != 1 else ''} that change look" if groups else "")
+                    + (". Tracking keeps the box size you drew" if keep and self.p.task == "detect" else ""))
 
     # ---- background jobs -----------------------------------------------------------------
     def _run(self, name, fn):
@@ -786,6 +788,8 @@ class Session:
             return
         count = total = len(span)
         self._remember(span, "tracking")
+        sizes = {b["obj"]: (b["box"][2] - b["box"][0], b["box"][3] - b["box"][1]) for b in self.p.boxes(start)} \
+            if self.p.task == "detect" and self.p.meta.get("keep_size") else {}     # boxes keep the size drawn
 
         def job():
             t0, last_push = time.perf_counter(), 0.0
@@ -793,8 +797,11 @@ class Session:
 
             def on_item(item, res):
                 nonlocal last_push
-                self.p.put_tracked(item, guide.apply(item, res, only) if guide.examples else res,
-                                   replace=redo and not only, only=only, confirmed=confirmed)
+                res = guide.apply(item, res, only) if guide.examples else res
+                if sizes:
+                    res = {o: (r[0], self.p.keep_size(item, r[1], sizes[o]), r[2]) if r[1] is not None and o in sizes else r
+                           for o, r in res.items()}
+                self.p.put_tracked(item, res, replace=redo and not only, only=only, confirmed=confirmed)
                 done = abs(item - start)
                 if time.perf_counter() - last_push > 1.0 or done == total:
                     last_push = time.perf_counter()
