@@ -129,3 +129,17 @@ def test_image_class_project_exports_folders_split_and_csv(tmp_path, images):
     p.accept_tags([1])
     assert p.export("csv", tmp_path / "c")["images"] == 3
     assert (tmp_path / "c/labels.csv").read_text().splitlines()[0] == "path,class"
+
+
+def test_exports_hold_one_frame_of_outlines_at_a_time(tmp_path, images, monkeypatch):
+    """A long outline video ran out of memory exporting CVAT: every frame's full-size masks were decoded first."""
+    p = Project.create(tmp_path / "proj", CLASSES, images=images, task="segment")
+    for k in range(3):
+        p.put(k, 1, 1, (0, 0, 1, 1), mask=ring())
+    events, rows, copy = [], Project._export_rows, Project._copy_image
+    monkeypatch.setattr(Project, "_export_rows", lambda self, items: ((events.append("row"), r)[1] for r in rows(self, items)))
+    monkeypatch.setattr(Project, "_copy_image", lambda self, *a: (events.append("write"), copy(self, *a))[1])
+    for fmt in p.formats:
+        events.clear()
+        p.export(fmt, tmp_path / fmt)
+        assert events == ["row", "write"] * 3, fmt

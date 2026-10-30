@@ -1168,7 +1168,7 @@ class Project:
         out = Path(out_dir)
         out.mkdir(parents=True, exist_ok=True)
         parts, n_img, n_box = [], 0, 0
-        rows = [(sub, r) for sub, items in groups.items() for r in self._export_rows(items)]
+        rows = ((sub, r) for sub, items in groups.items() for r in self._export_rows(items))  # one frame's masks at a time
         for sub, (k, stem, path, W, H, boxes) in rows:
             name = self._copy_image(k, out / "images", stem)
             subset = f' subset={quoteattr(sub)}' if sub else ""
@@ -1210,7 +1210,7 @@ class Project:
             for d in ("SegmentationClass", "SegmentationObject", "ImageSets/Segmentation"):
                 (out / d).mkdir(parents=True, exist_ok=True)
         stems, n_box, lists = [], 0, {}
-        rows = [(sub, r) for sub, items in groups.items() for r in self._export_rows(items)]
+        rows = ((sub, r) for sub, items in groups.items() for r in self._export_rows(items))  # one frame's masks at a time
         for sub, (k, stem, path, W, H, boxes) in rows:
             lists.setdefault(sub or "default", []).append(stem)
             name = self._copy_image(k, out / "JPEGImages", stem)
@@ -1249,7 +1249,7 @@ class Project:
         out = Path(out_dir)
         out.mkdir(parents=True, exist_ok=True)
         tasks, n_box = [], 0
-        rows = [(sub, r) for sub, items in groups.items() for r in self._export_rows(items)]
+        rows = ((sub, r) for sub, items in groups.items() for r in self._export_rows(items))  # one frame's masks at a time
         for sub, (k, stem, path, W, H, boxes) in rows:
             name = self._copy_image(k, out / "images", stem)
             result = []
