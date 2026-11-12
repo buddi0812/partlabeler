@@ -1,15 +1,19 @@
-"""Track labeled parts forward or backward through a project's frames: SAM 3.1 multiplex (Tracker31, the default,
-see make_tracker) or SAM 3 (HF Sam3TrackerVideoModel, Tracker; described here).
+"""Track labeled parts forward or backward through a project's frames: SAM 3 (HF Sam3TrackerVideoModel, Tracker, the
+default, described here) or SAM 3.1 multiplex (Tracker31, opt-in, see make_tracker).
 
 A run starts at one item and covers the next `count` items. Every part on the start item is a
 prompt: its outline when it has one (segmentation projects: SAM 3 then remembers the exact shape a person
 fixed, holes and notches included), else its box. Each part's most recent earlier manual label is prepended
-as an extra reference frame, so what a person drew keeps steering the tracker (S2: reference frames lifted
-IoU 0.969 -> 0.986). Each frame's prompts are turned into the tracker's memory right when they are added
+as an extra reference frame (the two nearest), so what a person drew keeps steering the tracker (S2: reference
+frames lifted IoU 0.969 -> 0.986); frames a person drew or confirmed further on in the run are prompts where they
+are, pulling the part back onto their outline there. Each frame's prompts are turned into the tracker's memory right when they are added
 (the model runs on that frame): the session only counts the inputs of the latest call as new, so prompts
 on several frames would otherwise be dropped. Runs are split into chunks; each chunk is a fresh, fully
-released session seeded with the previous chunk's last outlines or boxes (long sessions grow memory
-without bound).
+released session seeded with the previous chunk's last outlines or boxes (long sessions grow memory without
+bound). S23 (lamp outlines a person confirmed, a synthetic stress clip with a look-alike neighbour and a hand
+passing over the part): SAM 3 neither ballooned nor bled, so its outlines are taken as they come (a guard that cut
+them was dropped: it cut parts a pole splits in two); prompts at frames a person drew further on lifted the stress
+clip's IoU 0.930 -> 0.982. The model shares its image backbone with the other SAM 3 models (hw.sam3).
 """
 import gc
 import os
@@ -26,6 +30,44 @@ from engine.models import SAM3, fetch
 CHUNK = 120          # items per session (halved automatically when the GPU runs out of memory)
 MIN_CHUNK = 8
 MIN_AREA = 16        # mask pixels; anything smaller counts as "part not visible"
+REFS = 2             # earlier frames a person vouched for, per part, kept as memory (S2: 2 references beat 1)
+AREA_TOL = 0.25      # SAM 3.1: an outline this far off its part's recent median area is retried (DAM4SAM uses 20%)
+HISTORY = 10         # SAM 3.1: good outlines per part that make that median
+RETRY_GAP = 10       # SAM 3.1: frames between two retries of the same part
+
+
+class Guard:
+    """SAM 3.1 only (its outlines can balloon, S19-S22): per part, the median area of its last good outlines. An
+    outline more than AREA_TOL off it on the frame after a good one is retried once (Tracker31: memory dropped, a
+    recovery prompt from the last good outlines); what the retry gives is kept for its frame, but an outline off the
+    median never joins the history, so a balloon never becomes the normal. A part seen again after being hidden is
+    not checked (it comes back partly)."""
+
+    def __init__(self):
+        self.last, self.areas, self.seen, self.retried = {}, {}, {}, {}
+
+    def ok(self, o, m, step: int) -> bool:
+        if not self.areas.get(o) or self.seen.get(o, (None,))[0] != step - 1:   # first sight, or back from hiding
+            return True
+        med = float(np.median(self.areas[o]))
+        return abs(float(m.sum()) - med) <= AREA_TOL * med
+
+    def see(self, o, m, step: int, item: int, fresh: bool = False) -> bool:
+        """A part's non-empty outline on a frame; True (and remembered) when it is a good one."""
+        good = fresh or self.ok(o, m, step)
+        self.seen[o] = (step, item)
+        if good:
+            if fresh:
+                self.areas[o] = deque(maxlen=HISTORY)
+            self.last[o] = m
+            self.areas.setdefault(o, deque(maxlen=HISTORY)).append(int(m.sum()))
+        return good
+
+    def may_retry(self, o, step: int) -> bool:
+        if step - self.retried.get(o, -RETRY_GAP) < RETRY_GAP:
+            return False
+        self.retried[o] = step
+        return True
 
 
 def mask_box(mask: np.ndarray):
@@ -67,7 +109,7 @@ class Tracker:
     def __init__(self, device: str | None = None, dtype: torch.dtype | None = None):
         device = device or hw.device(); dtype = dtype or hw.dtype(device)
         path = fetch(SAM3)
-        self.model = Sam3TrackerVideoModel.from_pretrained(path, dtype=dtype).to(device).eval()
+        self.model = hw.sam3(Sam3TrackerVideoModel, device, dtype)
         self.proc = Sam3TrackerVideoProcessor.from_pretrained(path)
         self.device, self.dtype, self.chunk = device, dtype, CHUNK
 
@@ -103,24 +145,35 @@ class Tracker:
             m = project.mask(item, b["obj"]) if masks else None
             return m if m is not None and m.any() else b["box"]
 
-        refs = {}                                              # item -> {obj: prompt}: nearest manual label behind start
+        refs = {}                                              # item -> {obj: prompt}: nearest manual labels behind start
         for o in seeds:
             behind = [a for a in project.anchors(o) if (a - start) * direction < 0]
-            if behind:
-                a = behind[-1] if direction > 0 else behind[0]
+            for a in (behind[-REFS:] if direction > 0 else behind[:REFS]):
                 refs.setdefault(a, {})[o] = prompt(a, next(b for b in project.boxes(a) if b["obj"] == o))
         if direction > 0:
             todo = list(range(start + 1, min(len(project.items), start + 1 + count)))
         else:
             todo = list(range(start - 1, max(-1, start - 1 - count), -1))
+        span = set(todo)                                       # frames where a person drew a part further on
+        drawn = set(project.db.execute("SELECT item, obj FROM boxes WHERE source='manual'").fetchall())
+        ahead = {}                                             # item -> [obj]; their outlines are read chunk by chunk
+        for o in seeds:
+            for a in project.anchors(o):
+                if a in span and (a, o) in drawn:
+                    ahead.setdefault(a, []).append(o)
+
+        def at(item, o):
+            b = next((x for x in project.boxes(item) if x["obj"] == o), None)
+            return prompt(item, b) if b else None
+
         cur_item, cur = start, {o: prompt(start, b) for o, b in seeds.items()}
         style = {}                                             # obj -> offset of the drawn box around SAM's outline
         done = pos = 0
         while pos < len(todo) and cur:
             chunk = todo[pos:pos + self.chunk]
             try:
-                last, n, stopped = self._chunk(project, refs, cur_item, cur, chunk, classes, style, pos == 0,
-                                               on_item, should_stop, masks)
+                last, n, stopped = self._chunk(project, refs, ahead, at, cur_item, cur, chunk, classes, style,
+                                               pos == 0, on_item, should_stop, masks)
             except torch.OutOfMemoryError:
                 hw.free_gpu_memory()
                 if self.chunk <= MIN_CHUNK:
@@ -135,9 +188,11 @@ class Tracker:
             cur = {o: (r[3] if masks and len(r) > 3 and r[3] is not None else r[1]) for o, r in last.items() if r[1] is not None}
         return done
 
-    def _chunk(self, project, refs, cur_item, cur, chunk, classes, style, first, on_item, should_stop, keep_masks=False):
+    def _chunk(self, project, refs, ahead, at, cur_item, cur, chunk, classes, style, first, on_item, should_stop,
+               keep_masks=False):
         """One fresh session over [reference frames, current frame, chunk...]; the frame list is in
-        tracking order, so backward tracking is the same run over reversed frames."""
+        tracking order, so backward tracking is the same run over reversed frames. Returns (last results, frames
+        done, stopped)."""
         ref_items = sorted(refs, key=lambda it: abs(it - cur_item), reverse=True)
         frame_items = ref_items + [cur_item] + chunk
         sess = self.proc.init_video_session(video=[project.image(i) for i in frame_items],
@@ -151,6 +206,12 @@ class Tracker:
                     self._add(sess, local, boxes)
             base = len(ref_items)
             self._add(sess, base, cur)
+            for local, it in enumerate(chunk, base + 1):       # a person's own outline later on: a prompt there
+                mine = {o: v for o in ahead.get(it, ()) if o in cur and (v := at(it, o)) is not None}
+                if any(isinstance(v, np.ndarray) for v in mine.values()):   # one call per frame: a box asked after
+                    mine = {o: v for o, v in mine.items() if isinstance(v, np.ndarray)}   # an outline is not heard
+                if mine:
+                    self._add(sess, local, mine)
             for out in self.model.propagate_in_video_iterator(sess, start_frame_idx=base):   # references: memory only
                 local = out.frame_idx
                 masks = self.proc.post_process_masks([out.pred_masks], original_sizes=[[sess.video_height,
@@ -262,14 +323,27 @@ class Tracker31:
             prompts.appendleft(self.ctx.encode_prompt_memory_from_mask(ref_enc, stack(self._outlines(project, ref, objs, ref_enc, H, W, masks))))
         todo = range(start + 1, min(len(project.items), start + 1 + count)) if direction > 0 else \
             range(start - 1, max(-1, start - 1 - count), -1)
-        mems, done = deque([], maxlen=6), 0
-        for k in todo:
+        mems, done, guard, last_enc, base = deque([], maxlen=6), 0, Guard(), enc, list(prompts)
+        for o in objs:
+            guard.see(o, seed[o], -1, start, fresh=True)
+        for step, k in enumerate(todo):
             enc = self._encode(project.image(k))
-            logits, _, ptrs, scores = self.ctx.step_video_masking_multiplex(enc, prompts, mems, num_multiplex_objects=len(objs))
+            for attempt in (0, 1):
+                logits, _, ptrs, scores = self.ctx.step_video_masking_multiplex(enc, prompts, mems, num_multiplex_objects=len(objs))
+                full, probs = self._full(logits, H, W), torch.sigmoid(scores.float()).cpu().numpy()
+                jumped = [o for j, o in enumerate(objs) if probs[j] > 0.5 and full[j].any() and not guard.ok(o, full[j], step)]
+                if attempt or not jumped or not any([guard.may_retry(o, step) for o in jumped]):
+                    break
+                mems.clear()                                   # the balloon must not become memory: start again,
+                shown = {o: guard.last[o] if guard.seen[o][0] == step - 1 else np.zeros_like(guard.last[o]) for o in objs}
+                prompts = deque(base + [self.ctx.encode_prompt_memory_from_mask(last_enc, stack(shown))])   # seen there only
             if (scores > 0).any():
                 mems.append(self.ctx.encode_frame_memory(enc, logits, ptrs, scores))
-            full, probs = self._full(logits, H, W), torch.sigmoid(scores.float()).cpu().numpy()
             res = {}
+            for j, o in enumerate(objs):
+                if probs[j] > 0.5 and full[j].any():
+                    guard.see(o, full[j], step, k)
+            last_enc = enc
             for j, o in enumerate(objs):
                 box = mask_box(full[j]) if probs[j] > 0.5 else None
                 if masks:                                     # outlines: the mask is the label, its box follows

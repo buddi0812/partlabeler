@@ -4,6 +4,7 @@ RTX 30xx/40xx and newer: CUDA + bfloat16. Older GPUs such as Colab's T4 (compute
 bfloat16): CUDA + float16. No GPU: CPU + float32. Override with PARTLABELER_DEVICE / PARTLABELER_DTYPE.
 """
 import os
+import weakref
 
 import torch
 
@@ -50,3 +51,24 @@ def free_gpu_memory() -> None:
     gc.collect()
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
+
+
+_BACKBONES = weakref.WeakValueDictionary()        # (device, dtype) -> the SAM 3 image backbone in use there
+
+
+def sam3(cls, dev: str | None = None, dt: torch.dtype | None = None):
+    """A SAM 3 model (Sam3Model, Sam3TrackerModel or Sam3TrackerVideoModel) on the device, sharing one image
+    backbone with every other SAM 3 model there: it is 446M of a tracker's 458M parameters and the same weights in
+    all three, so outlining, tracking and text search together cost about one model's memory, not three. Loaded on
+    the CPU first and given the backbone already on the device before moving, so the copy never reaches the GPU.
+    The backbone goes when no model uses it any more (release_models)."""
+    from engine.models import SAM3, fetch
+    dev = dev or device()
+    dt = dt or dtype(dev)
+    m = cls.from_pretrained(fetch(SAM3), dtype=dt)
+    shared = _BACKBONES.get((dev, dt))
+    if shared is not None:
+        m.vision_encoder.backbone = shared
+    m = m.to(dev).eval()
+    _BACKBONES[(dev, dt)] = m.vision_encoder.backbone
+    return m

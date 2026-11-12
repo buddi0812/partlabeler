@@ -15,7 +15,7 @@ class Segmenter:
     def __init__(self, device: str | None = None, dtype: torch.dtype | None = None):
         device = device or hw.device(); dtype = dtype or hw.dtype(device)
         path = fetch(SAM3)
-        self.model = Sam3TrackerModel.from_pretrained(path, dtype=dtype).to(device).eval()
+        self.model = hw.sam3(Sam3TrackerModel, device, dtype)
         self.proc = Sam3TrackerProcessor.from_pretrained(path)
         self.device, self.dtype = device, dtype
         self.embeddings = self.sizes = None

@@ -44,6 +44,7 @@ import re
 import threading
 import time
 import traceback
+import uuid
 from pathlib import Path
 
 import numpy as np
@@ -150,6 +151,7 @@ class Session:
         self.points = {}                                  # (item, obj) -> [[x, y, label], ...]
         self.outlines = {}                                # (item, obj) -> ([(mask, score), ...] small->large, index)
         self.history = []                                 # [(label, snapshot, actor)] for undo
+        self.offer = None                                 # the latest "did this part change state?" offer
         self.job_actor, self._job_lock = None, threading.Lock()
         self.job, self.running, self.stop_flag, self.error = None, False, False, None
         self.thumb_src = None                              # web host: (of, key) -> URL; notebooks ask with `thumbs`
@@ -214,7 +216,8 @@ class Session:
         return {"type": "project", "name": self.p.meta["name"], "kind": self.p.meta["kind"], "task": self.p.task,
                 "classes": self.p.classes, "count": len(self.p.items),
                 "names": [it["name"] for it in self.p.items], "parent": self.p.meta.get("parent") or "",
-                "keep_size": bool(self.p.meta.get("keep_size")), "states": states.text(self.p.meta.get("states") or [], self.p.classes),
+                "keep_size": bool(self.p.meta.get("keep_size")),
+                "states": states.text(self.p.meta.get("states") or [], self.p.classes), "states_found": self._found_states(),
                 "device": hw.describe(), "formats": list(self.p.formats), "task": self.p.task, "version": version,
                 "tasks": self.tasks_msg(), "frame_format": self.p.meta.get("frame_format", "jpg"),
                 "colors": [c or None for c in (self.p.meta.get("colors") or [])],
@@ -606,14 +609,61 @@ class Session:
         self.send(self.status_msg())
 
     def on_set_class(self, msg):
-        """A part's class, on all its items; between states of one part (project "states"), on this item only."""
-        item = msg.get("item")
-        now = next((b["cls"] for b in self.p.boxes(item) if b["obj"] == msg["obj"]), None) if item is not None else None
-        here = now is not None and self.p.same_part(now, msg["cls"])
-        self._remember([item] if here else self.p.items_with(msg["obj"]), "class change")
-        self.p.set_class(msg["obj"], msg["cls"], item if here else None)
+        """A part's class, on all its items; between states of one part (project "states"), on this item only.
+        From the annotator's class list (guess_states), when the part was drawn or confirmed with its old class on
+        other frames and looks clearly different here (brighter, darker, another colour), the notice also asks
+        whether it changed state: its button (make_state) turns this change into one for this frame only and makes
+        the two classes states of one part. Nothing about the project's states changes without that click."""
+        item, obj, cls = msg.get("item"), msg["obj"], msg["cls"]
+        now = next((b["cls"] for b in self.p.boxes(item) if b["obj"] == obj), None) if item is not None else None
+        here = now is not None and self.p.same_part(now, cls)
+        ask = (msg.get("guess_states") and not here and now is not None and now != cls
+               and self.p.state_plan(now, cls) is not None and self.p.vouched_elsewhere(obj, now, item)
+               and states.looks_changed(self.p, obj, now, item))
+        self._remember([item] if here else self.p.items_with(obj), "class change")
+        self.p.set_class(obj, cls, item if here else None)
+        if ask:
+            self.offer = {"key": uuid.uuid4().hex, "entry": self.history[-1], "obj": obj, "was": now, "cls": cls,
+                          "item": item}
+            self.notify("info", "Did this part change state here?",
+                        f"It looks different on this frame. If {self.p.classes[now]} and {self.p.classes[cls]} are "
+                        "states of one part (on and off, bright and dim), the frames you drew keep their class and "
+                        "only this one changes.",
+                        {"type": "send", "project": self.p.meta["name"], "label": "Yes, it changed state here",
+                         "msg": {"type": "make_state", "key": self.offer["key"]}}, key="state-offer")
         if item is not None:
             self.refresh(item)
+
+    def on_make_state(self, msg):
+        """The notice's "Yes, it changed state here": the class change it followed becomes one for that frame only,
+        and the two classes states of one part (Project.state_plan); one undo step takes back both. Only right after
+        that change: once anything was changed or undone since, it does nothing."""
+        o = self.offer
+        if not o or o["key"] != msg.get("key"):                # an older notice's button: the live offer stays
+            self.notify("info", "Nothing changed", "That question is no longer open.")
+            self.send(self.status_msg())
+            return
+        if self.running:
+            self.notify("info", "Nothing changed", "A job is running; press Stop (X), then answer again.")
+            self.send(self.status_msg())
+            return
+        self.offer = None
+        if (not self.history or self.history[-1] is not o["entry"] or o["entry"][2] != ACTOR.get()
+                or (change := self.p.state_plan(o["was"], o["cls"])) is None):
+            self.notify("info", "Nothing changed", "Something changed since. Press Ctrl+Z until that class change "
+                        "is undone, change the class again, then answer right away.")
+            self.send(self.status_msg())
+            return
+        snap = o["entry"][1]
+        self.p.restore(snap)                                   # every frame as before the class change ...
+        self.p.set_class(o["obj"], o["cls"], o["item"])        # ... but this one
+        self.p.state_change(change)
+        snap["states"] = (change, True)                        # Ctrl+Z: the class change and the states, together
+        self.send(self.project_msg())
+        self.send({"type": "item_changed", "items": sorted(snap["rows"])})
+        self.send(self.status_msg())
+        self.notify("success", f"{self.p.classes[o['was']]} and {self.p.classes[o['cls']]} are states of one part",
+                    "Tracking now gives every frame the state it looks like.")
 
     def on_review(self, msg):
         self._remember([msg["item"]], "confirm")
@@ -660,6 +710,10 @@ class Session:
             return
         label, snap, _ = self.history.pop(mine[-1])
         items = self.p.restore(snap)
+        if "states" in snap:                              # a class change that also changed the state groups
+            change, made = snap["states"]
+            self.p.state_change(change, undo=made)
+            self.send(self.project_msg())
         self.points = {k: v for k, v in self.points.items() if k[0] not in snap["rows"]}
         self.outlines = {k: v for k, v in self.outlines.items() if k[0] not in snap["rows"]}
         what = UNDO_WORDS.get(label, label)
@@ -710,6 +764,12 @@ class Session:
             self.notify("success", f"Added class {name}", f"Number {len(self.p.classes)} in the list")
         if msg.get("keys"):
             self.on_tag({"of": msg.get("of", "images"), "keys": msg["keys"], "cls": self.p.classes.index(name)})
+
+    def _found_states(self) -> str:
+        """Groups of states found from the labels (states.found_groups) that the settings do not list yet."""
+        hand = [set(g) for g in self.p.meta.get("states") or []]
+        found = [[self.p.classes[c] for c in g] for g in states.found_groups(self.p)]
+        return "; ".join(", ".join(g) for g in found if not any(set(g) <= h for h in hand))
 
     def on_settings(self, msg):
         """Project settings (the parent object, parts that change look, tracking keeps the box size drawn). The project

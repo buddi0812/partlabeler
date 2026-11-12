@@ -3,7 +3,7 @@
 - Design and roadmap: `docs/PLAN.md` (approved 2026-09-25). Follow its build order: Step 0 tools → Step 1 spikes (S1–S7, go/no-go) → M1 → M2 → M3 → M4 (Teach & Transfer) → Phase B (Colab first, then small GPU/CPU).
 - Dev machine: Windows 11, RTX 3060 12 GB, 16 GB RAM. Phase A targets only this machine; keep all device/dtype logic in `engine/hw.py` so Phase B is a local change.
 - Scope: a general-purpose industrial annotation tool (any product, any part list). The car-lamp example data is only an example application: no car-specific defaults in engine, UI or docs (parent-object crop is an optional per-project setting; left/right handling only when class names form left_/right_ pairs).
-- Core principle: the output is the annotated dataset. Interactive annotation must work with no model training; the in-tool detector ("Boost") is opt-in, off by default, never auto-started. Ask before any training run outside Teach & Transfer.
+- Core principle: the output is the annotated dataset. Interactive annotation must work with no model training; the in-tool detector ("Boost") is opt-in, off by default, never auto-started. A training run outside Teach & Transfer is the lead's call (never the user's to approve).
 - Annotating needs a laptop or desktop (`ui/responsive.js` `tooSmallForAnnotating`, `tests/test_responsive.py`):
   below 900px wide, the web annotator (`ui/canvas.js`) shows a plain notice instead of the canvas - mouse-drag
   boxes and keyboard shortcuts don't work well narrower than that. Width only, never a touch/device check: a
@@ -21,6 +21,16 @@
   - No Gradio: Colab free tier forbids web-UI-first use. UI = one `ui/canvas.js` served by FastAPI locally and by anywidget in notebooks.
   - Laya / Laya Vision / openjev were measured as box checkers and are not used (S4b, S4c in `spikes/REPORT.md`); review flags come from `Project.flags` (area vs the person's box, jumps, lost parts). PyPI `laya` and the laya-vision fork share a package name: never install both.
   - Chunk video sessions (~180 frames), offload state to CPU, fully tear down sessions (VRAM leak, sam3 issue #305).
+  - S23 (spikes/REPORT.md): load SAM 3 through `hw.sam3` only - the three SAM 3 classes share one image backbone
+    (identical weights; 3.35 -> 1.65 GB). DINOv3 stays (Suggest, Quick transfer, the grid, classify Teach; nothing
+    supports SAM 3 features replacing it). SAM 3 tracking takes outlines as they come: no cutting or restart guard
+    (measured no gain; it broke parts a pole splits in two) - `Guard` is for the opt-in SAM 3.1 only. Frames where a
+    person drew a part further on are prompts there (IoU 0.962 -> 0.983); two earlier vouched frames are memory.
+  - States: examples from the whole project (this task first; a new video went 39/118 -> 116+/118 right). Groups
+    change only by a person: Settings, or the notice's one-click "Yes, it changed state here" after a relabel that
+    looks like a state (`on_make_state`: this frame only, one undo step, refused during a job or once anything
+    changed). Groups seen in the labels are suggestions only (a fixed left/right swap looks the same). No flicker
+    smoothing (an indicator's blink can be one kept frame).
 - Refresh the knowledge graph with `/graphify` after each milestone.
 - Rivet, the in-app helper (`engine/assistant.py`, UI in `ui/canvas.js`): Gemini Flash-Lite, answers from `docs/GUIDE.md`
   (keep the guide accurate when features change). The API key comes only from `GEMINI_API_KEY` or `~/.partlabeler/assistant.json`:

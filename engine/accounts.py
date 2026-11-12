@@ -32,6 +32,7 @@ DEFAULTS = {
     "brush": 12,               # outline brush size
     "export_format": "",       # the format picked first in export dialogs ("" = the project's first)
     "confirmed_only": False,   # export only confirmed frames, ticked by default
+    "full_view": False,        # the annotator's Full view (side panel hidden, tools as icons)
     "every": 5,                # new tasks: keep every Nth video frame
     "quality": 95,             # new tasks: JPEG quality
     "frames": "video",         # new projects: video frames read from the video (or stored as jpg / webp files)

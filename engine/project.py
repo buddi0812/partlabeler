@@ -886,6 +886,41 @@ class Project:
         names = {self.classes[a], self.classes[b]}
         return a != b and any(names <= set(g) for g in self.meta.get("states") or [])
 
+    def vouched_elsewhere(self, obj: int, cls: int, item: int) -> bool:
+        """A person drew or confirmed this part with class `cls` on another item."""
+        return self.db.execute("SELECT 1 FROM boxes WHERE obj=? AND cls=? AND item!=? AND (source='manual' OR item IN "
+                               "(SELECT item FROM reviewed)) LIMIT 1", (obj, cls, item)).fetchone() is not None
+
+    def state_plan(self, a: int, b: int) -> dict | None:
+        """How classes a and b would become states of one part, as a change state_change can apply and take back
+        exactly: a new group when neither is in one, else the other one joins the group one of them is in. None when
+        that would join two groups, or put a left_ class with a right_ one (a mix-up of sides, not a state)."""
+        from engine import states
+        na, nb = self.classes[a], self.classes[b]
+        groups = self.meta.get("states") or []
+        ga, gb = (next((g for g in groups if n in g), None) for n in (na, nb))
+        if ga and gb:
+            return None
+        names = {na, nb} | set(ga or gb or ())
+        if len({m.group(1) for m in map(states.PAIR.match, names) if m}) > 1:
+            return None
+        return {"new": [na, nb]} if not (ga or gb) else {"join": nb if ga else na, "to": na if ga else nb}
+
+    def state_change(self, change: dict, undo: bool = False) -> None:
+        """Apply (or take back) a change from state_plan, touching nothing else in the project's state groups."""
+        groups = [list(g) for g in self.meta.get("states") or []]
+        if "new" in change:
+            groups = [g for g in groups if set(g) != set(change["new"])] + ([] if undo else [change["new"]])
+        else:
+            for g in groups:
+                if change["to"] in g:
+                    if undo and change["join"] in g:
+                        g.remove(change["join"])
+                    elif not undo and change["join"] not in g:
+                        g.append(change["join"])
+        kept = [[n for n in self.classes if n in g] for g in groups]          # classes renamed or deleted since go
+        self.set_meta(states=[g for g in kept if len(g) >= 2])
+
     def set_reviewed(self, item: int, value: bool = True) -> None:
         with self.db:
             self._touch([item])

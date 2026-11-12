@@ -245,9 +245,13 @@ inspector on the right and the job's frames along the bottom.
 
 - **Top bar:** ← Projects, the project name and type, the **job menu** (`Job #n` and its state: **Finish the job**
   (marks it accepted and completed), its **Stage** and **State**, previous and next job, a list of every job,
-  **Open the task** and **Back to the project**), the frame number within the job, chips that say whether this
-  frame is *Confirmed* or *To check*, the save status (*All changes saved*), the bell, Rivet, the **?** button
-  (keyboard shortcuts) and full screen (on Colab it fills the window height; press F11 too for a true full screen).
+  **Open the task** and **Back to the project**), the frame number within the job (click it, or press **J**, type a
+  frame number and press Enter to jump there; Esc keeps you where you are), chips that say whether this frame is
+  *Confirmed* or *To check*, the save status (*All changes saved*), the bell, Rivet, the **?** button (keyboard
+  shortcuts), **Full view** and full screen (on Colab it fills the window height; press F11 too for a true full
+  screen). **Full view** (the icon with arrows pointing out, or **Shift+F**) gives the frame the room: the inspector
+  goes and the tools show as icons only; the same icon, Shift+F or Esc (with nothing selected) brings them back. It
+  is remembered for your account. Use both together for the most room.
 - **Tools (left):** every tool with its name and key, in three groups: **AI assisted** (Click to outline),
   **Manual** (Select and adjust, Box, Polygon, Brush, and in segmentation projects also Ellipse, Eraser, Smart brush
   and Smart eraser) and **View** (Move around, Fit frame). On a smaller laptop screen the keys move into the
@@ -268,7 +272,8 @@ inspector on the right and the job's frames along the bottom.
 
 Strip colours: green = confirmed, teal = has your boxes, blue = tracked or imported, purple = suggestions,
 grey = no boxes, an amber tick = to check. Box styles: solid = yours, dashed = tracked or imported,
-dotted = suggestions.
+dotted = suggestions. The part under the mouse is highlighted (a light fill and a white edge) so you
+can see which one a click or a key will act on.
 
 ## Label a part (click to outline)
 
@@ -360,8 +365,9 @@ GPU runs out of memory the chunk size is halved automatically.
 
 **What tracking carries.** Tracking follows the parts on the frame you start from, and only those: a class that is
 not on that frame is not added further on (useful when parts come and go, such as lamps switching on and off: a
-lamp that is off is not labeled as lit). Each part is steered by the nearest earlier frame where a person vouched
-for it, that is drew it or confirmed the frame. Frames you confirmed are never changed by tracking. When a part
+lamp that is off is not labeled as lit). Each part is steered by the two nearest earlier frames where a person
+vouched for it, that is drew it or confirmed the frame, and by every frame further on where you drew or fixed it:
+your outline there pulls the part back onto it. Frames you confirmed are never changed by tracking. When a part
 appears later (a lamp lights up), label it on the first frame where it shows, or press **S** (Suggest) there to
 find it from your earlier examples, then track from that frame.
 
@@ -376,12 +382,22 @@ beam, a light that is on or off. Tell the project in **Settings → Parts that c
 its states (for example `lamp_bright, lamp_dim` and on the next line `beam_low, beam_high`; any number of states;
 with left_/right_ classes the shared name covers both sides). Tracking then follows the part and gives every frame
 the state whose examples look nearest (brightness and colour inside the outline or box, and the glow around it),
-learning from the frames you drew or confirmed in the same task. So once each state has been labeled at least once
-in a task, a lamp that dims and brightens again switches class by itself (in tests on checked lamp outlines: 920 of
-922 frames and every switch right). Until a state has an example in the task, the part keeps its class: label it on
-the first frame where it shows, then re-track (**U**) from there. Right after a switch the outline can keep the old
-state's shape for a few frames: check the frames around a switch. Changing a part's class to another state of it (the class list, with the part selected) changes this
-frame only; any other class change applies to the part on every frame.
+learning from the frames you drew or confirmed: in this task first, then in the rest of the project. So once each
+state has been labeled at least once, in this video or another one of the project, a lamp that dims and brightens
+again switches class by itself (in tests on checked lamp outlines: 920 of 922 frames and every switch right). Until a
+state has an example anywhere in the project, the part keeps its class: label it on the first frame where it shows,
+then re-track (**U**) from there. Right after a switch the outline can keep the old state's shape for a few frames:
+check the frames around a switch.
+
+You don't have to fill in the setting. When you change a part's class on one frame and it looks clearly different
+there (brighter, darker or another colour) from the frames where you drew or confirmed it, the part changes on every
+frame as usual, and a notice asks **Did this part change state here?** Its button, **Yes, it changed state here**, keeps
+the frames you drew as they were, changes only this frame, and adds the two classes to **Parts that change look**:
+one **Ctrl+Z** takes all of it back. It is only offered right after the change, never for a left_ and a right_
+class, and never to join two groups. Groups your labels already suggest (one part drawn or confirmed with two
+classes on two or more frames each) are listed under the setting but not used until you add them: a left/right
+mix-up you fixed looks the same in the labels. Changing a part's class to another state of it changes this frame
+only; any other class change applies to the part on every frame.
 
 **Re-track after a fix.** Fixed or relabeled a part, or deleted one, on a frame after tracking past it? Open **After
 this frame ▾** in the toolbar and choose **Re-track** (the next N frames, or to the end of the task), or press **U** /

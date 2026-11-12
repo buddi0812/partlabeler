@@ -337,3 +337,37 @@ Size is left out: right after a switch the tracked outline keeps the old state's
 IoU 0.75–0.85 with the new state's outline), so size points to the old state. Tracking through the switch with
 the frames hidden (S19, SAM 3): every frame's state right on both lamps, bright to dim (forward) and dim to bright
 (backward); tracking alone kept the start state throughout.
+
+## S23 — a leaner, SAM-first tracking (`s23_tracking_bench.py`, `s23_synthetic.py`; measured, partly adopted)
+Asked for: no bleeding, no deforming, the right class when a part changes look, faster tracking, lower hardware
+needs, and dropping DINOv3. Measured on two sets of lamp videos with outlines a person confirmed (3 runs of 150
+frames each, a chunk boundary inside every run; tracked frames hidden) and a synthetic stress clip (a housing that
+slides up 2 px from a look-alike grey neighbour, a skin-coloured hand sweeping across it, a lamp turning red, amber,
+white; two videos of 119 frames, true outlines known). RTX 3060, SAM 3 in bf16.
+
+| | before | after |
+|---|---|---|
+| lamp sets: IoU with confirmed outlines, balloons, leaked pixels | 0.925, 0 of 1,192, ~0 | the same |
+| stress clip: IoU | 0.962 | 0.962 |
+| stress clip, a person's outline every 30th frame | 0.962 (not used) | **0.983** (p10 0.845 -> 0.96) |
+| state class on a new video, examples only from other videos ("fair") | **39 / 118** | **116-118 / 118** |
+| frames/s (2-4 parts) | 1.0-1.46 | the same (1.18-1.61 once the benchmark stopped counting its own scoring) |
+| GPU memory, the three SAM 3 models loaded | 3.35 GB | **1.65 GB** |
+
+- DINOv3 is not in the tracking path (Suggest, Quick transfer, the image-class grid and classify Teach only, loaded on
+  first use); no benchmark supports SAM 3's features replacing it for matching parts (the nearest, PE vs DINOv3 on
+  correspondence and retrieval, favours DINOv3). Kept.
+- The three SAM 3 classes load the identical image backbone (446M of a tracker's 458M parameters; 516 tensors, max
+  difference 0.0): one copy is shared (`hw.sam3`), halving the memory.
+- SAM 3 neither ballooned nor bled on either set. A guard that cut tracked outlines to the pieces touching the last
+  one, restarted a session on an area jump, and seeded chunks from the last "good" outline was built and dropped: it
+  changed nothing measurable (cleaned outlines scored the same 0.962), and four review rounds kept finding cases it
+  broke (a part a pole splits in two lost its far piece, parts lost at restarts, a growing balloon taken as the new
+  size). It stays only in the opt-in SAM 3.1 tracker, which does balloon (S19-S22): one retry, a balloon never
+  becomes the part's normal size.
+- Kept: frames where a person drew a part further on are prompts there (the 0.962 -> 0.983 above), the two nearest
+  earlier vouched frames as memory (S2), state examples from the whole project (this task first), colour read inside
+  the outline shrunk by a few pixels plus Lab medians, and a relabel that looks like a change of state is offered as
+  one (one click: this frame only, the two classes become states of one part, one Ctrl+Z).
+- Not done: one-frame flicker smoothing of states (an indicator's blink can last a single kept frame), groups
+  inferred from labels alone (a left/right swap fixed by hand looks the same; shown as suggestions only).

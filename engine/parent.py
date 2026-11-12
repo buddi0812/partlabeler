@@ -17,7 +17,7 @@ class ConceptFinder:
     def __init__(self, device: str | None = None, dtype: torch.dtype | None = None):
         device = device or hw.device(); dtype = dtype or hw.dtype(device)
         path = fetch(SAM3)
-        self.model = Sam3Model.from_pretrained(path, dtype=dtype).to(device).eval()
+        self.model = hw.sam3(Sam3Model, device, dtype)
         self.proc = Sam3Processor.from_pretrained(path)
         self.device, self.dtype = device, dtype
 

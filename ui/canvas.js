@@ -61,7 +61,10 @@ const CSS = `
 .pl-back { color:var(--accent-ink); text-decoration:none; font-weight:600; white-space:nowrap; padding:4px 8px 4px 4px; border-radius:6px; display:inline-flex; gap:4px; align-items:center; }
 .pl-back:hover { background:var(--accent-soft); }
 .pl-title { font-weight:600; font-size:15px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
-.pl-where { color:var(--muted); font-variant-numeric:tabular-nums; white-space:nowrap; }
+.pl .pl-where { color:var(--muted); font-variant-numeric:tabular-nums; white-space:nowrap; background:none; border:1px solid transparent;
+  padding:2px 6px; cursor:text; }
+.pl-goto { width:7em; font:inherit; font-variant-numeric:tabular-nums; padding:2px 6px; border:1px solid var(--accent); border-radius:7px;
+  background:var(--panel); color:var(--ink); }
 .pl-chip { font-size:12px; font-weight:600; padding:2px 9px; border-radius:99px; white-space:nowrap; }
 .pl-chip.rev { background:var(--c-ok-soft,#dcf1e4); color:var(--c-ok-ink,#1f7a44); } .pl-chip.pl-type { background:var(--accent-soft); color:var(--accent-ink); }
 .pl-chip.pl-type:empty { display:none; } .pl-chip.flag { background:var(--c-warn-soft,#fbecd3); color:var(--c-warn-ink,#8a5304); }
@@ -258,6 +261,15 @@ const CSS = `
   .pl-opts { flex-wrap:wrap; height:auto; row-gap:4px; }
   .pl-howto { flex-basis:100%; order:9; }
 }
+/* Full view: the frame gets the room; the side panel and the words go, the tools stay as icons */
+.pl.focus .pl-side { display:none; }
+.pl.focus .pl-body { --rail-w:56px; grid-template-columns:var(--rail-w) minmax(0,1fr); grid-template-rows:minmax(0,1fr); }
+.pl.focus .pl-body.gridmode { grid-template-columns:minmax(0,1fr); }
+.pl.focus .pl-rail { padding:10px 6px; align-items:center; }
+.pl.focus .pl-rail h3 { font-size:0; margin:8px 0 4px; height:1px; width:28px; background:var(--line); }
+.pl.focus .pl-tool { grid-template-columns:20px; justify-content:center; padding:8px; width:auto; }
+.pl.focus .pl-tool span, .pl.focus .pl-tool kbd, .pl.focus .pl-howto, .pl.focus .pl-transport .pl-lbl,
+.pl.focus .pl-transport .pl-lbl2, .pl.focus .pl-group-label { display:none; }
 @media (prefers-reduced-motion: reduce) { .pl *, .pln-drawer { scroll-behavior:auto !important; transition:none !important; } .pl-loading::before { animation:none; } }
 `;
 
@@ -293,6 +305,8 @@ const ICON_PATHS = {
   help: '<circle cx="12" cy="12" r="9"/><path d="M9.6 9.2a2.5 2.5 0 1 1 3.4 2.3c-.6.3-1 .8-1 1.5v.5M12 16.8v.1"/>',
   full: '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>',
   unfull: '<path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/>',
+  focus: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M8 9l-3 3 3 3M16 9l3 3-3 3"/>',
+  unfocus: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M6 9l3 3-3 3M18 9l-3 3 3 3"/>',
   x: '<path d="M6 6l12 12M18 6L6 18"/>',
   chevDown: '<path d="M6 9l6 6 6-6"/>',
   alert: '<path d="M12 3.5l9.5 16.5h-19z"/><path d="M12 10v4.5M12 17.4v.1"/>',
@@ -388,7 +402,7 @@ function when(t) {
 }
 
 // ---- notification center: bell + drawer, shared by the annotator and the start screen ----------
-export function notificationCenter({ mount, onRead, onClear, onAction, actionAvailable = () => true }) {
+export function notificationCenter({ mount, onRead, onClear, onAction, actionAvailable = (a) => a.type !== "send" }) {   // "send": only in its own annotator
   if (!document.getElementById("pln-css")) {
     document.head.appendChild(Object.assign(document.createElement("style"), { id: "pln-css", textContent: NOTE_CSS }));
   }
@@ -954,11 +968,12 @@ function render({ model, el }) {
         <label>State <select class="pl-jstate" aria-label="Job state"><option>new</option><option>in progress</option><option>rejected</option><option>completed</option></select></label>
         <label>Job <select class="pl-jpick" aria-label="Go to job"></select></label>
         <div class="pl-tools pl-webonly"><a class="pl-totask" href="#">Open the task</a><a class="pl-toproject" href="#">Back to the project</a></div></div></details>
-      <span class="pl-where"></span><span class="pl-chips"></span>
+      <button type="button" class="pl-where" title="Go to frame (J)"></button><span class="pl-chips"></span>
       <span class="pl-sp"></span>
       <span class="pl-saved" role="status" aria-live="polite"></span>
       <span class="pl-bellmount"></span><span class="pl-rivetmount"></span>
       <button type="button" class="icon ghost" data-a="help" aria-label="Keyboard shortcuts" title="Keyboard shortcuts (?)">${ic("help")}</button>
+      <button type="button" class="icon ghost pl-focus" data-a="focus" aria-label="Full view" aria-pressed="false" title="Full view (Shift+F)">${ic("focus")}</button>
       <button type="button" class="icon ghost pl-full" data-a="full" aria-label="Full screen" title="Full screen">${ic("full")}</button>
     </header>
     <div class="pl-banner" hidden></div>
@@ -1068,7 +1083,9 @@ function render({ model, el }) {
               <label class="pl-field pl-parentf">Parts that change look
                 <textarea class="pl-states" name="part-states" rows="2" autocomplete="off" spellcheck="false" placeholder="e.g. bright, dim"></textarea></label>
               <span class="pl-src pl-parentf">Classes that are states of one part, one part per line (e.g. a lamp that is bright or dim).
-                Tracking then gives each frame the state its confirmed examples match. With left_/right_ classes, the shared name covers both sides.</span>
+                Tracking then gives each frame the state its confirmed examples match. With left_/right_ classes, the shared name covers both sides.
+                Changing a part's class on one frame where it clearly looks different offers to add its two classes here.</span>
+              <span class="pl-src pl-statesfound" hidden></span>
               <label class="pl-chk pl-sizef"><input type="checkbox" class="pl-keepsize" name="keep-size"> Tracking keeps the box size you drew</label>
               <span class="pl-src pl-sizef">For parts that stay the same size on screen (a fixed camera, a rigid part): tracked boxes follow the part
                 but keep the width and height of the box on the frame you track from, so you don't have to resize every frame.</span>
@@ -1172,6 +1189,7 @@ function render({ model, el }) {
         <div><span>Undo</span><span><kbd>Ctrl</kbd> + <kbd>Z</kbd></span></div>
         <h3>Frames</h3>
         <div><span>Previous / next frame</span><span><kbd>←</kbd> <kbd>→</kbd></span></div>
+        <div><span>Go to a frame by its number</span><kbd>J</kbd></div>
         <div><span>Next frame to check</span><span><kbd>Shift</kbd> + <kbd>→</kbd></span></div>
         <div><span>Play / pause the frames</span><span><kbd>K</kbd> / <kbd>Space</kbd></span></div>
         <div><span>Confirm frame and go on</span><kbd>Enter</kbd></div>
@@ -1190,6 +1208,7 @@ function render({ model, el }) {
         <div><span>Ask Rivet, the helper</span><kbd>H</kbd></div>
         <div><span>This list</span><kbd>?</kbd></div>
         <h3>View and sorting</h3>
+        <div><span>Full view: the frame fills the window (again, or <kbd>Esc</kbd>, to leave)</span><span><kbd>Shift</kbd> + <kbd>F</kbd></span></div>
         <div><span>Zoom in / out at the pointer</span><span><kbd>Ctrl</kbd> + wheel, <kbd>+</kbd> <kbd>−</kbd></span></div>
         <div><span>Whole frame again</span><kbd>Z</kbd></div>
         <div><span>Move around when zoomed in</span><span>wheel, <kbd>Space</kbd>+drag, middle drag</span></div>
@@ -1211,7 +1230,7 @@ function render({ model, el }) {
               boxMode: "drag", polyMode: "new", shape: null, tab: "classes" };
   try { S.hintHidden = window.PL ? PREFS.hints === false : localStorage.getItem("pl-hint-hidden") === "1"; } catch {}
   try { S.tab = localStorage.getItem("pl-tab") || "classes"; } catch {}
-  const MUTATING = new Set(["box", "click", "cycle", "delete", "set_class", "swap_classes", "review", "review_many", "accept", "undo", "settings", "paint", "smart_paint", "tag", "accept_tags", "add_class", "delete_frames", "delete_class", "reset"]);
+  const MUTATING = new Set(["box", "click", "cycle", "delete", "set_class", "make_state", "swap_classes", "review", "review_many", "accept", "undo", "settings", "paint", "smart_paint", "tag", "accept_tags", "add_class", "delete_frames", "delete_class", "reset"]);
   let pendingDanger = null;                                      // what the confirm dialog sends when the person says yes
   function confirmDanger(title, body, keep, ok, msg) {
     const dlg = $(".pl-del-dlg");
@@ -1231,7 +1250,8 @@ function render({ model, el }) {
     mount: $(".pl-bellmount"),
     onRead: () => model.send({ type: "notifications_read" }),
     onClear: () => model.send({ type: "notifications_clear" }),
-    actionAvailable: (a) => web || (a.type === "goto" && a.project === S.project?.name),   // notebooks: no REST helpers
+    actionAvailable: (a) => a.type === "send" ? a.project === S.project?.name                  // only in its own annotator
+      : web || (a.type === "goto" && a.project === S.project?.name),   // notebooks: no REST helpers
     onAction: (a) => runAction(a),
   });
   // ---- Rivet, the helper ------------------------------------------------------------------
@@ -1273,7 +1293,8 @@ function render({ model, el }) {
       if (a.type === "goto") {
         if (a.project === S.project?.name) { center.close(); goto(a.item); }
         else location.href = `${model.homeUrl}p/${encodeURIComponent(a.project)}?item=${a.item}`;
-      } else if (a.type === "open") location.href = `${model.homeUrl}p/${encodeURIComponent(a.project)}`;
+      } else if (a.type === "send" && a.project === S.project?.name) { center.close(); send(a.msg); }   // e.g. "another part"
+      else if (a.type === "open") location.href = `${model.homeUrl}p/${encodeURIComponent(a.project)}`;
       else if (a.type === "folder") await post(`${model.homeUrl}api/open-folder`, { path: a.path });
       else if (a.type === "restore") { const r = await post(`${model.homeUrl}api/trash/${encodeURIComponent(a.entry)}/restore`); toast({ level: "success", title: `Restored ${r.name}` }); }
     } catch (err) { toast({ level: "error", title: "That did not work", detail: String(err.message || err) }); }
@@ -1323,19 +1344,24 @@ function render({ model, el }) {
       for (const b of S.data?.boxes || []) {
         if (!b.mask || (S.paint && !S.paint.smart && b.obj === S.paint.obj)) continue;
         const t = tinted(b); if (!t) continue;
-        ctx.globalAlpha = b.source === "suggested" ? 0.55 : b.obj === S.sel ? 1 : 0.85;
+        ctx.globalAlpha = b.source === "suggested" ? 0.55 : b.obj === S.sel || b.obj === S.hoverObj ? 1 : 0.85;
         ctx.drawImage(t.canvas, b.mask[0], b.mask[1]);
       }
       ctx.globalAlpha = 1;
     }
     if (S.paint) { ctx.globalAlpha = S.paint.smart ? 0.45 : 0.6; ctx.drawImage(S.paint.cv, 0, 0); ctx.globalAlpha = 1; }
-    for (const b of S.data?.boxes || []) {
-      const [x1, y1, x2, y2] = b.box, col = colorOf(b.cls), on = b.obj === S.sel;
+    const hov = S.hoverObj;                                      // the part under the mouse: drawn last, on top
+    for (const b of (S.data?.boxes || []).slice().sort((p, q) => (p.obj === hov) - (q.obj === hov))) {
+      const [x1, y1, x2, y2] = b.box, col = colorOf(b.cls), on = b.obj === S.sel, lit = b.obj === hov && !on;
       const outlined = seg() && b.mask;
+      if (lit) {                                                 // highlighted: a light fill and a white halo
+        ctx.globalAlpha = 0.18; ctx.fillStyle = col; ctx.fillRect(x1, y1, x2 - x1, y2 - y1); ctx.globalAlpha = 1;
+        ctx.lineWidth = lw * 3.4; ctx.strokeStyle = "#fff"; ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
+      }
       ctx.setLineDash(b.source === "tracked" || b.source === "propagated" ? [lw * 4, lw * 2] : b.source === "suggested" ? [lw, lw * 1.5] : outlined ? [lw * 1.2, lw * 2.4] : []);
       if (on) { ctx.lineWidth = lw * 3; ctx.strokeStyle = "#fff"; ctx.strokeRect(x1, y1, x2 - x1, y2 - y1); }
-      ctx.lineWidth = on ? lw * 1.8 : outlined ? lw * 0.6 : lw; ctx.strokeStyle = col;
-      if (!outlined || on) ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
+      ctx.lineWidth = on ? lw * 1.8 : lit ? lw * 2 : outlined ? lw * 0.6 : lw; ctx.strokeStyle = col;
+      if (!outlined || on || lit) ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
       ctx.setLineDash([]);
       const label = S.project.classes[b.cls] ?? b.cls, tw = ctx.measureText(label).width + fs * 0.6;
       const ty = y1 - fs * 1.35 < 0 ? y2 : y1 - fs * 1.35;
@@ -1562,6 +1588,8 @@ function render({ model, el }) {
     else if ((S.project.formats || []).includes(PREFS.export_format)) fmt.value = PREFS.export_format;
     $(".pl-parent").value = S.project.parent || "";
     $(".pl-states").value = S.project.states || "";
+    $(".pl-statesfound").hidden = !S.project.states_found || classify();
+    $(".pl-statesfound").textContent = S.project.states_found ? `Your labels suggest these too (add them above to use them): ${S.project.states_found}` : "";
     $(".pl-keepsize").checked = !!S.project.keep_size;
     $(".pl-typeline").textContent = `Project type: ${TASK_NAMES[S.project.task] || "Object detection"} (chosen when the project was made; its exports follow it).`;
     $(".pl-type").textContent = TASK_NAMES[S.project.task] || "Object detection";
@@ -1694,7 +1722,7 @@ function render({ model, el }) {
     if (S.grid) { tagSelected(i); renderSide(); return; }
     // Only a box the person selected is re-labeled: a part just created stays selected (for M and Shift/Alt clicks),
     // and picking the class for the next part must not quietly change it.
-    if (S.sel != null && S.picked) send({ type: "set_class", obj: S.sel, cls: i, item: S.item });
+    if (S.sel != null && S.picked) send({ type: "set_class", obj: S.sel, cls: i, item: S.item, guess_states: true });
     renderSide();
   }
   const trackN = () => Math.max(1, parseInt($(".pl-n").value, 10) || 20);
@@ -1787,6 +1815,7 @@ function render({ model, el }) {
     zoomIn: () => zoomAt(1.5), zoomOut: () => zoomAt(1 / 1.5), zoomFit: () => zoomAt(0),
     closePeek: () => $(".pl-peek").close(),
     full: () => toggleFull(),
+    focus: () => setFocus(!S.focus),
     help: () => $(".pl-help-dlg").showModal(),
     closeHelp: () => $(".pl-help-dlg").close(),
     hideHint: () => { S.hintHidden = true; if (!savePref("hints", false)) try { localStorage.setItem("pl-hint-hidden", "1"); } catch {} renderSide(); el.focus(); },
@@ -2118,6 +2147,36 @@ function render({ model, el }) {
     } catch { setBig(true); }
   }
   document.addEventListener("fullscreenchange", () => { renderFull(); drawStrip(); });
+  // Full view (Shift+F): the side panel and the labels go, the tools stay as icons; kept per account
+  function setFocus(on, save = true) {
+    S.focus = on; el.classList.toggle("focus", on);
+    const b = $(".pl-focus");
+    b.innerHTML = ic(on ? "unfocus" : "focus"); b.setAttribute("aria-pressed", String(on));
+    b.setAttribute("aria-label", on ? "Leave full view" : "Full view"); b.title = `${b.getAttribute("aria-label")} (Shift+F)`;
+    if (save) savePref("full_view", on);
+  }
+  setFocus(Boolean(PREFS.full_view), false);
+  // Go to a frame by its number (J, or a click on "Frame 12 of 120"): within this task or job
+  function askFrame() {
+    if (!S.data || S.grid || $(".pl-goto")) return;
+    const t = view(), w = $(".pl-where"), n = t.end - t.start, word = t.kind === "video" ? "frame" : "image";
+    const box = document.createElement("input");
+    Object.assign(box, { type: "number", min: 1, max: n, value: S.item - t.start + 1, className: "pl-goto", name: "go-to-frame" });
+    box.setAttribute("aria-label", `Go to ${word}, 1 to ${n}`); box.title = `Type a ${word} number, then Enter (Esc: never mind)`;
+    w.hidden = true; w.after(box); box.focus(); box.select();
+    let done = false;
+    const close = (go) => {
+      if (done) return;
+      done = true;
+      const v = parseInt(box.value, 10);
+      box.remove(); w.hidden = false;
+      if (go && v >= 1) goto(t.start + Math.min(n, v) - 1);
+      w.focus();
+    };
+    box.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); close(true); } else if (e.key === "Escape") { e.preventDefault(); close(false); } });
+    box.addEventListener("blur", () => close(false));
+  }
+  $(".pl-where").addEventListener("click", askFrame);
 
   // ---- mouse on the image ----------------------------------------------------------------
   const toImage = (e) => { const r = cv.getBoundingClientRect(); return [(e.clientX - r.left) * cv.width / r.width, (e.clientY - r.top) * cv.height / r.height]; };
@@ -2300,7 +2359,12 @@ function render({ model, el }) {
   new ResizeObserver(() => { if (S.zoom > 1) { clampPan(); applyZoom(); } }).observe($(".pl-stage"));
   el.addEventListener("keyup", (e) => { if (e.key === " ") { S.space = false; $(".pl-stage").classList.remove("can-pan"); } });
   let hoverRaf = 0;
-  cv.addEventListener("mouseleave", () => { if (S.hover) { S.hover = null; draw(); } });
+  cv.addEventListener("mouseleave", () => { if (S.hover || S.hoverObj != null) { S.hover = null; S.hoverObj = null; draw(); } });
+  function hoverPart(o) {                                         // the part under the mouse is highlighted
+    if (o === S.hoverObj) return;
+    S.hoverObj = o;
+    if (!hoverRaf) hoverRaf = requestAnimationFrame(() => { hoverRaf = 0; draw(); });
+  }
   cv.addEventListener("dblclick", () => closePolygon());
   cv.addEventListener("mousedown", (e) => {
     if (!S.img) return;
@@ -2329,8 +2393,13 @@ function render({ model, el }) {
   });
   cv.addEventListener("mousemove", (e) => {
     if (S.paint) { const [x, y] = toImage(e); strokeTo(x, y); return; }
-    if ((painting() || S.shape) && !S.drag) { S.hover = toImage(e); if (!hoverRaf) hoverRaf = requestAnimationFrame(() => { hoverRaf = 0; draw(); }); return; }
-    if (!S.drag) { const g = !S.space && !S.panning && boxGrip(...toImage(e)); cv.style.cursor = g ? GRIP_CURSORS[g] : ""; return; }
+    if ((painting() || S.shape) && !S.drag) { S.hover = toImage(e); hoverPart(null); if (!hoverRaf) hoverRaf = requestAnimationFrame(() => { hoverRaf = 0; draw(); }); return; }
+    if (!S.drag) {
+      const [x, y] = toImage(e), g = !S.space && !S.panning && boxGrip(x, y);
+      cv.style.cursor = g ? GRIP_CURSORS[g] : "";
+      hoverPart(S.space || S.panning ? null : boxAt(x, y));
+      return;
+    }
     const [x, y] = toImage(e); S.drag.x1 = x; S.drag.y1 = y; S.drag.shift = e.shiftKey;
     const r = cv.getBoundingClientRect(), px = cv.width / r.width;
     S.drag.moved ||= Math.hypot(x - S.drag.x0, y - S.drag.y0) > 5 * px; if (S.drag.moved) draw();
@@ -2378,7 +2447,12 @@ function render({ model, el }) {
     else if (k === "Delete" && e.shiftKey) actions.deleteFrame();
     else if (S.shape && k === "Backspace") { S.shape.pts.pop(); if (!S.shape.pts.length) S.shape = null; draw(); }
     else if (k === "Delete" || k === "Backspace") { if (S.sel != null) { send({ type: "delete", item: S.item, obj: S.sel }); S.sel = null; } }
-    else if (k === "Escape") { if (S.shape) S.shape = null; else S.sel = null; S.drag = null; renderSide(); draw(); }
+    else if (k === "Escape") {
+      if (S.shape) S.shape = null; else if (S.sel == null && S.focus) setFocus(false); else S.sel = null;
+      S.drag = null; renderSide(); draw();
+    }
+    else if (k === "F") setFocus(!S.focus);
+    else if (k === "j") askFrame();
     else if (k === "t") actions.track(); else if (k === "T") actions.trackAll();
     else if (k === "r") actions.trackBack(); else if (k === "R") actions.trackBackAll();
     else if (k === "u") actions.retrack(); else if (k === "U") actions.retrackAll();
@@ -2448,7 +2522,7 @@ function render({ model, el }) {
       const img = new Image();
       img.onload = () => {
         if (m.item !== S.target) return;
-        if (m.item !== S.item) { S.mask = null; S.shape = null; }    // a half-placed polygon or box stays on its own frame
+        if (m.item !== S.item) { S.mask = null; S.shape = null; S.hoverObj = null; }   // a half-placed polygon or box stays on its own frame
         S.item = m.item; S.data = m; S.img = img;
         if (cv.width !== m.w || cv.height !== m.h) { cv.width = m.w; cv.height = m.h; S.zoom = 1; S.pan = [0, 0]; applyZoom(); }
         if (S.sel != null && !m.boxes.some((b) => b.obj === S.sel)) S.sel = null;
@@ -2489,7 +2563,9 @@ function render({ model, el }) {
       b.textContent = "Connection to PartLabeler lost. Your work is saved; restart the app (run_windows.bat) and reload this page."; }
   });
   // keep keyboard shortcuts working after clicking buttons, the list or the timeline
-  el.addEventListener("mousedown", (e) => { if (!e.target.matches("input,select,option,textarea")) setTimeout(() => el.focus(), 0); });
+  el.addEventListener("mousedown", (e) => {                          // keys keep working after a click (not where one types)
+    if (!e.target.matches("input,select,option,textarea") && !e.target.closest(".pl-where")) setTimeout(() => el.focus(), 0);
+  });
   new ResizeObserver(drawStrip).observe(strip);
   renderSide();
   el.focus();
