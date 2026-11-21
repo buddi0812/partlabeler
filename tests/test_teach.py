@@ -685,3 +685,14 @@ def test_a_run_says_how_many_epochs_it_trained(tmp_path):
     rows = ["epoch,step,val/mAP_50", "0,10,0.2", "0,10,", "1,20,0.4", "33,340,0.7", ""]
     (tmp_path / "metrics.csv").write_text(chr(10).join(rows), encoding="utf-8")
     assert epochs_run(tmp_path) == 34
+
+
+def test_cli_choices_work_without_click_type(tmp_path, video):
+    """typer 0.29 dropped click_type=click.Choice (a fresh install crashed at import): the choices are a callback now."""
+    classes = tmp_path / "classes.txt"
+    classes.write_text("\n".join(CLASSES) + "\n")
+    bad = CliRunner().invoke(app, ["new", str(tmp_path / "p"), "--video", str(video), "--classes", str(classes), "--task", "boxes"])
+    assert bad.exit_code == 2 and "choose one of: detect, segment, classify" in bad.output
+    ok = CliRunner().invoke(app, ["new", str(tmp_path / "q"), "--video", str(video), "--classes", str(classes), "--task", "segment"])
+    assert ok.exit_code == 0, ok.output
+    assert json.loads((tmp_path / "q" / "project.json").read_text())["task"] == "segment"

@@ -24,7 +24,6 @@ import time
 from contextlib import contextmanager
 from pathlib import Path
 
-import click
 import typer
 
 from engine import utf8_output
@@ -33,6 +32,15 @@ utf8_output()                                                 # teach prints RF-
 
 FORMATS = ("yolo", "coco", "cvat", "voc", "labelstudio", "folders", "csv")   # folders, csv: image classes
 SIZES = ("nano", "small", "medium")
+
+
+def one_of(*allowed):
+    """A typer option callback that takes only these values (typer 0.29 dropped click_type=click.Choice)."""
+    def check(value):
+        if value is not None and value not in allowed:
+            raise typer.BadParameter(f"choose one of: {', '.join(allowed)}")
+        return value
+    return check
 
 app = typer.Typer(help="PartLabeler: annotated datasets of machine parts from videos and image folders.",
                   no_args_is_help=True, add_completion=False, pretty_exceptions_show_locals=False)
@@ -115,9 +123,9 @@ def new(project: Path = typer.Argument(..., help="New project folder."),
         images: Path | None = typer.Option(None, exists=True, file_okay=False, help="Source image folder."),
         classes: Path = typer.Option(..., exists=True, dir_okay=False, help="classes.txt or data.yaml."),
         every: int = typer.Option(5, min=1, help="Video: keep 1 frame in N."),
-        task: str = typer.Option("detect", click_type=click.Choice(["detect", "segment", "classify"]),
+        task: str = typer.Option("detect", callback=one_of("detect", "segment", "classify"), metavar="[detect|segment|classify]",
                                  help="Project type, fixed once made: detect (object detection, boxes), segment (segmentation, outlines) or classify (classification, one class per image)."),
-        frames: str = typer.Option("video", click_type=click.Choice(["video", "jpg", "webp"]),
+        frames: str = typer.Option("video", callback=one_of("video", "jpg", "webp"), metavar="[video|jpg|webp]",
                                    help="Video frames: video (read from the video: no copies, exact), jpg files or webp (lossless) files."),
         labels: Path | None = typer.Option(None, exists=True, file_okay=False, help="YOLO labels to import.")):
     """Create a project from a video or an image folder (more can be added: `partlabeler add`), optionally with existing YOLO labels."""
@@ -144,7 +152,7 @@ def add(project: Path = typer.Argument(..., exists=True, file_okay=False, help="
         segment_size: int = typer.Option(0, min=0, help="Frames per job (0: one job for the task)."),
         start: int | None = typer.Option(None, help="Video: first frame."), stop: int | None = typer.Option(None, help="Video: last frame."),
         quality: int = typer.Option(95, min=5, max=100, help="Video: JPEG quality of the stored frames."),
-        frames: str | None = typer.Option(None, click_type=click.Choice(["video", "jpg", "webp"]),
+        frames: str | None = typer.Option(None, callback=one_of("video", "jpg", "webp"), metavar="[video|jpg|webp]",
                                           help="Video frames: video (read from the video, no copies), jpg or webp files (default: the project's)."),
         name: str | None = typer.Option(None, help="Task name (default: the file or folder name).")):
     """Add a video or an image folder to a project as a new task (as CVAT's Create a new task)."""
@@ -320,7 +328,7 @@ def account_remove(username: str = typer.Argument(..., help="The account's usern
 
 @app.command()
 def export(project: Path = typer.Argument(..., exists=True, file_okay=False, help="Project folder."),
-           fmt: str = typer.Option("yolo", "--format", click_type=click.Choice(FORMATS), help="Dataset format."),
+           fmt: str = typer.Option("yolo", "--format", callback=one_of(*FORMATS), metavar="[" + "|".join(FORMATS) + "]", help="Dataset format."),
            reviewed_only: bool = typer.Option(False, "--reviewed-only", help="Only frames/images marked reviewed."),
            task: list[str] = typer.Option(None, "--task", help="Only this task (name); repeat for several. Default: all."),
            job: list[int] = typer.Option(None, "--job", help="Only this job (number); repeat for several."),
@@ -344,12 +352,12 @@ def teach(dataset: Path = typer.Argument(..., exists=True, file_okay=False,
                                          help="Labeled source: images/, labels/, classes.txt or data.yaml."),
           run: Path = typer.Option(..., help="Run folder (model, settings, report); rerun to resume."),
           parent: str | None = typer.Option(None, help="Object the parts sit on, e.g. 'engine block'; crops to it."),
-          size: str = typer.Option("small", click_type=click.Choice(SIZES),
+          size: str = typer.Option("small", callback=one_of(*SIZES), metavar="[" + "|".join(SIZES) + "]",
                                    help="RF-DETR size; seg-* also outlines the parts (needs a source with polygons/)."),
           epochs: int = typer.Option(30, min=1),
           resolution: int = typer.Option(640, help="Model input size, a multiple of 32."),
           held_out: float = typer.Option(0.2, min=0.05, max=0.5, help="Share of frames held out (time blocks)."),
-          aug: str = typer.Option("strong", click_type=click.Choice(("strong", "medium", "off"))),
+          aug: str = typer.Option("strong", callback=one_of("strong", "medium", "off"), metavar="[strong|medium|off]"),
           recolor: float = typer.Option(0.0, min=0.0, max=1.0, help="Share of training frames that also get a copy "
                                         "with the object in another colour (parts untouched)."),
           crop: bool = typer.Option(True, "--crop/--no-crop", help="With --parent: cut frames to it, or train on whole "
