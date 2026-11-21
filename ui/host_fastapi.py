@@ -53,7 +53,7 @@ ANNOTATOR = HEAD + """<title>{name} · PartLabeler</title>
 <script type="module">
 import canvas from "/ui/canvas.js";
 const handlers = [], queue = [];
-const ws = new WebSocket(`ws://${{location.host}}/ws/{name_js}`);
+const ws = new WebSocket(`${{location.protocol === "https:" ? "wss" : "ws"}}://${{location.host}}/ws/{name_js}`);   // https page: wss
 const model = {{
   homeUrl: "/",
   job: {job},
@@ -306,9 +306,14 @@ async def signed_in(request, call_next):
         ACTOR.reset(actor)
 
 
-def _signed_in_as(response: Response, user: str, keep: bool) -> dict:
+def _https(request: Request) -> bool:
+    """The page was opened over HTTPS: directly, or through a proxy that says so (Cloudflare Tunnel, Caddy, nginx)."""
+    return request.url.scheme == "https" or request.headers.get("x-forwarded-proto", "").split(",")[0].strip() == "https"
+
+
+def _signed_in_as(request: Request, response: Response, user: str, keep: bool) -> dict:
     response.set_cookie(COOKIE, accounts().sign_in(user, keep), max_age=30 * 86400 if keep else None,
-                        httponly=True, samesite="strict", path="/")
+                        httponly=True, samesite="strict", path="/", secure=_https(request))
     return accounts().profile(user)
 
 
@@ -339,16 +344,16 @@ def login(request: Request, response: Response, body: dict = Body(...)) -> dict:
         raise HTTPException(401, "Wrong username or password")
     for k in keys:
         failed.pop(k, None)
-    return _signed_in_as(response, user, bool(body.get("keep")))
+    return _signed_in_as(request, response, user, bool(body.get("keep")))
 
 
 @app.post("/api/auth/signup")
-def signup(response: Response, body: dict = Body(...)) -> dict:
+def signup(request: Request, response: Response, body: dict = Body(...)) -> dict:
     try:
         user = accounts().create(body.get("username", ""), body.get("password", ""), body.get("name", ""))["username"]
     except ValueError as e:
         raise HTTPException(400, str(e))
-    return _signed_in_as(response, user, bool(body.get("keep")))
+    return _signed_in_as(request, response, user, bool(body.get("keep")))
 
 
 @app.post("/api/auth/logout")
@@ -395,7 +400,7 @@ def change_password(request: Request, response: Response, body: dict = Body(...)
         accounts().set_password(user, body.get("new", ""))           # signs out everywhere…
     except ValueError as e:
         raise HTTPException(400, str(e))
-    return _signed_in_as(response, user, True)                        # …except here
+    return _signed_in_as(request, response, user, True)                        # …except here
 
 
 @app.get("/api/me/tokens")
@@ -1578,7 +1583,8 @@ def serve(home: Path | None = None, port: int = 8765, open_browser: bool = True,
     if host not in ("127.0.0.1", "localhost", "::1") and team:
         print(f"Team server on {host}:{port}: teammates open http://<this computer's address>:{port}/ and sign in; "
               "make their accounts here (this computer's sign-in page or `partlabeler account add NAME`). Let only "
-              "trusted networks reach the port (e.g. Tailscale, docs/GUIDE.md).", flush=True)
+              "trusted networks reach the port (e.g. Tailscale), or put an HTTPS proxy in front (e.g. Cloudflare "
+              "Tunnel with Access; docs/GUIDE.md).", flush=True)
     elif host not in ("127.0.0.1", "localhost", "::1"):
         print(f"Network mode on {host}:{port}: other machines reach only the integration API (/api/v1) with API "
               "tokens; use HTTPS in front of it (docs/INTEGRATION.md).", flush=True)

@@ -51,6 +51,11 @@ own changes, and a tracking job asked for while a teammate's runs in the same pr
 3. Let only your own network reach port 8765, for example only Tailscale addresses (100.64.0.0/10) in the Windows
    firewall; Tailscale also encrypts the traffic. Teammates open `http://<server address>:8765/` and sign in.
 
+**Over HTTPS, from anywhere.** A proxy that gives the server an HTTPS address works too, for example Cloudflare Tunnel
+(with Cloudflare Access in front, so only your team gets through) or Caddy: point it at `http://127.0.0.1:8765` and
+teammates open `https://<that address>/`. The annotator then talks to the server over a secure connection, and the
+sign-in cookie is only ever sent over HTTPS. Keep port 8765 itself closed to the internet: only the proxy reaches it.
+
 From other computers everything works except what acts on the server itself: updating PartLabeler, opening folders
 on its desktop, the helper's key, choosing another projects folder, and making accounts. After 5 wrong passwords
 for a name (or from one computer) sign-in pauses for 10 minutes.

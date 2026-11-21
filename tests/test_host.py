@@ -271,3 +271,18 @@ def test_backup_a_task_and_add_it_to_another_project(client, images):
     res = wait(client, client.post("/api/projects/b/tasks/import", json={"path": res["result"]["file"]}).json()["job"])
     assert res["error"] is None and res["result"]["items"] == 3
     assert [t["name"] for t in client.get("/api/projects/b").json()["tasks"]] == ["photos"]
+
+
+def test_https_behind_a_proxy_annotator_uses_wss_and_the_cookie_is_secure(tmp_path, images):
+    """A team server behind HTTPS (Cloudflare Tunnel, Caddy): an insecure ws:// from an https page is blocked by the
+    browser (the annotator came up blank), and the sign-in cookie must only travel over HTTPS there."""
+    with app_client(tmp_path) as c:
+        Project.create(tmp_path / "home" / "proj", CLASSES, images=images)
+        page = c.get("/projects/proj/tasks/0/jobs/0").text
+        assert 'location.protocol === "https:" ? "wss" : "ws"' in page and "`ws://" not in page
+        plain = c.post("/api/auth/login", json=TEST_LOGIN).headers["set-cookie"]
+        proxied = c.post("/api/auth/login", json=TEST_LOGIN, headers={"x-forwarded-proto": "https"}).headers["set-cookie"]
+    assert "secure" not in plain.lower() and "secure" in proxied.lower()
+    host.state.update(accounts=Accounts(tmp_path / "accounts.json"))
+    with TestClient(host.app, base_url="https://testserver") as s:
+        assert "secure" in s.post("/api/auth/login", json=TEST_LOGIN).headers["set-cookie"].lower()
