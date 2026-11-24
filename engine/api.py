@@ -65,7 +65,7 @@ UNDO_WORDS = {"box": "drawing a box", "outline": "outlining a part", "delete": "
               "paint": "painting an outline", "outline boxes": "outlining boxes", "classes": "a class change",
               "smart brush": "a smart brush stroke", "find text": "find by text", "clear": "clearing parts",
               "class swap": "a class swap", "model labels": "labeling with a model", "text labels": "annotating by text",
-              "reset": "the reset"}
+              "reset": "the reset", "paste": "pasting a part"}
 FORMAT_NAMES = {"yolo": "YOLO", "coco": "COCO", "cvat": "CVAT", "voc": "Pascal VOC", "labelstudio": "Label Studio",
                 "folders": "class folders", "csv": "CSV"}
 THUMB = 224                                               # px, longest side of grid thumbnails
@@ -151,6 +151,7 @@ class Session:
         self.points = {}                                  # (item, obj) -> [[x, y, label], ...]
         self.outlines = {}                                # (item, obj) -> ([(mask, score), ...] small->large, index)
         self.history = []                                 # [(label, snapshot, actor)] for undo
+        self.clip_epoch = uuid.uuid4().hex                # Ctrl+C copies from before a restart or a frame deletion
         self.offer = None                                 # the latest "did this part change state?" offer
         self.job_actor, self._job_lock = None, threading.Lock()
         self.job, self.running, self.stop_flag, self.error = None, False, False, None
@@ -216,7 +217,7 @@ class Session:
         return {"type": "project", "name": self.p.meta["name"], "kind": self.p.meta["kind"], "task": self.p.task,
                 "classes": self.p.classes, "count": len(self.p.items),
                 "names": [it["name"] for it in self.p.items], "parent": self.p.meta.get("parent") or "",
-                "keep_size": bool(self.p.meta.get("keep_size")),
+                "keep_size": bool(self.p.meta.get("keep_size")), "sharp_edges": bool(self.p.meta.get("sharp_edges")),
                 "states": states.text(self.p.meta.get("states") or [], self.p.classes), "states_found": self._found_states(),
                 "device": hw.describe(), "formats": list(self.p.formats), "task": self.p.task, "version": version,
                 "tasks": self.tasks_msg(), "frame_format": self.p.meta.get("frame_format", "jpg"),
@@ -375,6 +376,62 @@ class Session:
         if mask is not None:
             self.send({"type": "select", "item": msg["item"], "obj": obj})
         self.refresh(msg["item"])
+        if followed:
+            self.send({"type": "item_changed", "items": followed})
+
+    def _frame_key(self, item: int) -> list:
+        """A frame named so it still means the same frame after other tasks or frames are deleted (which renumber
+        items), or after a project is re-created under the same name: its task, that task's creation time, its place."""
+        t = self.p.task_of(item)
+        return [t["id"], t.get("created") or "", item - self.p.ranges[t["id"]][0]]
+
+    def on_copy(self, msg):
+        """Ctrl+C: the selected part as it is on this frame now (class, box, outline, frame size), sent back for the
+        page to keep. Ctrl+V pastes exactly this, also after the part has moved or gone from this frame. `ticket`
+        comes back with it: every open tab of the project hears the reply, only the one that asked keeps it."""
+        item, obj = msg["item"], int(msg["obj"])
+        b = next((b for b in self.p.boxes(item) if b["obj"] == obj), None)
+        if b is None:
+            self.send({"type": "toast", "text": "Select a part first (Ctrl+click it), then press Ctrl+C"})
+            return
+        self.send({"type": "clip", "ticket": msg.get("ticket"), "epoch": self.clip_epoch, "frame": self._frame_key(item), "obj": obj,
+                   "cls": self.p.classes[b["cls"]], "box": b["box"], "rle": self.p.masks(item).get(obj),
+                   "size": list(self.p.image_size(item))})
+
+    def on_paste(self, msg):
+        """Ctrl+V: the part copied with Ctrl+C (`clip`, from on_copy) put on frame `item` in exactly the same place,
+        outline included. Another frame of the same task where that part still is: the same part (it replaces that
+        part's place there, keeps the class the part has now, and its propagated copies follow, as after moving it).
+        Otherwise (the same frame, another task, the part gone, or a copy made before the app restarted or frames or
+        tasks were deleted, when part ids and frame places may mean something else): a new part of the copied class."""
+        item, c = msg["item"], msg["clip"]
+        refuse = lambda text: (self.send({"type": "toast", "text": text}), self.send(self.status_msg()))
+        if not (0 <= item < len(self.p.items)):
+            return self.send(self.status_msg())
+        if list(self.p.image_size(item)) != list(c["size"]):
+            return refuse("This frame is a different size from the one the part was copied from, so it can't go in "
+                          "the same place")
+        here, obj = self._frame_key(item), int(c["obj"])
+        tid = here[0]
+        task = range(*self.p.ranges[tid])
+        rows = {k: r for k in self.p.items_with(obj) if k in task and (r := self.p._row(k, obj))}
+        same = (c.get("epoch") == self.clip_epoch and list(c["frame"][:2]) == here[:2] and c["frame"][2] != here[2]
+                and bool(rows))
+        if same:                                                  # the part's class now: on this frame, else nearest
+            cls = rows[item]["cls"] if item in rows else rows[min(rows, key=lambda k: abs(k - item))]["cls"]
+        elif c["cls"] in self.p.classes:
+            cls = self.p.classes.index(c["cls"])
+        else:
+            return refuse(f"The class {c['cls']} is no longer in this project")
+        new = obj if same else self.p.new_obj()
+        mask = M.decode(c["rle"]) if self.outlines_on and c.get("rle") else None
+        copies = [k for k, r in rows.items() if k != item and r["source"] == "propagated"] if same else []
+        self._remember([item, *copies], "paste")
+        self.p.put(item, new, cls, c["box"], "manual", mask=mask)
+        followed = self.p.follow(new, task) if copies else []
+        self.points.pop((item, new), None)
+        self.send({"type": "select", "item": item, "obj": new})
+        self.refresh(item)
         if followed:
             self.send({"type": "item_changed", "items": followed})
 
@@ -568,6 +625,7 @@ class Session:
             self.send({"type": "toast", "text": str(e)[:1].upper() + str(e)[1:]})
             return
         self.history.clear()
+        self.clip_epoch = uuid.uuid4().hex                # frame places in a task moved: older copies paste as new
         self.points.clear(); self.outlines.clear(); self.sorting.clear()
         with self._frame_lock:
             self._thumbs.clear(); self._frames.clear()
@@ -781,12 +839,14 @@ class Session:
             self.notify("error", "Settings not saved", f"Parts that change look: {e}")
             return
         keep = bool(msg["keep_size"]) if "keep_size" in msg else bool(self.p.meta.get("keep_size"))
-        self.p.set_meta(parent=parent, states=groups, keep_size=keep)
+        sharp = bool(msg["sharp_edges"]) if "sharp_edges" in msg else bool(self.p.meta.get("sharp_edges"))
+        self.p.set_meta(parent=parent, states=groups, keep_size=keep, sharp_edges=sharp)
         self.send(self.project_msg())
         self.notify("success", "Settings saved",
                     (f"Parent object: {parent}" if parent else "Parent object: none (suggestions search the whole image)")
                     + (f". {len(groups)} part{'s' if len(groups) != 1 else ''} that change look" if groups else "")
-                    + (". Tracking keeps the box size you drew" if keep and self.p.task == "detect" else ""))
+                    + (". Tracking keeps the box size you drew" if keep and self.p.task == "detect" else "")
+                    + (". Sharper outline edges when tracking" if sharp and self.p.task == "segment" else ""))
 
     # ---- background jobs -----------------------------------------------------------------
     def _run(self, name, fn):
@@ -850,6 +910,7 @@ class Session:
         self._remember(span, "tracking")
         sizes = {b["obj"]: (b["box"][2] - b["box"][0], b["box"][3] - b["box"][1]) for b in self.p.boxes(start)} \
             if self.p.task == "detect" and self.p.meta.get("keep_size") else {}     # boxes keep the size drawn
+        sharp = self.p.task == "segment" and bool(self.p.meta.get("sharp_edges"))  # outlines onto the image's edges
 
         def job():
             t0, last_push = time.perf_counter(), 0.0
@@ -858,6 +919,8 @@ class Session:
             def on_item(item, res):
                 nonlocal last_push
                 res = guide.apply(item, res, only) if guide.examples else res
+                if sharp:
+                    res = self.p.snap_tracked(item, res)
                 if sizes:
                     res = {o: (r[0], self.p.keep_size(item, r[1], sizes[o]), r[2]) if r[1] is not None and o in sizes else r
                            for o, r in res.items()}

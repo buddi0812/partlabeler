@@ -40,6 +40,33 @@ def box_of(mask: np.ndarray):
     return [float(xs.min()), float(ys.min()), float(xs.max() + 1), float(ys.max() + 1)]
 
 
+SNAP_R, SNAP_EPS, SNAP_T, SNAP_PAD = 4, 1e-3, 0.5, 20   # S25: measured with these; change them only with a new measurement
+
+
+def _guided(I: np.ndarray, p: np.ndarray) -> np.ndarray:
+    """He et al.'s guided filter with box filters: `p` smoothed along the edges of the grey image `I` (both 0..1)."""
+    box = lambda x: cv2.boxFilter(x, -1, (2 * SNAP_R + 1, 2 * SNAP_R + 1))
+    mI, mp = box(I), box(p)
+    a = (box(I * p) - mI * mp) / (box(I * I) - mI * mI + SNAP_EPS)
+    return box(a) * I + box(mp - a * mI)
+
+
+def snap(img: np.ndarray, mask: np.ndarray) -> np.ndarray:
+    """`mask` pulled onto the image's own edges (img: H x W x 3 uint8 RGB), in a crop around the part. SAM 3 draws its
+    masks on a 288 x 288 grid, so on a 1080p frame small parts lose notches, corners and thin ends; this puts them back
+    where the image shows them (S25: boundary IoU +0.08 to +0.14 on small and thin parts, no frame worse, ~5 ms)."""
+    ys, xs = np.nonzero(mask)
+    if not len(xs):
+        return mask
+    h, w = mask.shape
+    x0, y0 = max(0, xs.min() - SNAP_PAD), max(0, ys.min() - SNAP_PAD)
+    x1, y1 = min(w, xs.max() + 1 + SNAP_PAD), min(h, ys.max() + 1 + SNAP_PAD)
+    grey = cv2.cvtColor(np.ascontiguousarray(img[y0:y1, x0:x1]), cv2.COLOR_RGB2GRAY).astype(np.float32) / 255
+    out = np.zeros_like(mask, dtype=bool)
+    out[y0:y1, x0:x1] = _guided(grey, mask[y0:y1, x0:x1].astype(np.float32)) > SNAP_T
+    return out if out.any() else mask
+
+
 def clean(mask: np.ndarray, area: int = 16) -> np.ndarray:
     """Fill holes and drop specks smaller than `area` px (SAM 3 video uses 16 for both)."""
     m = mask.astype(np.uint8)

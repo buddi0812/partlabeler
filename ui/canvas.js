@@ -1087,6 +1087,9 @@ function render({ model, el }) {
                 Changing a part's class on one frame where it clearly looks different offers to add its two classes here.</span>
               <span class="pl-src pl-statesfound" hidden></span>
               <label class="pl-chk pl-sizef"><input type="checkbox" class="pl-keepsize" name="keep-size"> Tracking keeps the box size you drew</label>
+              <label class="pl-chk pl-sharpf"><input type="checkbox" class="pl-sharp" name="sharp-edges"> Sharper outline edges when tracking</label>
+              <span class="pl-src pl-sharpf">For small or thin parts: each tracked outline is pulled onto the edges the picture shows, so notches,
+                corners and thin ends stay instead of being rounded off. Off by default.</span>
               <span class="pl-src pl-sizef">For parts that stay the same size on screen (a fixed camera, a rigid part): tracked boxes follow the part
                 but keep the width and height of the box on the frame you track from, so you don't have to resize every frame.</span>
               <div class="pl-tools"><button type="button" data-b="saveSettings">Save settings</button></div></section>
@@ -1184,6 +1187,7 @@ function render({ model, el }) {
         <div><span>Resize / move the selected box</span><span>drag a handle / drag inside it</span></div>
         <div><span>Polygon: close / undo a point / cancel</span><span><kbd>Enter</kbd> / <kbd>Backspace</kbd> / <kbd>Esc</kbd></span></div>
         <div><span>Pick class (re-labels a part you selected)</span><span><kbd>1</kbd>–<kbd>9</kbd>, <kbd>0</kbd>, <kbd>[</kbd> <kbd>]</kbd></span></div>
+        <div><span>Copy the selected part / paste it on this frame, in the same place</span><span><kbd>Ctrl</kbd> + <kbd>C</kbd> / <kbd>Ctrl</kbd> + <kbd>V</kbd></span></div>
         <div><span>Delete the selected part</span><kbd>Del</kbd></div>
         <div><span>Deselect</span><kbd>Esc</kbd></div>
         <div><span>Undo</span><span><kbd>Ctrl</kbd> + <kbd>Z</kbd></span></div>
@@ -1230,7 +1234,7 @@ function render({ model, el }) {
               boxMode: "drag", polyMode: "new", shape: null, tab: "classes" };
   try { S.hintHidden = window.PL ? PREFS.hints === false : localStorage.getItem("pl-hint-hidden") === "1"; } catch {}
   try { S.tab = localStorage.getItem("pl-tab") || "classes"; } catch {}
-  const MUTATING = new Set(["box", "click", "cycle", "delete", "set_class", "make_state", "swap_classes", "review", "review_many", "accept", "undo", "settings", "paint", "smart_paint", "tag", "accept_tags", "add_class", "delete_frames", "delete_class", "reset"]);
+  const MUTATING = new Set(["box", "click", "cycle", "delete", "set_class", "make_state", "swap_classes", "review", "review_many", "accept", "undo", "settings", "paint", "smart_paint", "tag", "accept_tags", "add_class", "delete_frames", "delete_class", "reset", "paste"]);
   let pendingDanger = null;                                      // what the confirm dialog sends when the person says yes
   function confirmDanger(title, body, keep, ok, msg) {
     const dlg = $(".pl-del-dlg");
@@ -1591,12 +1595,14 @@ function render({ model, el }) {
     $(".pl-statesfound").hidden = !S.project.states_found || classify();
     $(".pl-statesfound").textContent = S.project.states_found ? `Your labels suggest these too (add them above to use them): ${S.project.states_found}` : "";
     $(".pl-keepsize").checked = !!S.project.keep_size;
+    $(".pl-sharp").checked = !!S.project.sharp_edges;
     $(".pl-typeline").textContent = `Project type: ${TASK_NAMES[S.project.task] || "Object detection"} (chosen when the project was made; its exports follow it).`;
     $(".pl-type").textContent = TASK_NAMES[S.project.task] || "Object detection";
     $(".pl-revonly").closest("label").hidden = classify();              // suggested classes are never exported
 
     el.querySelectorAll(".pl-parentf").forEach((n) => (n.hidden = classify()));
-    el.querySelectorAll(".pl-sizef").forEach((n) => (n.hidden = S.project.task !== "detect"));   // outlines: the box is the outline's
+    el.querySelectorAll(".pl-sizef").forEach((n) => (n.hidden = S.project.task !== "detect"));
+    el.querySelectorAll(".pl-sharpf").forEach((n) => (n.hidden = S.project.task !== "segment"));   // outlines: the box is the outline's
     $(".pl-version").innerHTML = (S.project.version ? `PartLabeler version ${esc(S.project.version)}.` : "")
       + (web ? ` <a href="${model.homeUrl}#update">Check for updates</a>` : " Update: rerun Step 3 of the notebook.");
     const back = $(".pl-back"); back.hidden = !web; if (web) back.href = model.homeUrl;
@@ -1786,7 +1792,7 @@ function render({ model, el }) {
         "Keep the labels", "Reset the project", { type: "reset", scope: "project" });
     },
     saveSettings: () => send({ type: "settings", parent: $(".pl-parent").value, states: $(".pl-states").value,
-      keep_size: $(".pl-keepsize").checked }),
+      keep_size: $(".pl-keepsize").checked, sharp_edges: $(".pl-sharp").checked }),
     sortParts: () => openGrid("parts"),
     confirmTracked: () => {                                 // the job's frames with tracked, pre-labelled or own parts, none flagged
       const j = curJob();
@@ -2432,6 +2438,28 @@ function render({ model, el }) {
            obj: refine ? S.sel : undefined });
   });
 
+  // ---- copy and paste a part (Ctrl+C / Ctrl+V): the same place on another frame -------------------------------
+  // The engine sends back the part as it is when copied (class, box, outline, frame size); kept for this project
+  // in the browser tab, so it also pastes in another job of the project. Every open tab of the project hears the
+  // reply: only the tab whose ticket it carries keeps it.
+  const clipKey = () => `pl-clip:${S.project?.name}`;
+  const loadClip = () => { try { return JSON.parse(sessionStorage.getItem(clipKey()) || "null"); } catch { return null; } };
+  const saveClip = (c) => { try { c ? sessionStorage.setItem(clipKey(), JSON.stringify(c)) : sessionStorage.removeItem(clipKey()); } catch {} };
+  function copyPart() {
+    if (!S.canvasDown && String(window.getSelection?.() || "")) return false;   // text picked on the page: the browser copies it
+    if (S.sel == null || !(S.data?.boxes || []).some((x) => x.obj === S.sel)) { hint("Select a part first (Ctrl+click it), then press Ctrl+C"); return true; }
+    S.ticket = `${Date.now()}-${Math.random()}`;
+    send({ type: "copy", item: S.item, obj: S.sel, ticket: S.ticket });
+    return true;
+  }
+  function pastePart(e) {
+    if (e.repeat) return true;                                         // a held-down Ctrl+V pastes once
+    const clip = S.clip || (S.clip = loadClip());
+    if (!clip) { hint("Nothing copied yet: select a part and press Ctrl+C"); return true; }
+    send({ type: "paste", item: S.target, clip });                     // the frame being shown, also while it loads
+    return true;
+  }
+
   // ---- keys --------------------------------------------------------------------------------
   el.addEventListener("keydown", (e) => {
     if (e.target.matches("input,select,textarea") || $(".pl-help-dlg").open || $(".pl-peek").open || center.isOpen) return;
@@ -2439,6 +2467,8 @@ function render({ model, el }) {
     const k = e.key;
     if ((e.ctrlKey || e.metaKey) && k.toLowerCase() === "z") actions.undo();
     else if ((e.ctrlKey || e.metaKey) && k.toLowerCase() === "b") { e.preventDefault(); e.shiftKey ? actions.propagateAll() : actions.propagate(); }
+    else if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && k.toLowerCase() === "c" && !classify() && !S.grid) { if (!copyPart()) return; }
+    else if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && k.toLowerCase() === "v" && !classify() && !S.grid) { if (!pastePart(e)) return; }
     else if (e.ctrlKey || e.metaKey || e.altKey) return;
     else if (/^[0-9]$/.test(k)) { setClass(k === "0" ? 9 : +k - 1); }
     else if (k === "ArrowRight" || k === "d") { e.shiftKey ? nextTodo() : goto(S.target + 1); }
@@ -2487,6 +2517,7 @@ function render({ model, el }) {
       legend(); renderProject(); renderSide(); renderTop(); renderJob(); if (S.grid) renderGrid(); else draw();
     }
     else if (m.type === "reload") {                    // m.removed: frames deleted for good; the ones after them moved up
+      if (m.removed) { S.clip = null; saveClip(null); }               // the copied frame's place in its task moved
       const at = m.removed ? Math.max(0, Math.min(S.project.count - m.removed.length - 1, S.target - m.removed.filter((r) => r < S.target).length)) : S.target;
       if (!web) { S.target = at; model.send({ type: "ready", item: at }); }
       else if (!m.removed) location.reload();
@@ -2512,6 +2543,10 @@ function render({ model, el }) {
       }
     }
     else if (m.type === "select") { S.sel = m.obj; S.picked = false; }
+    else if (m.type === "clip" && m.ticket && m.ticket === S.ticket) {   // another tab's copy is not ours
+      S.clip = m; saveClip(m);
+      hint(`Copied the ${m.cls} part. Go to another frame and press Ctrl+V to put it in the same place`);
+    }
     else if (m.type === "status") {
       Object.assign(S, { statuses: m.statuses, flags: m.flags, busy: m.busy, gpu: m.gpu, undo: m.undo });
       if (S.saving) { S.saving = false; S.savedAt = Date.now(); }
@@ -2563,6 +2598,7 @@ function render({ model, el }) {
       b.textContent = "Connection to PartLabeler lost. Your work is saved; restart the app (run_windows.bat) and reload this page."; }
   });
   // keep keyboard shortcuts working after clicking buttons, the list or the timeline
+  document.addEventListener("mousedown", (e) => { S.canvasDown = !!e.target.closest?.(".pl-stage"); }, true);  // Ctrl+C: part over stray text
   el.addEventListener("mousedown", (e) => {                          // keys keep working after a click (not where one types)
     if (!e.target.matches("input,select,option,textarea") && !e.target.closest(".pl-where")) setTimeout(() => el.focus(), 0);
   });

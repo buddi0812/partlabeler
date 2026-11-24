@@ -935,6 +935,25 @@ class Project:
             self._touch([item])
             self.db.execute("UPDATE boxes SET source='manual' WHERE item=? AND source='suggested'", (item,))
 
+    def snap_tracked(self, item: int, results: dict) -> dict:
+        """Tracked outlines on `item` pulled onto the image's edges (masks.snap; project setting "sharp_edges"). Each
+        changed part is written to edge_snap.jsonl in the project folder (item, part, pixels that changed), so a
+        person can check where the snap acted."""
+        todo = {o: r for o, r in results.items() if len(r) > 3 and r[3] is not None}
+        if not todo:
+            return results
+        img, out, log = np.asarray(self.image(item).convert("RGB")), dict(results), []
+        for o, r in todo.items():
+            m = M.snap(img, r[3])
+            changed = int((m ^ r[3]).sum())
+            if changed:
+                out[o] = (r[0], M.box_of(m), r[2], m)
+                log.append(json.dumps({"item": item, "obj": o, "changed": changed}))
+        if log:
+            with open(self.folder / "edge_snap.jsonl", "a", encoding="utf-8") as f:
+                f.write("\n".join(log) + "\n")
+        return out
+
     def keep_size(self, item: int, box, size) -> list[float]:
         """`box`'s centre with `size` (w, h), moved back inside the picture: tracking with the project setting
         keep_size follows a rigid part but keeps the box a person drew (SAM's boxes grow and shrink a little)."""

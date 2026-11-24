@@ -342,6 +342,18 @@ In a video, a part placed by hand can follow it through the frames without the o
 Only the copies ever move: boxes you placed yourself, tracked parts and confirmed frames are never changed. Each
 step is one Ctrl+Z.
 
+### Copy and paste a part
+
+Select a part and press **Ctrl+C**, go to another frame and press **Ctrl+V**: the part is put there in exactly the
+place it had when you copied it, with the same class (and, in segmentation projects, the same outline). Press
+Ctrl+V on as many frames as you like; each paste is one Ctrl+Z. On another frame of the same task it is the same
+part, as if you had placed it there yourself: if that part is already on the frame it moves to the copied place, it
+keeps the class it has now, and its propagated copies follow. Pasted on the same frame, in another task, or after
+the part was deleted from its task, it becomes a new part. The copy is kept in this browser tab for the project, so
+it also pastes in another job. After frames or tasks are deleted, or PartLabeler is restarted, an older copy always
+pastes as a new part: copy it again to move the same part. A frame of a different size than the one you copied
+from can't take it.
+
 Every drag adds a new part of the current class; to change an existing box, use its handles (below). Picking a class
 re-labels a part only when you selected it yourself (Ctrl+click, the Select tool, a click on the Parts tab, or a click
 with the Box tool). The part you just made stays highlighted but keeps its class. Press **C** to go back to Click to
@@ -381,6 +393,12 @@ frame to frame (a hand in front of the part, a shadow). For a rigid part at a fi
 **Settings → Tracking keeps the box size you drew** (object detection projects): tracked boxes then follow the part
 but keep the width and height of its box on the frame you track from. For a part you would rather place by hand,
 **Propagate** with keyframes (see *Manual tools*) also keeps the boxes steady.
+
+**Sharper outline edges.** In segmentation projects, small or thin parts can come out of tracking a little rounded:
+notches, sharp corners and thin ends get smoothed, because the tracker draws outlines on a coarse grid (on a 1080p
+frame about 7 x 4 pixels a cell). Tick **Settings → Sharper outline edges when tracking** and every tracked outline
+is pulled onto the edges the picture itself shows before it is saved (it adds a few milliseconds a part). It is off
+by default; each part it changed is listed in `edge_snap.jsonl` in the project folder.
 
 **Parts that change look.** One part can have classes for its states: a lamp that is bright or dim, low or high
 beam, a light that is on or off. Tell the project in **Settings → Parts that change look**, one part per line with
@@ -813,7 +831,7 @@ the projects. If a project with the same name exists, the restored one gets `_2`
 Tools: C click to outline · V select and adjust · B box (B again: drag / two clicks / four edge points) · O polygon ·
 P brush · , and . brush size. Outlines also: L ellipse · E eraser · Shift+P smart brush · Shift+E smart eraser.
 Click: new part · M: next larger outline · Shift/Alt+click: grow/shrink the selected part · Ctrl+click:
-select · 1–9, 0, [ ]: class · Del: delete the selected part · Esc: deselect (or cancel a polygon) · Ctrl+Z: undo ·
+select · Ctrl+C / Ctrl+V: copy the selected part / paste it in the same place on another frame · 1–9, 0, [ ]: class · Del: delete the selected part · Esc: deselect (or cancel a polygon) · Ctrl+Z: undo ·
 Polygon: Enter or double-click closes it, Backspace takes back a corner ·
 ← → (A / D): previous / next frame · Shift+→: next to check · K or Space: play / pause · Enter: confirm ·
 Shift+Delete: delete this frame for good (asks first) · T / Shift+T: track ahead /

@@ -371,3 +371,37 @@ white; two videos of 119 frames, true outlines known). RTX 3060, SAM 3 in bf16.
   one (one click: this frame only, the two classes become states of one part, one Ctrl+Z).
 - Not done: one-frame flicker smoothing of states (an indicator's blink can last a single kept frame), groups
   inferred from labels alone (a left/right swap fixed by hand looks the same; shown as suggestions only).
+
+## S24 — carrying the drawn outline onto SAM 3's mask (`s24_shape_transfer.py`; measured, not adopted)
+Asked for because tracked outlines of small lamp parts lose the drawn shape (notches, corners, thin ends): SAM 3
+predicts masks on a 288 x 288 grid (1008 px input), about 6.7 x 3.8 px per cell on 1920 x 1080. The lamp projects hold
+no usable truth (hand-drawn outlines once per part per video; one pair within 150 frames in all of them; confirmed
+frames are SAM's own outlines), so it was measured on a 1080p synthetic clip with true edges: a ~95 x 38 px lamp with a
+12 px notch beside a look-alike chrome strip, soft compressed edges, a hand sweep and a colour change; only frame 0
+given. Bar set before looking: 3 px boundary IoU +0.05, overall IoU not lower, under 2 % of frames worse by > 0.05.
+
+| small lamp | raw SAM | drawn outline, affine fit (ECC), SAM's mask kept under 0.8 agreement |
+|---|---|---|
+| boundary IoU (3 px) | 0.579 | 0.654 |
+| IoU | 0.925 | 0.935 |
+| frames worse than SAM by > 0.05 IoU | | 6 / 93, all under the passing hand |
+
+Translation-only and similarity fits did not help. Not adopted: the transfer draws the whole lamp under a hand and
+the agreement check misses partial cover. A cover test plus held-out data (a new clip and real outlines drawn 10-40
+frames apart) would be needed first. Meanwhile, Propagate with keyframes keeps a drawn outline exactly.
+
+## S25 — sharper tracked outlines for small and thin parts (`s25_edge_fidelity.py`; measured, proposed as an option)
+Research first (no SAM-3-ready HQ head or licence-clean learned refiner; HF already upsamples SAM's logits before
+thresholding), then four candidates on SAM 3's tracked masks over three 1080p synthetic clips: A to develop, B and C
+held out (new seeds, motion, hand timing, a thin tapered part). Bar unchanged from S24.
+
+| held-out B / C | raw SAM 3 boundary IoU (3 px) | edge snap | IoU | frames worse |
+|---|---|---|---|---|
+| small notched lamp | 0.642 / 0.657 | 0.748 / 0.769 | +0.02 | 0 |
+| thin tapered part | 0.806 / 0.819 | 0.892 / 0.895 | +0.03-0.04 | 0 |
+| chrome strip | 0.589 / 0.593 | 0.720 / 0.734 | +0.04 | 0 |
+
+Edge snap (a guided filter on the grey image, radius 4 px, eps 1e-3, threshold 0.5; fixed before measuring) cleared the
+bar on every part of every clip for 5 ms per part-frame (tracking: 0.21 s). Shape transfer with a cover test still
+made 6-7 % of lamp frames worse under a passing hand; zoom re-segmentation broke thin parts (up to 99 % of frames
+worse) and cost 0.37 s. Real outlines drawn by hand on the target footage decide before it becomes a default.
