@@ -3,7 +3,7 @@
 // Tasks and Jobs lists across projects. The annotator opens per job (/projects/<p>/tasks/<t>/jobs/<j>).
 // Talks to ui/host_fastapi.py (/api/projects/..., /api/tasks, /api/annotation-jobs); shares the start screen's
 // look and helpers (ui/home.js).
-import { CSS, header, fileBrowser, followJob, labelsEditor, api, esc, ago, size, TASKS, ICON, prefs } from "/ui/home.js";
+import { CSS, header, fileBrowser, followJob, labelsEditor, api, esc, ago, size, TASKS, ICON, prefs, hidePaths } from "/ui/home.js";
 import { notificationCenter, assistant, webAssistant } from "/ui/canvas.js";
 
 const PAGE_CSS = `
@@ -292,7 +292,7 @@ export function page(root, args) {
           reviewed_only: f.confirmed.checked, name: f.name.value.trim(), ...scope });
         followJob(job, d.querySelector(".pg-dlgjob"), { onDone: (res) => {
           d.querySelector('[data-a="ok"]').hidden = true; d.querySelector('[data-a="cancel"]').textContent = "Close";
-          d.querySelector(".pg-dlgjob").insertAdjacentHTML("beforeend", window.PL?.box_managed
+          d.querySelector(".pg-dlgjob").insertAdjacentHTML("beforeend", hidePaths()
             ? `<p class="h-sub" style="margin:8px 0">${res.images} images exported.</p>`
             : `<p class="h-sub" style="margin:8px 0">${res.images} images in ${esc(res.folder)}
             <button type="button" data-open="${esc(res.folder)}">Open folder</button></p>`);
@@ -379,7 +379,7 @@ export function page(root, args) {
       main.innerHTML = `<div class="pg-bar"><a class="pg-back" href="/">‹ Back to projects</a><span class="pg-sp"></span>
           <details class="h-menu" style="position:relative;top:auto;right:auto"><summary style="width:auto;padding:0 12px;border:1px solid var(--line);background:var(--paper)">Actions ▾</summary><div class="h-menu-list">
             <button type="button" data-pa="export">Export dataset</button><button type="button" data-pa="backup">Backup project</button>
-            ${window.PL?.box_managed ? "" : `<button type="button" data-pa="folder">Show in folder</button>`}
+            ${hidePaths() ? "" : `<button type="button" data-pa="folder">Show in folder</button>`}
             ${stored ? `<button type="button" data-pa="to-video">Read frames from the videos (frees ${esc(size(stored))})…</button>` : ""}
             <button type="button" class="danger" data-pa="trash">Move to trash…</button></div></details></div>
         <div><div class="pg-title"><h1 translate="no">${esc(d.name)}</h1><span class="h-chip">${esc(TASKS[d.task] || d.task)}</span></div>
@@ -713,7 +713,7 @@ export function page(root, args) {
         ["Stored as", t.format === "video" ? `read from the video (${mb(i.stored)}, no image files)` : t.format === "webp" ? `lossless WebP, ${mb(i.stored)}` : `JPEG quality ${t.quality}, ${mb(i.stored)}`]]
         : [["Source", t.source], ["Resolution", i.width ? `${i.width} × ${i.height}${i.mixed_sizes ? " (mixed sizes)" : ""}` : "?"], ["Images", t.frames],
            ["Size", mb(i.size) || "?"], ["Sorting method", t.sorting || "lexicographical"]])
-        .filter(([label]) => label !== "Source" || !(window.PL?.box_managed || window.PL?.remote));  // the server's own file path: not for a box operator or another computer
+        .filter(([label]) => label !== "Source" || !hidePaths());  // the server's own file path: not for a box operator or another computer
       main.innerHTML = `<div class="pg-bar"><a class="pg-back" href="/projects/${enc(name)}">‹ Back to project</a><span class="pg-sp"></span>
           <details class="h-menu" style="position:relative;top:auto;right:auto"><summary style="width:auto;padding:0 12px;border:1px solid var(--line);background:var(--paper)">Actions ▾</summary><div class="h-menu-list">
             <button type="button" data-t-upload="${t.id}" data-p="${esc(name)}">Upload annotations</button>
@@ -809,6 +809,8 @@ export function page(root, args) {
           <select data-pref="frames">${[["video", "In the video"], ["jpg", "JPEG files"], ["webp", "Lossless WebP files"]].map(([v, t]) => `<option value="${v}"${v === P.frames ? " selected" : ""}>${t}</option>`).join("")}</select></label>
         ${num("segment_size", "Segment size", "Frames per job; 0 makes one job per task.", 0, 1000000)}</section>
 
+      ${hidePaths() ? `<section class="h-panel st-sec" id="storage"><h2>Projects folder</h2>
+        <p class="h-sub">Where projects are kept is set on the server itself, by the person who runs PartLabeler there.</p></section>` : `
       <section class="h-panel st-sec" id="storage"><h2>Projects folder</h2>
         <p class="h-sub">Where your projects are kept, with their frames and labels, the trash, backups and Teach runs. This setting is yours only.</p>
         <div class="st-row st-col"><span><b>Now</b></span><code class="st-code st-home" translate="no">${esc(me.home)}</code></div>
@@ -821,7 +823,7 @@ export function page(root, args) {
           <div class="h-row"><button type="submit" class="primary">Use this folder</button>
             <button type="button" data-st="default"${me.home === me.default_home ? " hidden" : ""}>Back to the default folder</button></div>
           <p class="h-sub">The app's default folder: <code class="st-code" translate="no">${esc(me.default_home)}</code></p></form>
-        <div class="st-job"></div></section>
+        <div class="st-job"></div></section>`}
 
       <section class="h-panel st-sec" id="transfer"><h2>Unfinished work as a zip</h2>
         <p class="h-sub">Carry on elsewhere: a backup zip keeps the frames, labels, confirmed frames and jobs.</p>

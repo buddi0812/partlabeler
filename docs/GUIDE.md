@@ -683,10 +683,12 @@ that part of the frame, instead of the whole camera view.
 Teach & Transfer is for when one video is already labeled and you want similar videos labeled the same way.
 It is optional and is the only part of PartLabeler that trains a model.
 
-1. **Teach**: pick a labeled dataset folder (YOLO format: `images/`, `labels/` and `classes.txt` or
-   `data.yaml`). PartLabeler analyses the labels, holds back about 20% of the frames in time blocks, and
-   trains a detector on your computer (Nano is fastest, Medium is the most accurate). This can take from minutes
-   to about an hour.
+1. **Teach**: under **Learn from**, pick **A project's tasks** (the project, then tick the finished tasks: their
+   confirmed frames are learned from, so confirm the frames you labeled first, Enter in the annotator) or **A labeled
+   dataset folder** (YOLO format: `images/`, `labels/` and `classes.txt` or `data.yaml`; on a team server only at the
+   server itself). PartLabeler holds back about 20% of the frames in time blocks and trains a detector on the
+   computer running PartLabeler (Nano is fastest, Medium is the most accurate; an outline project's model also
+   outlines each part). This can take from minutes to about an hour.
 2. **Prove**: the trained model labels the held-back frames and is scored against your labels, plus a colour
    stress test. Targets: how well it learned at least 90 %, at least 90 % of the parts found, and at most a
    10-point drop when colours change (exact scores: see Details for support). The report says whether the targets
@@ -731,7 +733,8 @@ example dataset it found about 70% of the parts on frames like its examples and 
 extra boxes to delete, so check every frame in the annotator (**Review in annotator**). For accurate labels,
 use Teach. From the command line: `python -m engine.cli quick <dataset> <video> --run <folder>`.
 
-**The model in production**: `partlabeler export-model <run>` writes a folder to copy to the production machine
+**The model in production**: **Export for production** on a finished run (or `partlabeler export-model <run>`) writes a
+folder to copy to the production machine
 (`<run>/export`): the finished model, its settings, a set of check frames and the tools to run it there. What is in
 it and how to build the fastest version on the production machine are under Details for support.
 

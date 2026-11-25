@@ -1,6 +1,7 @@
 """A teammate on another computer (team server) adds tasks from their own computer: the page uploads the video or the
 image folder in pieces into the project (uploads/<id>/), the task is made from the upload, and deleting the task
 deletes it. The server's own folders stay out of sight from other computers (no file browser, no reading by path)."""
+import json
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -182,3 +183,47 @@ def test_deleting_a_task_keeps_an_upload_another_task_still_reads_and_a_blank_pa
         assert c.get(f"/api/projects/line/tasks/{second}").json()["frames"] == 1
         assert c.post("/api/projects/line/tasks", json={"sources": [" "]}).status_code == 400   # not "this folder"
         assert c.post("/api/projects/line/tasks", json={"sources": [{"path": ""}]}).status_code == 400
+
+
+def test_another_computer_is_not_told_the_servers_folders(tmp_path, monkeypatch):
+    with app_client(tmp_path) as here:
+        host.note("success", "Exported line", "", None, host.folder_action(tmp_path / "out"))
+        assert here.get("/api/info").json()["home"] and any(n.get("action") for n in here.get("/api/notifications").json()["items"])
+        monkeypatch.setitem(host.state, "team", True)
+        with TestClient(host.app, client=FAR) as far:
+            far.post("/api/auth/login", json=TEST_LOGIN)
+            assert far.get("/api/info").json()["home"] == ""
+            items = far.get("/api/notifications").json()["items"]
+            assert items and not any((n.get("action") or {}).get("type") == "folder" for n in items)
+            assert str(tmp_path) not in json.dumps(items)
+
+
+def test_server_paths_are_taken_out_of_what_another_computer_reads():
+    cases = {
+        r"Exported 120 images to D:\PartLabeler\projects\line\export_yolo": "Exported 120 images to (on the server)",
+        "Saved in /srv/partlabeler/projects/line/backup.zip.": "Saved in (on the server)",
+        r"Copied from \\box\share\x.zip ok": "Copied from (on the server) ok",
+        r"Source: `C:\Users\x\_teach\run\source`": "Source: `(on the server)`",
+        "See https://example.com/a/b and 3/4 done": "See https://example.com/a/b and 3/4 done",
+    }
+    assert {t: host.scrub(t) for t in cases} == cases
+    m = host.seen_from_afar({"type": "notify", "item": {"title": "Exported", "detail": r"in D:\x\y",
+                                                         "action": {"type": "folder", "path": r"D:\x\y"}}})
+    assert m["item"]["action"] is None and "D:" not in json.dumps(m)
+
+
+def test_the_annotator_connection_of_another_computer_gets_no_server_paths(tmp_path, monkeypatch, video):
+    with app_client(tmp_path) as here:
+        here.post("/api/projects", json={"name": "line", "labels": [{"name": "bolt"}]})
+        assert wait(here, here.post("/api/projects/line/tasks", json={"sources": [str(video)], "every": 5}).json()["job"])["error"] is None
+        monkeypatch.setitem(host.state, "team", True)
+        with TestClient(host.app, client=FAR) as far:
+            far.post("/api/auth/login", json=TEST_LOGIN)
+            with far.websocket_connect("/ws/line") as sock:
+                sock.send_json({"type": "ready", "item": 0})
+                host.note("success", "Exported line", f"in {tmp_path / 'out'}", "line", host.folder_action(tmp_path / "out"))
+                seen = []
+                while not any(m.get("type") == "notify" for m in seen):
+                    seen.append(sock.receive_json())
+            assert str(tmp_path) not in json.dumps([m for m in seen if m.get("type") in ("notify", "notifications")])
+            assert far.get("/api/me").json()["home"] == ""

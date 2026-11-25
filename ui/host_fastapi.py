@@ -135,6 +135,32 @@ def notes() -> Notifications:
     return state["notes"][h]
 
 
+_SERVER_PATH = re.compile(r"""(?:(?<!\w)[A-Za-z]:[\\/]|\\\\|(?<![\w.:/])/(?=[\w.\-]+/))[^\s"'<>`|*?]*""")   # drive, UNC, /a/b
+
+
+def scrub(x):
+    """Text (in any nesting) with the server's file paths taken out: for a teammate on another computer."""
+    if isinstance(x, str):
+        return _SERVER_PATH.sub("(on the server)", x)
+    if isinstance(x, list):
+        return [scrub(v) for v in x]
+    if isinstance(x, dict):
+        return {k: scrub(v) for k, v in x.items()}
+    return x
+
+
+def seen_from_afar(m: dict) -> dict:
+    """A notification message as a teammate on another computer gets it: no server paths in its text, and no "Open
+    folder" (a folder on the server's own disk). Every way notifications reach a page goes through here."""
+    def one(n):
+        return scrub(dict(n, action=None) if (n.get("action") or {}).get("type") == "folder" else n)
+    if m.get("type") == "notify" and m.get("item"):
+        return {**m, "item": one(m["item"])}
+    if m.get("type") == "notifications" or "items" in m:
+        return {**m, "items": [one(n) for n in m.get("items") or []]}
+    return m
+
+
 def note(level: str, title: str, detail: str = "", project: str | None = None, action: dict | None = None) -> dict:
     return notes().add(level, title, detail, project=project, action=action)
 
@@ -211,6 +237,8 @@ def start_job(kind: str, fn, on_done=None, fail_title: str | None = None) -> str
     def run():
         try:
             job["result"] = fn(progress, lambda: job["stop"])
+            if job["text"] == "Starting…":                    # a job that never said what it was doing: it is done
+                job["text"] = "Done"
             if on_done:
                 on_done(job["result"])
         except Exception as e:
@@ -375,8 +403,9 @@ def settings_page() -> str:
 @app.get("/api/me")
 def me() -> dict:
     user = USER.get()
-    return {"user": accounts().profile(user), "prefs": accounts().prefs(user), "home": str(home().resolve()),
-            "default_home": str(state["home"].resolve())}
+    far = REMOTE.get()                                        # another computer: the server's folders are not shown
+    return {"user": accounts().profile(user), "prefs": accounts().prefs(user), "home": "" if far else str(home().resolve()),
+            "default_home": "" if far else str(state["home"].resolve())}
 
 
 @app.patch("/api/me")
@@ -1051,9 +1080,12 @@ async def ws(sock: WebSocket, name: str):
     q: asyncio.Queue = asyncio.Queue()
     state["clients"][key].add(q)
 
+    far = REMOTE.get()
+
     async def pump():
         while True:
-            await sock.send_json(await q.get())
+            m = await q.get()
+            await sock.send_json(seen_from_afar(m) if far else m)
 
     sender = asyncio.create_task(pump())
     try:
@@ -1114,7 +1146,7 @@ def info() -> dict:
         version = (update.current()["sha"] or "")[:7]
     except Exception:
         version = ""
-    return {"home": str(home().resolve()), "device": hw.describe(), "gpu": hw.memory(),
+    return {"home": "" if REMOTE.get() else str(home().resolve()), "device": hw.describe(), "gpu": hw.memory(),   # the server's folder: not for another computer
             "teach": _has_teach(), "version": version, "restart": state["restart"], "box_managed": box_managed()}
 
 
@@ -1318,11 +1350,13 @@ def list_runs() -> list:
     for d in sorted(runs_dir().glob("*"), key=lambda d: -d.stat().st_mtime) if runs_dir().exists() else []:
         if not d.is_dir():
             continue
-        run = {"name": d.name, "path": str(d.resolve()), "ready": (d / "settings.json").exists()}
+        run = {"name": d.name, "path": str(d.resolve()), "ready": (d / "settings.json").exists(), "busy": _run_key(d.name) in BUSY_RUNS}
         try:
-            run["mode"] = json.loads((d / "settings.json").read_text(encoding="utf-8")).get("mode", "trained")
+            settings = json.loads((d / "settings.json").read_text(encoding="utf-8"))
         except (OSError, ValueError):
-            run["mode"] = "trained"
+            settings = {}
+        run["mode"] = settings.get("mode", "trained")
+        run["exportable"] = "checkpoint" in settings and run["mode"] != "quick"   # a detector to export for production
         if (d / "report.json").exists():
             try:
                 run["report"] = json.loads((d / "report.json").read_text(encoding="utf-8"))
@@ -1330,6 +1364,8 @@ def list_runs() -> list:
                 pass
         if (d / "report.md").exists():
             run["report_md"] = (d / "report.md").read_text(encoding="utf-8")
+        if REMOTE.get():                                      # another computer: the report without the server's paths
+            run.update(path="", report=scrub(run.get("report")), report_md=scrub(run.get("report_md")))
         outs = d / "labels"
         run["outputs"] = [{"name": o.name, "path": str(o.resolve()),
                            "summary": json.loads((o / "summary.json").read_text()) if (o / "summary.json").exists() else None}
@@ -1338,10 +1374,44 @@ def list_runs() -> list:
     return out
 
 
+BUSY_RUNS: set[str] = set()      # run folders being taught or exported now: never two jobs in one run folder
+RUN_LOCK = threading.Lock()      # choosing a run name and claiming its folder happen as one step
+
+
+def _run_key(name: str) -> str:
+    return str((runs_dir() / name).resolve())                # each account may have its own projects folder
+
+
+def _claim_run(name: str | None) -> tuple[str, str]:
+    """A run folder for a new job: `name` (or a fresh run_<time>), refused while another job uses it. Returns
+    (name, key); the job given to start_job must be wrapped in _release(key, ...)."""
+    with RUN_LOCK:
+        if not name:
+            name = base = f"run_{time.strftime('%Y%m%d_%H%M%S')}"
+            k = 2
+            while (runs_dir() / name).exists() or _run_key(name) in BUSY_RUNS:
+                name, k = f"{base}_{k}", k + 1
+        key = _run_key(name)
+        if key in BUSY_RUNS:
+            raise HTTPException(409, f"The run {name} is busy (teaching or exporting): wait for it, or pick another name")
+        BUSY_RUNS.add(key)
+    return name, key
+
+
+def _release(key: str, fn):
+    """fn (a job) that frees its run folder when it ends."""
+    def job(progress, should_stop):
+        try:
+            return fn(progress, should_stop)
+        finally:
+            BUSY_RUNS.discard(key)
+    return job
+
+
 @app.post("/api/teach")
 def teach(body: dict = Body(...)) -> dict:
     from engine.teach import teach as run_teach
-    name = safe_name(body.get("name") or f"run_{time.strftime('%Y%m%d_%H%M')}")
+    wanted = safe_name(body.get("name") or "") if (body.get("name") or "").strip() else None
     tasks = None
     if body.get("project"):                                  # learn tasks of a project: their confirmed frames
         p = session(str(body["project"])).p
@@ -1349,7 +1419,11 @@ def teach(body: dict = Body(...)) -> dict:
         bad = [t for t in tasks if t not in p.ranges]
         if not tasks or bad:
             raise HTTPException(400, f"No task {bad[0] if bad else '(none given)'} in {body['project']}")
-        dataset = runs_dir() / name / "source"
+        confirmed = sum(p.is_reviewed(k) for t in tasks for k in range(*p.ranges[t]))
+        if confirmed < 2:
+            raise HTTPException(400, "Teach learns from confirmed frames, and the ticked tasks have "
+                                     f"{confirmed}: confirm the frames you labeled first (Enter in the annotator)")
+        dataset = None                                        # in the run folder, once it is claimed (below)
     else:
         dataset = server_path(body.get("dataset", ""))
         if not dataset.is_dir():
@@ -1372,8 +1446,14 @@ def teach(body: dict = Body(...)) -> dict:
                                                   "crop": sources_by_id[tid].get("crop")}
                     for tid in tasks or [] if sources_by_id[tid].get("camera_id")} or None
 
+    name, key = _claim_run(wanted)                            # last: nothing after it can fail before the job starts
+    if tasks:
+        dataset = runs_dir() / name / "source"
+
     def job(progress, should_stop):
         from engine.teach import band, task_dataset
+        if tasks:                                             # this run's frames only: not an earlier run's of this name
+            shutil.rmtree(dataset, ignore_errors=True)
         for i, t in enumerate(tasks or []):                   # the source frames: the run's first 5 %
             if task_dataset(p, t, dataset, band(progress, 0.05 * i / len(tasks), 0.05 * (i + 1) / len(tasks)), should_stop) is None:
                 return {"status": "stopped", "step": "source"}
@@ -1394,7 +1474,7 @@ def teach(body: dict = Body(...)) -> dict:
              (f"How well it learned: {round(score)} %. " if isinstance(score, (int, float)) else "") + "Next: Transfer it to similar videos.",
              action=folder_action((runs_dir() / name).resolve()))
 
-    return {"job": start_job("teach", job, done, f"Teach run {name} failed"), "run": name}
+    return {"job": start_job("teach", _release(key, job), done, f"Teach run {name} failed"), "run": name}
 
 
 @app.post("/api/transfer")
@@ -1432,6 +1512,8 @@ def export_model(body: dict = Body(...)) -> dict:
     out = server_path(body["out"]) if body.get("out") else None
     batch = int(body.get("batch") or 1)
 
+    _, key = _claim_run(run.name)
+
     def job(progress, should_stop):
         return export_onnx(run, out, batch=batch)
 
@@ -1442,7 +1524,7 @@ def export_model(body: dict = Body(...)) -> dict:
              f"Checked on {p.get('frames', 0)} frames it never trained on: {p.get('missing', 0)} missed.",
              action=folder_action(folder))
 
-    return {"job": start_job("export", job, done, f"Exporting {run.name} failed")}
+    return {"job": start_job("export", _release(key, job), done, f"Exporting {run.name} failed")}
 
 
 @app.get("/api/exports")
@@ -1559,7 +1641,8 @@ def review(body: dict = Body(...)) -> dict:
 # ---- notifications, trash, folders ----------------------------------------------------------
 @app.get("/api/notifications")
 def get_notifications() -> dict:
-    return notes().snapshot()
+    snap = notes().snapshot()
+    return seen_from_afar(snap) if REMOTE.get() else snap
 
 
 @app.post("/api/notifications/read")

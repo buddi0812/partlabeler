@@ -355,7 +355,8 @@ def teach(dataset: Path = typer.Argument(..., exists=True, file_okay=False,
           size: str = typer.Option("small", callback=one_of(*SIZES), metavar="[" + "|".join(SIZES) + "]",
                                    help="RF-DETR size; seg-* also outlines the parts (needs a source with polygons/)."),
           epochs: int = typer.Option(30, min=1),
-          resolution: int = typer.Option(640, help="Model input size, a multiple of 32."),
+          resolution: int = typer.Option(None, help="Model input size (default 640, rounded to what the size takes: "
+                                                                     "a multiple of 32; seg-nano 12; other seg- sizes 24)."),
           held_out: float = typer.Option(0.2, min=0.05, max=0.5, help="Share of frames held out (time blocks)."),
           aug: str = typer.Option("strong", callback=one_of("strong", "medium", "off"), metavar="[strong|medium|off]"),
           recolor: float = typer.Option(0.0, min=0.0, max=1.0, help="Share of training frames that also get a copy "

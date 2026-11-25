@@ -94,6 +94,12 @@ def is_seg(size: str) -> bool:
     return size.startswith("seg-")
 
 
+def default_resolution(size: str) -> int:
+    """640 px, rounded down to a size the model takes (seg-nano: a multiple of 12, other seg- sizes of 24)."""
+    block = SEG_BLOCK.get(size, BLOCK)
+    return 640 - 640 % block
+
+
 def check_resolution(resolution: int, size: str = "small") -> None:
     block = SEG_BLOCK.get(size, BLOCK)
     if resolution <= 0 or resolution % block:

@@ -11,6 +11,7 @@ import pytest
 from engine import recordings as R
 from tests.test_host import app_client, wait
 from tests.test_project import video  # noqa: F401  (fixture)
+from ui import host_fastapi as host
 
 
 @pytest.fixture
@@ -120,6 +121,9 @@ def test_teach_passes_task_cameras_for_the_right_task_ids(monkeypatch, tmp_path,
         r = c.post("/api/projects/p/tasks",
                    json={"sources": [{"path": path1, "camera_id": "cam1", "crop": [0.0, 0.0, 0.5, 0.5]}], "every": 1})
         wait(c, r.json()["job"])                                                                             # task 2: cam1
+        p2 = host.session("p").p                                                                             # Teach learns
+        for k in range(*p2.ranges[2])[:2]:                                                                   # confirmed frames
+            p2.set_reviewed(k)
         r = c.post("/api/teach", json={"project": "p", "tasks": [2]})                                        # only task 2
         assert r.status_code == 200, r.text
         wait(c, r.json()["job"])

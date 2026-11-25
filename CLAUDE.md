@@ -118,7 +118,10 @@
   (refused when `REMOTE`, set per request by `signed_in` and by the annotator websocket itself; mcp.call refuses
   `v1.LOCAL_ONLY_TOOLS` the same way). Teammates add tasks by uploading (`/api/projects/{name}/uploads`, 16 MB pieces
   for Cloudflare's 100 MB request cap, kept in `<project>/uploads/<id>`, swept after a day unused, deleted with the
-  last task that reads them). Any new route or websocket message taking a path: use `server_path()`.
+  last task that reads them). Any new route or websocket message taking a path: use `server_path()`. Showing paths:
+  pages use `hidePaths()` (ui/home.js: box_managed or `PL.remote`) for any server folder/path they print or open, and
+  everything sent to another computer's notification views goes through `host_fastapi.seen_from_afar()` (REST and the
+  annotator websocket's pump): no folder actions, paths scrubbed (`scrub()`). New path-showing UI: use both.
 - Annotate by text (`engine/textlabel.py`, `ConceptFinder.detect_texts`: one image encoding for all phrases): scopes
   frame / rest / task / project, finds stored as `imported` parts to check, never doubled, one undo step.
 - Cycle recordings (`engine/recordings.py`, "Recordings" tab): browse another local system's cameras/videos and add

@@ -402,7 +402,8 @@ function when(t) {
 }
 
 // ---- notification center: bell + drawer, shared by the annotator and the start screen ----------
-export function notificationCenter({ mount, onRead, onClear, onAction, actionAvailable = (a) => a.type !== "send" }) {   // "send": only in its own annotator
+export function notificationCenter({ mount, onRead, onClear, onAction,
+    actionAvailable = (a) => a.type !== "send" && !(a.type === "folder" && window.PL?.remote) }) {   // "send": only in its own annotator; a server folder: not from another computer
   if (!document.getElementById("pln-css")) {
     document.head.appendChild(Object.assign(document.createElement("style"), { id: "pln-css", textContent: NOTE_CSS }));
   }
@@ -439,7 +440,7 @@ export function notificationCenter({ mount, onRead, onClear, onAction, actionAva
     drawer.querySelector(".pln-list").innerHTML = shown.length ? shown.map((n, i) => {
       const acts = [];
       if (n.action && actionAvailable(n.action)) acts.push(`<button type="button" data-act="${i}">${esc(n.action.label || "Open")}</button>`);
-      if (n.action?.type === "folder") acts.push(`<button type="button" data-copy="${i}">Copy path</button>`);
+      if (n.action?.type === "folder" && !window.PL?.remote) acts.push(`<button type="button" data-copy="${i}">Copy path</button>`);
       return `<li class="pln-item ${esc(n.level)} ${S.fresh.has(n.id) ? "unread" : ""}" data-i="${i}"><span class="pln-mark" aria-hidden="true"></span><div>
         <div class="pln-title">${esc(n.title)}</div>${n.detail ? `<div class="pln-detail">${esc(n.detail)}</div>` : ""}
         <div class="pln-meta">${n.project ? `${esc(n.project)}, ` : ""}<time datetime="${new Date(n.time * 1000).toISOString()}">${esc(when(n.time))}</time></div>
@@ -1256,6 +1257,7 @@ function render({ model, el }) {
     onRead: () => model.send({ type: "notifications_read" }),
     onClear: () => model.send({ type: "notifications_clear" }),
     actionAvailable: (a) => a.type === "send" ? a.project === S.project?.name                  // only in its own annotator
+      : a.type === "folder" ? web && !window.PL?.remote                 // a server folder: not from another computer
       : web || (a.type === "goto" && a.project === S.project?.name),   // notebooks: no REST helpers
     onAction: (a) => runAction(a),
   });
@@ -2652,7 +2654,7 @@ function render({ model, el }) {
       if (m.item.project && S.project && m.item.project !== S.project.name) return;   // another tab's event: badge only
       const undoable = m.item.key === "delete";
       toast({ level: m.item.level, title: m.item.title, detail: m.item.detail,
-              actionLabel: undoable ? "Undo" : m.item.action?.type === "folder" && web ? "Open folder" : undefined,
+              actionLabel: undoable ? "Undo" : m.item.action?.type === "folder" && web && !window.PL?.remote ? "Open folder" : undefined,
               onClick: undoable ? () => send({ type: "undo" }) : () => runAction(m.item.action) });
     }
     else if (m.type === "toast") hint(m.text);

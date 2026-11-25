@@ -297,7 +297,9 @@ export const size = (n) => (n > 1e9 ? `${(n / 1e9).toFixed(1)} GB` : n > 1e6 ? `
 const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
 export const ago = (t) => { if (typeof t === "string") t = Date.parse(t) / 1000; const s = Math.round(t - Date.now() / 1000);
   return Math.abs(s) < 60 ? "just now" : Math.abs(s) < 3600 ? rtf.format(Math.round(s / 60), "minute") : Math.abs(s) < 86400 ? rtf.format(Math.round(s / 3600), "hour") : rtf.format(Math.round(s / 86400), "day"); };
-export const prefs = () => window.PL?.prefs || {};                  // the account's Settings (ui/host_fastapi.py themed())
+export const prefs = () => window.PL?.prefs || {};
+// The server's own folders are nobody's business on a box (box_managed) or on another computer of a team server (remote)
+export const hidePaths = () => !!(window.PL?.box_managed || window.PL?.remote);                  // the account's Settings (ui/host_fastapi.py themed())
 export const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches || document.documentElement.dataset.motion === "off";
 
 // The top bar of every page: logo, Projects / Tasks / Jobs (as CVAT's), update button, device, bell.
@@ -575,20 +577,27 @@ export default function home(root) {
     </div>
 
     <section class="h-panel h-teachsec" id="teach" aria-labelledby="h-teach-h">${BRK}
-      <div class="h-sec-head"><h2 id="h-teach-h">Teach &amp; Transfer</h2><span class="h-chip">optional, trains on this computer</span></div>
+      <div class="h-sec-head"><h2 id="h-teach-h">Teach &amp; Transfer</h2><span class="h-chip">optional, trains on the computer running PartLabeler</span></div>
         <p class="h-sec-lede">Already have one video labeled? Teach learns those labels and proves on held-back frames that it reproduces them.
           Transfer then labels similar videos or image folders in the same format, for you to check in the annotator.</p>
       <ol class="h-rail">
-        <li style="--i:0"><i>1</i><b>Teach</b><span>Trains a detector on your labeled video, on this computer.</span></li>
+        <li style="--i:0"><i>1</i><b>Teach</b><span>Trains a detector on your labeled tasks (their confirmed frames) or a labeled dataset.</span></li>
         <li style="--i:1"><i>2</i><b>Prove</b><span>Checks it on frames it never trained on: how well it learned, target 90 %.</span></li>
         <li style="--i:2"><i>3</i><b>Transfer</b><span>Labels similar videos or folders with the same classes and file names. Or skip training with a quick preview.</span></li>
         <li style="--i:3"><i>4</i><b>Review</b><span>Opens each result in the annotator to check and export.</span></li></ol>
       <div class="h-teach-off h-err" hidden>Teach &amp; Transfer is not installed: run the installer again without -NoTeach.</div>
       <div class="h-steps">
         <form class="h-form h-teach" autocomplete="off">
-          <h3>Teach from a labeled dataset</h3>
-          <div class="h-field"><span>Labeled dataset folder</span>
-            <div class="h-row"><input type="text" name="dataset" required aria-label="Labeled dataset folder" placeholder="Folder with images/, labels/ and classes.txt…"><button type="button" data-browse="dataset">Browse…</button></div></div>
+          <h3>Teach</h3>
+          <div class="h-field h-teachfrom"><span>Learn from</span>
+            <div class="h-row"><label class="h-chk"><input type="radio" name="from" value="project" checked> A project's tasks</label>
+              <label class="h-chk"><input type="radio" name="from" value="dataset"> A labeled dataset folder</label></div></div>
+          <div class="h-fromproject">
+            <label class="h-field"><span>Project</span><select name="project" aria-label="Project to learn from"></select></label>
+            <div class="h-field"><span>Tasks to learn from</span><div class="h-teachtasks"><span class="h-sub">Pick a project</span></div>
+              <small>Teach learns from the frames you confirmed (Enter in the annotator); about a fifth of each task is kept back to test the model.</small></div></div>
+          <div class="h-field h-fromdataset" hidden><span>Labeled dataset folder</span>
+            <div class="h-row"><input type="text" name="dataset" aria-label="Labeled dataset folder" placeholder="Folder with images/, labels/ and classes.txt…"><button type="button" data-browse="dataset">Browse…</button></div></div>
           <label class="h-field"><span>Run name</span><input type="text" name="name" placeholder="e.g. line2_v1…"></label>
           <details class="h-support"><summary>Details for support</summary>            <!-- support -->
           <div class="h-row" style="align-items:end">
@@ -615,6 +624,7 @@ export default function home(root) {
         </form>
       </div>
       <div class="h-runs"></div>
+      <div class="h-exportjob"></div>
     </section>
   </main>
   <dialog class="h-confirm" aria-labelledby="h-confirm-h"><h2 id="h-confirm-h">Move project to trash?</h2><p class="h-confirm-text"></p>
@@ -661,7 +671,7 @@ export default function home(root) {
         <a href="${href}">Open</a>
         <a href="${href}#export">Export dataset</a>
         <button type="button" data-backup="${esc(p.name)}">Backup project</button>
-        ${window.PL?.box_managed ? "" : `<button type="button" data-folder="${esc(p.name)}">Show in folder</button>`}
+        ${hidePaths() ? "" : `<button type="button" data-folder="${esc(p.name)}">Show in folder</button>`}
         <button type="button" class="danger" data-trash="${esc(p.name)}">Move to trash…</button></div></details></article>`;
   }
   function renderProjects() {
@@ -678,7 +688,7 @@ export default function home(root) {
   async function loadProjects() {
     const list = await api("/api/projects").catch((e) => ({ error: e.message }));
     if (list.error) { $(".h-projects").innerHTML = `<div class="h-empty"><span class="h-err">${esc(list.error)}</span></div>`; return; }
-    projects = list; renderProjects(); loadTrash();
+    projects = list; renderProjects(); loadTrash(); loadTeachProjects();
   }
   $(".h-filter").addEventListener("input", renderProjects);
   $(".h-sort").addEventListener("change", renderProjects);
@@ -783,7 +793,7 @@ export default function home(root) {
     context: () => ({ page: "home", projects: projects.length, teach: info.teach }),
     actions: {
       "new-project": { label: "Go to Create a new project", run: () => lockOn($(".h-newpanel"), newForm.name) },
-      teach: { label: "Show Teach & Transfer", run: () => lockOn($(".h-teachsec"), teachForm.dataset) },
+      teach: { label: "Show Teach & Transfer", run: () => lockOn($(".h-teachsec"), teachForm.project) },
       projects: { label: "Show projects", run: () => $("#h-projects-h").scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth" }) },
       notifications: { label: "Open notifications", run: () => center.open() },
       trash: { label: "Open Trash", run: () => { const t = $(".h-trash"); if (!t.hidden) { t.open = true; t.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "center" }); } } },
@@ -796,7 +806,7 @@ export default function home(root) {
     root.querySelectorAll(".h-plus[open]").forEach((d) => (d.open = false));
     if (go === "new") lockOn($(".h-newpanel"), newForm.name);
     else if (go === "restore") restoreBackup();
-    else if (go === "teach") lockOn($(".h-teachsec"), teachForm.dataset);
+    else if (go === "teach") lockOn($(".h-teachsec"), teachForm.project);
     else if (go === "rivet") helper.open();
   });
   document.addEventListener("keydown", (e) => {
@@ -855,31 +865,85 @@ export default function home(root) {
   }
 
   // ---- teach & transfer ------------------------------------------------------------------------
-  let runs = [];
+  let runs = [], runsTimer = 0;
   async function loadRuns() {
     runs = await api("/api/runs").catch(() => []);
+    clearTimeout(runsTimer);                                             // a run busy elsewhere: look again until it ends
+    if (runs.some((r) => r.busy)) runsTimer = setTimeout(loadRuns, 15000);
     const sel = transferForm.run, keep = sel.value;
     const ready = runs.filter((r) => r.ready && r.mode !== "quick");
     sel.innerHTML = (ready.length ? `<optgroup label="Teach runs">${ready.map((r) => `<option value="${esc(r.name)}">${esc(r.name)}</option>`).join("")}</optgroup>` : "")
       + `<option value="${QUICK}">No training: match a labeled dataset (quick preview)</option>`;
     if (keep) sel.value = keep;
     showQuick();
+    const open = new Set([...document.querySelectorAll(".h-runs > details[open] > summary b")].map((b) => b.textContent));   // kept open
     $(".h-runs").innerHTML = runs.map((r) => {
       const pass = r.report?.passed;
-      const outs = r.outputs.map((o) => `<div class="h-src"><span title="${esc(o.path)}">${esc(o.name)}: ${o.summary ? `${o.summary.frames ?? "?"} frames, ${o.summary.boxes ?? "?"} boxes${o.summary.frames_to_check?.length ? `, ${o.summary.frames_to_check.length} to check` : ""}` : "in progress"}</span>
+      const outs = r.outputs.map((o) => `<div class="h-src"><span${hidePaths() ? "" : ` title="${esc(o.path)}"`}>${esc(o.name)}: ${o.summary ? `${o.summary.frames ?? "?"} frames, ${o.summary.boxes ?? "?"} boxes${o.summary.frames_to_check?.length ? `, ${o.summary.frames_to_check.length} to check` : ""}` : "in progress"}</span>
         <button type="button" data-review="${esc(o.path)}">Review in annotator</button></div>`).join("");
-      return `<details><summary><b>${esc(r.name)}</b> ${r.mode === "quick" ? `<span class="h-chip">quick, no training</span>` : pass === true ? `<span class="h-chip ok">targets met</span>` : pass === false ? `<span class="h-chip warn">below target</span>` : r.ready ? "" : `<span class="h-chip">not finished</span>`}
+      return `<details${open.has(r.name) ? " open" : ""}><summary><b>${esc(r.name)}</b> ${r.mode === "quick" ? `<span class="h-chip">quick, no training</span>` : pass === true ? `<span class="h-chip ok">targets met</span>` : pass === false ? `<span class="h-chip warn">below target</span>` : r.ready ? "" : `<span class="h-chip">not finished</span>`}
         ${r.report?.knowledge_score != null ? `<span class="h-sub">How well it learned: ${Math.round(r.report.knowledge_score)} %</span>` : ""}</summary>
+        ${r.exportable ? `<div class="h-row" style="margin-top:8px"><button type="button" data-exportrun="${esc(r.name)}"${r.busy ? " disabled" : ""}>${r.busy ? "Busy…" : "Export for production"}</button>
+          <span class="h-sub">The finished model for the production computer, with a check of its own (a Hawk-AI box offers it to deploy).</span></div>` : ""}
         ${r.report_md ? `<details class="h-support"><summary>Details for support</summary><div class="h-report">${esc(r.report_md)}</div></details>` : ""}${outs ? `<h3 style="font:600 15px var(--display);margin:10px 0 6px">Labeled outputs</h3><div style="display:grid;gap:6px">${outs}</div>` : ""}</details>`;
     }).join("");
   }
+  // Teach from a project's tasks (their confirmed frames), or from a labeled dataset folder on this computer (on a team
+  // server only the person at the server: a teammate's computer cannot name the server's folders)
+  let teachKind = null;                                                // the chosen project's type (outline projects: seg- sizes)
+  const fromProject = () => teachForm.from.value === "project";
+  function showTeachFrom() {
+    $(".h-fromproject").hidden = !fromProject(); $(".h-fromdataset").hidden = fromProject();
+  }
+  async function loadTeachProjects() {
+    const list = (await api("/api/projects").catch(() => [])).filter((p) => p.task !== "classify");
+    const sel = teachForm.project, keep = sel.value;
+    sel.innerHTML = list.length ? list.map((p) => `<option value="${esc(p.name)}">${esc(p.name)}</option>`).join("")
+      : `<option value="">No box or outline projects yet</option>`;
+    if (list.some((p) => p.name === keep)) sel.value = keep;
+    loadTeachTasks();
+  }
+  let teachAsk = 0, teachShown = null;                                 // only the latest answer; the project shown
+  async function loadTeachTasks() {
+    const box = $(".h-teachtasks"), name = teachForm.project.value, ask = ++teachAsk;
+    const kept = teachShown === name ? new Set([...box.querySelectorAll('[name="teachtask"]')].filter((x) => x.checked).map((x) => +x.value)) : null;
+    teachKind = null;
+    if (!name) { box.innerHTML = `<span class="h-sub">Make a project and label it first</span>`; return; }
+    box.innerHTML = `<span class="h-sub">Loading…</span>`;
+    const d = await api(`/api/projects/${encodeURIComponent(name)}`).catch((err) => ({ error: err.message }));
+    if (ask !== teachAsk) return;
+    if (d.error) { box.innerHTML = `<span class="h-err">${esc(d.error)}</span>`; teachShown = null; return; }
+    teachKind = d.task; teachShown = name;                               // a refresh keeps the person's own ticks
+    box.innerHTML = d.tasks.length ? d.tasks.map((t) => `<label class="h-chk"><input type="checkbox" name="teachtask" value="${t.id}" data-confirmed="${t.confirmed}"${(kept ? kept.has(t.id) : t.confirmed) ? " checked" : ""}>
+        ${esc(t.name)} <span class="h-sub">· ${t.confirmed} confirmed frame${t.confirmed === 1 ? "" : "s"}</span></label>`).join("")
+      : `<span class="h-sub">This project has no tasks yet</span>`;
+  }
+  if (window.PL?.remote) $(".h-teachfrom").hidden = true;                // only a project's tasks from another computer
+  teachForm.addEventListener("change", (e) => {
+    if (e.target.name === "from") showTeachFrom();
+    else if (e.target.name === "project") loadTeachTasks();
+  });
+  loadTeachProjects();
   teachForm.addEventListener("submit", async (e) => {
     e.preventDefault();
-    const f = teachForm;
+    const f = teachForm, out = $(".h-teachjob");
+    const common = { name: f.name.value.trim(), epochs: f.epochs.value, parent: f.parent.value.trim() };
+    let body;
+    if (fromProject()) {
+      const ticked = [...f.querySelectorAll('[name="teachtask"]:checked')], tasks = ticked.map((x) => +x.value);
+      if (!f.project.value || !tasks.length || teachKind == null) { out.innerHTML = `<div class="h-err">Tick the tasks to learn from</div>`; return; }
+      if (ticked.reduce((n, x) => n + +x.dataset.confirmed, 0) < 2) {
+        out.innerHTML = `<div class="h-err">Teach learns from confirmed frames: confirm the frames you labeled first (Enter in the annotator)</div>`; return;
+      }
+      body = { ...common, project: f.project.value, tasks, size: teachKind === "segment" ? `seg-${f.size.value}` : f.size.value };
+    } else {
+      if (!f.dataset.value.trim()) { out.innerHTML = `<div class="h-err">Pick the labeled dataset folder</div>`; return; }
+      body = { ...common, dataset: f.dataset.value.trim(), size: f.size.value };
+    }
     try {
-      const { job } = await api("/api/teach", { dataset: f.dataset.value.trim(), name: f.name.value.trim(), size: f.size.value, epochs: f.epochs.value, parent: f.parent.value.trim() });
-      follow(job, $(".h-teachjob"));
-    } catch (err) { $(".h-teachjob").innerHTML = `<div class="h-err">${esc(err.message)}</div>`; }
+      const { job } = await api("/api/teach", body);
+      follow(job, out);
+    } catch (err) { out.innerHTML = `<div class="h-err">${esc(err.message)}</div>`; }
   });
   function renderSources() {
     $(".h-sources").innerHTML = sources.length ? sources.map((s, i) => `<div class="h-src"><span title="${esc(s)}">${esc(s)}</span><button type="button" data-rm="${i}" aria-label="Remove ${esc(s)}" title="Remove">×</button></div>`).join("")
@@ -900,6 +964,14 @@ export default function home(root) {
     } catch (err) { $(".h-transferjob").innerHTML = `<div class="h-err">${esc(err.message)}</div>`; }
   });
   $(".h-runs").addEventListener("click", async (e) => {
+    const ex = e.target.closest("[data-exportrun]");
+    if (ex) {                                                    // the model as ONNX + model.json, into the run's export folder
+      ex.disabled = true;
+      const panel = $(".h-exportjob").appendChild(document.createElement("div"));   // its own, outside the list it re-draws
+      try { follow((await api("/api/export-model", { run: ex.dataset.exportrun })).job, panel); }
+      catch (err) { ex.insertAdjacentHTML("afterend", `<span class="h-err">${esc(err.message)}</span>`); ex.disabled = false; }
+      return;
+    }
     const btn = e.target.closest("[data-review]"); if (!btn) return;
     btn.disabled = true;
     try {
@@ -978,7 +1050,7 @@ export default function home(root) {
   // ---- start ---------------------------------------------------------------------------------
   api("/api/info").then((i) => {
     info = i;
-    $(".h-home").textContent = i.box_managed ? "" : `Projects are saved in ${i.home}`;
+    $(".h-home").textContent = i.box_managed || hidePaths() || !i.home ? "" : `Projects are saved in ${i.home}`;
     const dev = $(".h-device"); dev.hidden = false; dev.title = i.device;
     dev.querySelector("span").textContent = i.device; dev.classList.toggle("cpu", !/cuda|gpu|nvidia|rtx|gtx|tesla/i.test(i.device));
     $(".h-teach-off").hidden = i.teach;

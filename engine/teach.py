@@ -804,7 +804,7 @@ def epochs_run(out: Path) -> int | None:
 
 
 def teach(dataset_dir, run_dir, parent: str | None = None, size: str = "small", epochs: int | None = None,
-          resolution: int = 640, held_out: float = 0.2, aug: str = "strong", progress=None,
+          resolution: int | None = None, held_out: float = 0.2, aug: str = "strong", progress=None,
           should_stop=None, recolor: float = 0.0, crop_to_parent: bool = True, stage: str = "all",
           empty_every: int = 1, task_cameras: dict | None = None, project: str | None = None,
           compare_to: str | None = None) -> dict:
@@ -829,6 +829,7 @@ def teach(dataset_dir, run_dir, parent: str | None = None, size: str = "small", 
         raise ValueError(f"unknown stage {stage!r}")
     if size not in detector.SIZES:
         raise ValueError(f"unknown model size {size!r}; choose one of {', '.join(detector.SIZES)}")
+    resolution = resolution or detector.default_resolution(size)   # an outline project's model: 640 does not fit
     detector.check_resolution(resolution, size)
     detector.aug_config([], aug)
     run_dir = Path(run_dir)

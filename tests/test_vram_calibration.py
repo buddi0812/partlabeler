@@ -56,3 +56,11 @@ def test_uncalibrated_sizes_fall_back_to_the_old_guess():
     assert "medium" not in detector._VRAM_CAL
     old = detector._GB_BASE + 2 * 1 * detector._GB_PER_IMAGE["medium"] * (640 / 640) ** 2
     assert detector._vram_needed_gb("medium", 640, batch=1) == old
+
+
+def test_the_default_resolution_fits_every_model_size():
+    from engine import detector
+    assert {s: detector.default_resolution(s) for s in detector.SIZES} == {
+        "nano": 640, "small": 640, "medium": 640, "seg-nano": 636, "seg-small": 624, "seg-medium": 624}
+    for s in detector.SIZES:
+        detector.check_resolution(detector.default_resolution(s), s)
