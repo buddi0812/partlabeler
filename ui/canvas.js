@@ -1184,7 +1184,7 @@ function render({ model, el }) {
         <div><span>Next larger outline for it</span><kbd>M</kbd></div>
         <div><span>Grow / shrink the selected part</span><span><kbd>Shift</kbd>/<kbd>Alt</kbd> + click</span></div>
         <div><span>Select a part (any tool)</span><span><kbd>Ctrl</kbd> + click</span></div>
-        <div><span>Resize / move the selected box</span><span>drag a handle / drag inside it</span></div>
+        <div><span>Move a part / resize the selected one</span><span>drag it / drag a handle</span></div>
         <div><span>Polygon: close / undo a point / cancel</span><span><kbd>Enter</kbd> / <kbd>Backspace</kbd> / <kbd>Esc</kbd></span></div>
         <div><span>Pick class (re-labels a part you selected)</span><span><kbd>1</kbd>–<kbd>9</kbd>, <kbd>0</kbd>, <kbd>[</kbd> <kbd>]</kbd></span></div>
         <div><span>Copy the part under the mouse (or the selected one)</span><span><kbd>Ctrl</kbd> + <kbd>C</kbd></span></div>
@@ -1373,10 +1373,12 @@ function render({ model, el }) {
       ctx.fillStyle = col; ctx.fillRect(x1, ty, tw, fs * 1.35);
       ctx.fillStyle = "#fff"; ctx.fillText(label, x1 + fs * 0.3, ty + fs * 1.05);
     }
-    const sb = selBox();
-    if (sb) {                                  // the selected box's handles (and where a drag puts it)
-      const d = S.drag, [x1, y1, x2, y2] = d?.grip && d.moved ? gripBox(d.grip, d.box, d.x1 - d.x0, d.y1 - d.y0) : sb.box;
-      if (d?.grip && d.moved) { ctx.setLineDash([lw * 3, lw * 2]); ctx.lineWidth = lw; ctx.strokeStyle = "#fff"; ctx.strokeRect(x1, y1, x2 - x1, y2 - y1); ctx.setLineDash([]); }
+    const dragging = S.drag?.grip && S.drag.moved, sb = dragging ? partBox(S.drag.obj) : gripsOn() ? selBox() : null;   // handles where they work
+    if (sb) {                                  // the selected part's handles (and where a drag puts it)
+      const d = S.drag, [x1, y1, x2, y2] = dragging ? gripBox(d.grip, d.box, d.x1 - d.x0, d.y1 - d.y0) : sb.box;
+      const t = dragging && seg() && sb.mask && tinted(sb);
+      if (t) { ctx.globalAlpha = 0.6; ctx.drawImage(t.canvas, x1, y1, x2 - x1, y2 - y1); ctx.globalAlpha = 1; }   // the outline, there
+      if (dragging) { ctx.setLineDash([lw * 3, lw * 2]); ctx.lineWidth = lw; ctx.strokeStyle = "#fff"; ctx.strokeRect(x1, y1, x2 - x1, y2 - y1); ctx.setLineDash([]); }
       const h = lw * 4, mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
       ctx.fillStyle = "#fff"; ctx.strokeStyle = colorOf(sb.cls); ctx.lineWidth = lw;
       for (const [hx, hy] of [[x1, y1], [mx, y1], [x2, y1], [x2, my], [x2, y2], [mx, y2], [x1, y2], [x1, my]]) {
@@ -1504,9 +1506,9 @@ function render({ model, el }) {
 
   // The bar above the picture: the active tool, how it works, and its options
   const HOWTO = {
-    click: () => "Click a part: its edge is found for you. M: larger outline · Shift/Alt+click: grow/shrink · Ctrl+click: select.",
-    select: () => seg() ? "Click a part to select it, then pick a class, press Del, or fix it with the brush."
-      : "Click a part to select it. Drag a handle to resize the box, or inside it to move it.",
+    click: () => "Click a part: its edge is found for you. Drag a part: move it · M: larger outline · Shift/Alt+click: grow/shrink · Ctrl+click: select.",
+    select: () => seg() ? "Click a part to select it. Drag it to move it, a handle to resize it; pick a class, press Del, or fix it with the brush."
+      : "Click a part to select it. Drag it to move it, or a handle to resize it.",
     box: () => ({ drag: "Drag from one corner to the other.", two: "Click one corner, then the opposite one.",
                   four: "Click the part's top, bottom, left and right edges." }[S.boxMode]) + (seg() ? " The part inside is outlined for you." : ""),
     polygon: () => seg() ? "Click each corner; click the first one again (or Enter) to close."
@@ -1654,7 +1656,7 @@ function render({ model, el }) {
     const t = view();
     i = within ? Math.max(t.start, Math.min(t.end - 1, i)) : Math.max(0, Math.min(S.project.count - 1, i));
     if (i === S.target && i === S.item) return;
-    S.target = i; S.sel = null; send({ type: "goto", item: i });
+    S.target = i; S.sel = null; S.drag = null; send({ type: "goto", item: i });
   };
   // ---- play: the frames one after another like a video; the next is asked for once this one is shown, so a slow
   // computer plays slower instead of skipping frames. 1x = the video's own speed (fps / every); images: 5 frames/s.
@@ -2191,13 +2193,22 @@ function render({ model, el }) {
   // ---- adjust the selected box (object detection): drag a handle to resize it, drag inside it to move it ----------
   const GRIP_CURSORS = { n: "ns-resize", s: "ns-resize", e: "ew-resize", w: "ew-resize", nw: "nwse-resize", se: "nwse-resize",
                          ne: "nesw-resize", sw: "nesw-resize", move: "move" };
-  function selBox() { return !seg() && S.sel != null ? (S.data?.boxes || []).find((b) => b.obj === S.sel) : null; }
+  const partBox = (o) => (o != null ? (S.data?.boxes || []).find((b) => b.obj === o) : null);
+  const dragTool = () => S.tool === "click" || S.tool === "select";
+  const gripsOn = () => !seg() || dragTool();                      // outlines: only the tools that do not draw
+  function selBox() { return partBox(S.sel); }                     // boxes and outlines alike
   function boxGrip(x, y) {                     // the part of the selected box under (x, y): a side or corner, "move" or null
     const b = selBox(); if (!b) return null;
-    const [x1, y1, x2, y2] = b.box, r = cv.getBoundingClientRect(), tol = 7 * cv.width / r.width;
-    if (x < x1 - tol || x > x2 + tol || y < y1 - tol || y > y2 + tol) return null;
-    const g = (Math.abs(y - y1) <= tol ? "n" : Math.abs(y - y2) <= tol ? "s" : "") + (Math.abs(x - x1) <= tol ? "w" : Math.abs(x - x2) <= tol ? "e" : "");
-    return g || (x > x1 && x < x2 && y > y1 && y < y2 ? "move" : null);
+    const [x1, y1, x2, y2] = b.box, r = cv.getBoundingClientRect(), mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+    const lw = Math.max(0.75, Math.max(2, cv.width / 700) / S.zoom), reach = lw * 2 + 3 * cv.width / r.width;   // the drawn handle, a bit more
+    const inside = x > x1 && x < x2 && y > y1 && y < y2;             // inside, a small or thin part keeps a middle to move it by
+    const tx = inside ? Math.min(reach, (x2 - x1) / 4) : reach, ty = inside ? Math.min(reach, (y2 - y1) / 4) : reach;
+    // the 8 handles drawn on it resize (as in CVAT); anywhere else on it moves it - also a small part, whose edges are
+    // all within a few screen pixels of each other
+    const near = ([hx, hy]) => Math.abs(x - hx) <= tx && Math.abs(y - hy) <= ty;
+    const handle = [["nw", [x1, y1]], ["n", [mx, y1]], ["ne", [x2, y1]], ["e", [x2, my]], ["se", [x2, y2]], ["s", [mx, y2]],
+                    ["sw", [x1, y2]], ["w", [x1, my]]].filter(([, p]) => near(p)).sort((a, b) => Math.hypot(x - a[1][0], y - a[1][1]) - Math.hypot(x - b[1][0], y - b[1][1]))[0];
+    return handle ? handle[0] : inside ? "move" : null;
   }
   function gripBox(g, box, dx, dy) {           // the box after dragging grip g by (dx, dy) image pixels, inside the frame
     let [x1, y1, x2, y2] = box;
@@ -2404,8 +2415,13 @@ function render({ model, el }) {
       }
       draw(); return;
     }
-    const grip = e.button === 0 && !(e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) ? boxGrip(x, y) : null;
-    S.drag = { x0: x, y0: y, x1: x, y1: y, moved: false, e, grip, box: grip ? [...selBox().box] : null };
+    const plainLeft = e.button === 0 && !(e.ctrlKey || e.metaKey || e.shiftKey || e.altKey);
+    let grip = plainLeft && gripsOn() ? boxGrip(x, y) : null, part = grip ? selBox() : null;
+    if ((!grip || grip === "move") && plainLeft && dragTool()) {        // a press on a part (a smaller one inside the
+      const under = partBox(boxAt(x, y));                               // selected one wins): dragging moves it
+      if (under) { part = under; grip = "move"; }
+    }
+    S.drag = { x0: x, y0: y, x1: x, y1: y, moved: false, e, grip, obj: part?.obj, item: S.item, box: part ? [...part.box] : null };
   });
   cv.addEventListener("mousemove", (e) => {
     S.mouseXY = [e.clientX, e.clientY]; S.overCanvas = true;
@@ -2413,7 +2429,7 @@ function render({ model, el }) {
     if (S.paint) { const [x, y] = toImage(e); strokeTo(x, y); return; }
     if ((painting() || S.shape) && !S.drag) { S.hover = toImage(e); hoverPart(null); if (!hoverRaf) hoverRaf = requestAnimationFrame(() => { hoverRaf = 0; draw(); }); return; }
     if (!S.drag) {
-      const [x, y] = toImage(e), g = !S.space && !S.panning && boxGrip(x, y);
+      const [x, y] = toImage(e), g = !S.space && !S.panning && gripsOn() && boxGrip(x, y);
       cv.style.cursor = g ? GRIP_CURSORS[g] : "";
       hoverPart(S.space || S.panning ? null : boxAt(x, y));
       return;
@@ -2426,10 +2442,13 @@ function render({ model, el }) {
     if (S.panning) { S.panning = null; $(".pl-stage").classList.remove("panning"); return; }
     if (S.paint) { finishPaint(); return; }
     const d = S.drag; if (!d) return; S.drag = null;
-    if (d.grip && d.moved) {                  // a selected box resized or moved: same part, same class, undoable
-      const b = selBox();
-      if (b) send({ type: "box", item: S.item, cls: b.cls, box: gripBox(d.grip, d.box, d.x1 - d.x0, d.y1 - d.y0), obj: b.obj });
-      draw(); return;
+    if (d.grip && d.moved) {                  // a part moved or resized: same part, same class (an outline keeps its shape), undoable
+      const b = d.item === S.item ? partBox(d.obj) : null;              // the frame changed mid-drag: nothing happens
+      if (b) {
+        if (S.sel !== b.obj) { S.sel = b.obj; S.picked = false; }      // picking a class next makes a new part, as before
+        send({ type: "box", item: S.item, cls: b.cls, box: gripBox(d.grip, d.box, d.x1 - d.x0, d.y1 - d.y0), obj: b.obj, fit: seg() || undefined });
+      }
+      renderSide(); draw(); return;
     }
     if (e.ctrlKey || e.metaKey || S.tool === "select") { S.sel = boxAt(d.x0, d.y0); S.picked = S.sel != null; renderSide(); draw(); return; }
     if (S.tool === "box" || S.tool === "ellipse") {

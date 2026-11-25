@@ -312,7 +312,7 @@ Every label can be made by hand, in every project type that has parts. These too
 on a computer without a graphics card. Pick one in the tools on the left or with its key; the options bar says how
 it works.
 
-- **Select and adjust** (V): click a part to select it, without making anything new. Then drag a box's handles
+- **Select and adjust** (V): click a part to select it, without making anything new. Then drag it or its handles
   (below), pick a class to re-label it, or press Del to delete it.
 - **Box** (B): three ways to place a box, chosen in the options bar or by pressing B again:
   - **Drag**: press at one corner and drag to the other.
@@ -358,14 +358,19 @@ copy on the mouse, to place another. **Esc** puts it away. Whatever hangs over t
 Each placed part is one Ctrl+Z. The copy stays until you copy something else, also on other frames and in another
 job of the project (it is kept in this browser tab).
 
-Every drag adds a new part of the current class; to change an existing box, use its handles (below). Picking a class
+With the Box tool a drag adds a new part of the current class (in object detection projects, except a drag that starts
+on the selected box); to change an existing part, drag it or its handles (below). Picking a class
 re-labels a part only when you selected it yourself (Ctrl+click, the Select tool, a click on the Parts tab, or a click
 with the Box tool). The part you just made stays highlighted but keeps its class. Press **C** to go back to Click to
 outline. Hand-drawn parts are useful where SAM cannot separate a part, and for people learning what a good label is.
 
-**Adjust a box** (object detection projects): select it (Ctrl+click it, use the Select tool, or click it on the
-Parts tab). Then drag one of its eight white handles to resize it, or drag inside it to move it. It stays the same
-part with the same class, becomes yours (manual), and Ctrl+Z undoes it.
+**Move or resize a part** (boxes and outlines, as in CVAT): with **Click to outline** or **Select and adjust** on,
+press on a part and drag it to move it (with the drawing tools a drag draws instead; in object detection projects the
+selected box can also be moved or resized with them, by dragging inside it or its handles). A selected part (Ctrl+click it, the Select tool, or a click on the Parts tab)
+shows eight white handles: drag one to resize it. An outline keeps its own shape when it moves, and is stretched
+into the new size when it is resized (it is not outlined again). The part stays the same part with the same class,
+becomes yours (manual), its propagated copies follow, and Ctrl+Z undoes it. A click without dragging still does what
+the tool does (Click to outline: outline the part under the mouse).
 
 Once a project's first frame shows, PartLabeler loads the outline model in the background; the bottom line says "Getting the
 outline model ready…" until it is done (the first time after a start this can take up to a minute). Clicks made

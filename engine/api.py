@@ -361,7 +361,12 @@ class Session:
         obj = msg.get("obj") or self.p.new_obj()
         cls = msg["cls"] if msg.get("obj") is None else next(
             (b["cls"] for b in self.p.boxes(msg["item"]) if b["obj"] == obj), msg["cls"])
-        mask = self._outline_boxes(msg["item"], [msg["box"]])[0] if self.outlines_on else None
+        old = self.p.mask(msg["item"], obj) if self.outlines_on and msg.get("fit") and msg.get("obj") is not None else None
+        if old is not None:                               # an outline dragged or resized: the same shape, moved there
+            from engine.project import _fit_mask
+            mask = _fit_mask(old, self.p._row(msg["item"], obj)["box"], msg["box"])
+        else:
+            mask = self._outline_boxes(msg["item"], [msg["box"]])[0] if self.outlines_on else None
         if mask is not None and not mask.any():
             self.send({"type": "toast", "text": "No part found inside that box; draw it around the whole part"})
             return
@@ -372,6 +377,7 @@ class Session:
         self.p.put(msg["item"], obj, cls, msg["box"], "manual", mask=mask)
         followed = self.p.follow(obj, task) if copies else []
         self.points.pop((msg["item"], obj), None)
+        self.outlines.pop((msg["item"], obj), None)         # M after a move: not the click's outlines at the old place
         if mask is not None:
             self.send({"type": "select", "item": msg["item"], "obj": obj})
         self.refresh(msg["item"])
