@@ -162,8 +162,29 @@ class Project:
         if "rle" not in {r[1] for r in self.db.execute("PRAGMA table_info(boxes)")}:
             self.db.execute("ALTER TABLE boxes ADD COLUMN rle TEXT")      # projects made before outlines
             self.db.commit()
+        self._rebase_sources()
         self._index()
         self._ensure_jobs()
+
+    def _rebase_sources(self) -> None:
+        """Tasks whose files live inside the project folder (uploaded from another computer: uploads/<id>/...; restored
+        from a backup: images/t<id>) keep working after the project folder moved or was renamed: their stored path is
+        pointed at this folder again."""
+        tasks, moved = [dict(t) for t in self.meta.get("sources") or []], False
+        for t in tasks:
+            src = Path(t["source"])
+            parts = src.parts
+            if src.exists():
+                continue
+            for k in range(len(parts) - 1):                   # the first uploads/<id> or images/t<n> in the path
+                if (parts[k] == "uploads" and re.fullmatch(r"[0-9a-f]{32}", parts[k + 1])) or \
+                        (parts[k] == "images" and re.fullmatch(r"t\d+", parts[k + 1])):
+                    here = self.folder.joinpath(*parts[k:])
+                    if here.exists():
+                        t["source"], moved = str(here), True
+                    break
+        if moved:
+            self.set_meta(sources=tasks, source=tasks[0]["source"])
 
     # ---- creation -------------------------------------------------------------------------
     @classmethod
@@ -326,6 +347,12 @@ class Project:
             if d != self.folder / "frames" and d.exists() and not any(d.iterdir()):
                 d.rmdir()
         tasks = [x for x in tasks if x["id"] != tid]
+        up = self.folder.resolve() / "uploads"             # files a teammate uploaded for this task go with it,
+        src = Path(t["source"]).resolve()                  # unless another task still reads them
+        if src.is_relative_to(up) and src != up:
+            mine = up / src.relative_to(up).parts[0]
+            if not any(Path(x["source"]).resolve().is_relative_to(mine) for x in tasks):
+                shutil.rmtree(mine, ignore_errors=True)
         first = tasks[0]
         self.set_meta(sources=tasks, kind=first["kind"], source=first["source"], every=first["every"])
         self._index()
@@ -1794,8 +1821,8 @@ def backup_project(folder, out_zip, tasks=None) -> dict:
                 continue
             for k in range(a, b):
                 path = Path(p.items[k]["path"])
-                arc = (path.relative_to(folder).as_posix() if folder in path.parents
-                       else f"images/t{t['id']}/{path.relative_to(Path(t['source'])).as_posix()}")
+                arc = (f"images/t{t['id']}/{path.relative_to(Path(t['source'])).as_posix()}"   # where a restore looks
+                       if t["kind"] == "images" else path.relative_to(folder).as_posix())        # a video's stored frames
                 z.write(path, arc)
                 n += 1
     p.db.close()

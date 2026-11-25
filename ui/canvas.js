@@ -1187,7 +1187,8 @@ function render({ model, el }) {
         <div><span>Resize / move the selected box</span><span>drag a handle / drag inside it</span></div>
         <div><span>Polygon: close / undo a point / cancel</span><span><kbd>Enter</kbd> / <kbd>Backspace</kbd> / <kbd>Esc</kbd></span></div>
         <div><span>Pick class (re-labels a part you selected)</span><span><kbd>1</kbd>–<kbd>9</kbd>, <kbd>0</kbd>, <kbd>[</kbd> <kbd>]</kbd></span></div>
-        <div><span>Copy the selected part / paste it on this frame, in the same place</span><span><kbd>Ctrl</kbd> + <kbd>C</kbd> / <kbd>Ctrl</kbd> + <kbd>V</kbd></span></div>
+        <div><span>Copy the part under the mouse (or the selected one)</span><span><kbd>Ctrl</kbd> + <kbd>C</kbd></span></div>
+        <div><span>Paste: the copy follows the mouse, click to place it (Ctrl+click: place another, Esc: put it away)</span><span><kbd>Ctrl</kbd> + <kbd>V</kbd></span></div>
         <div><span>Delete the selected part</span><kbd>Del</kbd></div>
         <div><span>Deselect</span><kbd>Esc</kbd></div>
         <div><span>Undo</span><span><kbd>Ctrl</kbd> + <kbd>Z</kbd></span></div>
@@ -1390,6 +1391,7 @@ function render({ model, el }) {
       ctx.setLineDash([]);
     }
     if (S.shape) drawShape(lw);
+    if (S.placing && S.clip) drawPlacing(lw);
     if (S.hover && painting()) {                                          // the brush's footprint
       const erasing = S.tool === "erase" || S.tool === "smartErase";
       ctx.beginPath(); ctx.arc(S.hover[0], S.hover[1], S.brush, 0, Math.PI * 2);
@@ -1533,7 +1535,7 @@ function render({ model, el }) {
   function setTool(t, cycle = false) {                           // a shape half placed is dropped when the tool changes
     if (!seg() && TOOLS.find((x) => x[0] === t)?.[5] === "seg") return;
     if (cycle && S.tool === "box" && t === "box") S.boxMode = { drag: "two", two: "four", four: "drag" }[S.boxMode];   // B again: next mode
-    S.tool = t; S.shape = null; S.drag = null;
+    S.tool = t; S.shape = null; S.drag = null; S.placing = false;
     renderSide(); draw();
   }
 
@@ -2334,6 +2336,7 @@ function render({ model, el }) {
     $('[data-a="zoomOut"]').disabled = S.zoom <= 1;
     el.querySelectorAll('[data-a="zoomFit"]').forEach((b) => (b.disabled = S.zoom <= 1));
     if (S.tool === "pan") renderOpts();
+    if (S.placing) draw();                                           // the copy stays under the mouse
     $('[data-a="zoomIn"]').disabled = S.zoom >= 8;
     $(".pl-stage").classList.toggle("can-pan", S.zoom > 1 && S.space);
     draw();
@@ -2365,6 +2368,7 @@ function render({ model, el }) {
   new ResizeObserver(() => { if (S.zoom > 1) { clampPan(); applyZoom(); } }).observe($(".pl-stage"));
   el.addEventListener("keyup", (e) => { if (e.key === " ") { S.space = false; $(".pl-stage").classList.remove("can-pan"); } });
   let hoverRaf = 0;
+  cv.addEventListener("mouseleave", () => { S.overCanvas = false; });
   cv.addEventListener("mouseleave", () => { if (S.hover || S.hoverObj != null) { S.hover = null; S.hoverObj = null; draw(); } });
   function hoverPart(o) {                                         // the part under the mouse is highlighted
     if (o === S.hoverObj) return;
@@ -2375,6 +2379,11 @@ function render({ model, el }) {
   cv.addEventListener("mousedown", (e) => {
     if (!S.img) return;
     stopPlay();
+    if (S.placing && e.button === 0 && !S.space) {                     // also with the Move tool on
+      S.mouseXY = [e.clientX, e.clientY]; S.overCanvas = true; el.focus();
+      if (!e.altKey) placePart(e.ctrlKey || e.metaKey);
+      return;
+    }
     if (e.button === 1 || ((S.space || S.tool === "pan") && e.button === 0)) {   // pan: middle button, Space + drag, Move tool
       e.preventDefault();
       if (S.zoom > 1) { S.panning = { x: e.clientX, y: e.clientY, pan: [...S.pan] }; $(".pl-stage").classList.add("panning"); }
@@ -2382,6 +2391,7 @@ function render({ model, el }) {
       return;
     }
     const [x, y] = toImage(e); el.focus();
+    if (S.placing) return;
     const plain = e.button === 0 && !(e.ctrlKey || e.metaKey);
     if (painting() && plain) { startPaint(x, y); return; }
     if (plain && (S.tool === "polygon" || (S.tool === "box" && S.boxMode !== "drag"))) {   // corner by corner, one click each
@@ -2398,6 +2408,8 @@ function render({ model, el }) {
     S.drag = { x0: x, y0: y, x1: x, y1: y, moved: false, e, grip, box: grip ? [...selBox().box] : null };
   });
   cv.addEventListener("mousemove", (e) => {
+    S.mouseXY = [e.clientX, e.clientY]; S.overCanvas = true;
+    if (S.placing) { cv.style.cursor = ""; hoverPart(null); if (!hoverRaf) hoverRaf = requestAnimationFrame(() => { hoverRaf = 0; draw(); }); return; }
     if (S.paint) { const [x, y] = toImage(e); strokeTo(x, y); return; }
     if ((painting() || S.shape) && !S.drag) { S.hover = toImage(e); hoverPart(null); if (!hoverRaf) hoverRaf = requestAnimationFrame(() => { hoverRaf = 0; draw(); }); return; }
     if (!S.drag) {
@@ -2438,26 +2450,62 @@ function render({ model, el }) {
            obj: refine ? S.sel : undefined });
   });
 
-  // ---- copy and paste a part (Ctrl+C / Ctrl+V): the same place on another frame -------------------------------
-  // The engine sends back the part as it is when copied (class, box, outline, frame size); kept for this project
-  // in the browser tab, so it also pastes in another job of the project. Every open tab of the project hears the
-  // reply: only the tab whose ticket it carries keeps it.
+  // ---- copy and paste a part, as in CVAT: Ctrl+C copies the part under the mouse (else the selected one); Ctrl+V
+  // puts a see-through copy, its size kept, centred on the mouse; a click places it as a new part (Ctrl+click: and
+  // keeps it on the mouse for another); Esc puts it away. The copy (class, box, outline crop) stays for this project
+  // in the browser tab, so it also pastes on other frames and in another job.
   const clipKey = () => `pl-clip:${S.project?.name}`;
-  const loadClip = () => { try { return JSON.parse(sessionStorage.getItem(clipKey()) || "null"); } catch { return null; } };
+  const loadClip = () => {                                             // an older version's copy (no outline crop) is dropped
+    try { const c = JSON.parse(sessionStorage.getItem(clipKey()) || "null"); return c && "mask" in c && !("rle" in c) ? c : null; } catch { return null; }
+  };
+  const mouseAt = () => S.mouseXY && toImage({ clientX: S.mouseXY[0], clientY: S.mouseXY[1] });   // follows zoom and pan too
   const saveClip = (c) => { try { c ? sessionStorage.setItem(clipKey(), JSON.stringify(c)) : sessionStorage.removeItem(clipKey()); } catch {} };
   function copyPart() {
     if (!S.canvasDown && String(window.getSelection?.() || "")) return false;   // text picked on the page: the browser copies it
-    if (S.sel == null || !(S.data?.boxes || []).some((x) => x.obj === S.sel)) { hint("Select a part first (Ctrl+click it), then press Ctrl+C"); return true; }
-    S.ticket = `${Date.now()}-${Math.random()}`;
-    send({ type: "copy", item: S.item, obj: S.sel, ticket: S.ticket });
+    const m = S.overCanvas && mouseAt(), under = m ? boxAt(m[0], m[1]) : null;   // whatever tool is on
+    const boxes = S.data?.boxes || [], b = boxes.find((x) => x.obj === under) || boxes.find((x) => x.obj === S.sel);
+    if (!b) { hint("Point at a part (or select it), then press Ctrl+C"); return true; }
+    S.clip = { cls: S.project.classes[b.cls], box: [...b.box], mask: b.mask ? [...b.mask] : null };
+    saveClip(S.clip);
+    hint(`Copied the ${S.clip.cls} part. Press Ctrl+V, then click where it goes`);
     return true;
   }
   function pastePart(e) {
-    if (e.repeat) return true;                                         // a held-down Ctrl+V pastes once
+    if (e.repeat) return true;                                         // a held-down Ctrl+V picks it up once
     const clip = S.clip || (S.clip = loadClip());
-    if (!clip) { hint("Nothing copied yet: select a part and press Ctrl+C"); return true; }
-    send({ type: "paste", item: S.target, clip });                     // the frame being shown, also while it loads
+    if (!clip) { hint("Nothing copied yet: point at a part and press Ctrl+C"); return true; }
+    if (!S.project.classes.includes(clip.cls)) { hint(`The class ${clip.cls} is no longer in this project`); return true; }
+    S.shape = null; S.drag = null; S.placing = true;
+    draw();
     return true;
+  }
+  function placed() {                                                  // the copy centred on the mouse, whole pixels
+    const c = S.clip, [x1, y1, x2, y2] = c.box;
+    const at = mouseAt() || [S.img.width / 2, S.img.height / 2];      // the mouse not seen yet: the frame's middle
+    const dx = Math.round(at[0] - (x1 + x2) / 2), dy = Math.round(at[1] - (y1 + y2) / 2);
+    return { dx, dy, box: [x1 + dx, y1 + dy, x2 + dx, y2 + dy], mask: c.mask && [c.mask[0] + dx, c.mask[1] + dy, c.mask[2]] };
+  }
+  function placePart(keep) {
+    const p = placed(), [x1, y1, x2, y2] = p.box, W = S.img.width, H = S.img.height;
+    if (Math.min(x2, W) - Math.max(x1, 0) < 1 || Math.min(y2, H) - Math.max(y1, 0) < 1) return;   // off the frame: keep it
+    const t = seg() && p.mask && tinted({ cls: S.project.classes.indexOf(S.clip.cls), mask: p.mask });
+    if (t && !onFrame(t, p.mask[0], p.mask[1], W, H)) return;          // only the outline's empty corner on it
+    send({ type: "paste", item: S.item, cls: S.clip.cls, box: p.box, mask: seg() ? p.mask : undefined });
+    if (!keep) { S.placing = false; draw(); }
+  }
+  function onFrame(t, mx, my, W, H) {                               // any outline pixel inside the frame
+    for (let yy = Math.max(0, -my); yy < Math.min(t.h, H - my); yy++)
+      for (let xx = Math.max(0, -mx); xx < Math.min(t.w, W - mx); xx++) if (t.inside[yy * t.w + xx]) return true;
+    return false;
+  }
+  function drawPlacing(lw) {
+    const p = placed(), cls = S.project.classes.indexOf(S.clip.cls), col = colorOf(cls), [x1, y1, x2, y2] = p.box;
+    const t = seg() && p.mask && tinted({ cls, mask: p.mask });
+    ctx.save(); ctx.globalAlpha = 0.5;
+    if (t) ctx.drawImage(t.canvas, p.mask[0], p.mask[1]);
+    else { ctx.fillStyle = col; ctx.globalAlpha = 0.25; ctx.fillRect(x1, y1, x2 - x1, y2 - y1); }
+    ctx.globalAlpha = 1; ctx.setLineDash([lw * 3, lw * 2]); ctx.lineWidth = lw; ctx.strokeStyle = t ? "#fff" : col;
+    ctx.strokeRect(x1, y1, x2 - x1, y2 - y1); ctx.restore();
   }
 
   // ---- keys --------------------------------------------------------------------------------
@@ -2477,6 +2525,7 @@ function render({ model, el }) {
     else if (k === "Delete" && e.shiftKey) actions.deleteFrame();
     else if (S.shape && k === "Backspace") { S.shape.pts.pop(); if (!S.shape.pts.length) S.shape = null; draw(); }
     else if (k === "Delete" || k === "Backspace") { if (S.sel != null) { send({ type: "delete", item: S.item, obj: S.sel }); S.sel = null; } }
+    else if (k === "Escape" && S.placing) { S.placing = false; draw(); }   // the copy stays for the next Ctrl+V
     else if (k === "Escape") {
       if (S.shape) S.shape = null; else if (S.sel == null && S.focus) setFocus(false); else S.sel = null;
       S.drag = null; renderSide(); draw();
@@ -2517,7 +2566,6 @@ function render({ model, el }) {
       legend(); renderProject(); renderSide(); renderTop(); renderJob(); if (S.grid) renderGrid(); else draw();
     }
     else if (m.type === "reload") {                    // m.removed: frames deleted for good; the ones after them moved up
-      if (m.removed) { S.clip = null; saveClip(null); }               // the copied frame's place in its task moved
       const at = m.removed ? Math.max(0, Math.min(S.project.count - m.removed.length - 1, S.target - m.removed.filter((r) => r < S.target).length)) : S.target;
       if (!web) { S.target = at; model.send({ type: "ready", item: at }); }
       else if (!m.removed) location.reload();
@@ -2543,10 +2591,6 @@ function render({ model, el }) {
       }
     }
     else if (m.type === "select") { S.sel = m.obj; S.picked = false; }
-    else if (m.type === "clip" && m.ticket && m.ticket === S.ticket) {   // another tab's copy is not ours
-      S.clip = m; saveClip(m);
-      hint(`Copied the ${m.cls} part. Go to another frame and press Ctrl+V to put it in the same place`);
-    }
     else if (m.type === "status") {
       Object.assign(S, { statuses: m.statuses, flags: m.flags, busy: m.busy, gpu: m.gpu, undo: m.undo });
       if (S.saving) { S.saving = false; S.savedAt = Date.now(); }

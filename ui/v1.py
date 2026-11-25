@@ -53,8 +53,10 @@ from ui import mcp, trainq
 H = None                                                  # the host module (ui/host_fastapi.py), set by mount()
 LOOPBACK = {"127.0.0.1", "::1", "localhost", "testclient"}
 LOCAL_ONLY_TOOLS = {"add_tasks", "import_backup", "frames_to_video"}      # they take paths on this computer
-# Team server: what other machines may not do (it acts on this computer's desktop or setup, or makes accounts).
-TEAM_LOCAL_ONLY = ("/api/auth/signup", "/api/open-folder", "/api/assistant/key", "/api/me/projects-folder")
+# Team server: what other machines may not do (it acts on this computer's desktop or setup, makes accounts, or
+# lists / reads this computer's own files: a teammate adds files from their computer by uploading them instead).
+TEAM_LOCAL_ONLY = ("/api/auth/signup", "/api/open-folder", "/api/assistant/key", "/api/me/projects-folder",
+                   "/api/browse", "/api/classes")
 MAX_IMAGE = 40 * 2**20                                    # bytes, one image sent to /annotate
 router = APIRouter(prefix="/api/v1", tags=["integration v1"])
 
@@ -262,6 +264,14 @@ class ImportIn(BaseModel):
 
 @router.post("/projects/import")
 def import_project(body: ImportIn, request: Request):
+    local = H.REMOTE.set(False)                           # its own files and checked recordings: allowed
+    try:
+        return _import_project(body, request)
+    finally:
+        H.REMOTE.reset(local)
+
+
+def _import_project(body: ImportIn, request: Request):
     """A labeling project handed over from another system (Hawk-AI's SOP studio, hawk-ai-internal app-015-plan (b)):
     its images become one new task, its boxes parts to check ("imported"). The same source (station + demo
     version) always lands in the same project: a second call adds the images it hasn't seen, never a second project."""
@@ -516,7 +526,11 @@ async def upload(name: str, request: Request):
     args = {"project": name, "sources": [source], "wait_s": 0,
             **{k: form.get(k) for k in ("name", "subset") if form.get(k)},
             **({"every": int(form.get("every"))} if form.get("every") else {})}
-    return await asyncio.to_thread(tool, "add_tasks", args)              # the server's own path: always allowed
+    local = H.REMOTE.set(False)                           # the server's own path (the files just sent): allowed
+    try:
+        return await asyncio.to_thread(tool, "add_tasks", args)
+    finally:
+        H.REMOTE.reset(local)
 
 
 @router.post("/projects/{name}/annotate-text")

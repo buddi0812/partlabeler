@@ -57,7 +57,12 @@ teammates open `https://<that address>/`. The annotator then talks to the server
 sign-in cookie is only ever sent over HTTPS. Keep port 8765 itself closed to the internet: only the proxy reaches it.
 
 From other computers everything works except what acts on the server itself: updating PartLabeler, opening folders
-on its desktop, the helper's key, choosing another projects folder, and making accounts. After 5 wrong passwords
+on its desktop, the helper's key, choosing another projects folder, making accounts, and anything that uses a folder
+or file on the server by its path (browsing its folders, Teach from a dataset folder, Quick transfer and Transfer,
+Upload annotations from a folder, Import task, restoring a backup, saving a model to a chosen folder): the person at
+the server does those. To add a task from another computer, **Add a video…** and **Add an image folder…** open that computer's
+own files; they are uploaded into the project when you submit (the page shows how far it has got), and deleting
+the task deletes the uploaded copy. After 5 wrong passwords
 for a name (or from one computer) sign-in pauses for 10 minutes.
 
 ## Settings
@@ -188,7 +193,9 @@ On the project page, click **+ Create a new task** (or **Create multi tasks**).
 - **Subset**: Train, Test, Validation or any word (optional). Exporting the whole project puts each subset in
   its own folders; tasks without one go to `default`.
 - The project's labels are used.
-- **Select files**: **Add a video…** or **Add an image folder…** (or type a path and press Enter).
+- **Select files**: **Add a video…** or **Add an image folder…** (or type a path and press Enter). On a team server,
+  from another computer, these pick files on your own computer and upload them (only the pictures directly in the
+  folder are used).
 - **Advanced configuration**: **Frames** (In the video, JPEG files or Lossless WebP files; the project's choice by
   default) and **Image quality** (for JPEG files, 95 by default); **Frame step** (keep every Nth frame); **Start
   frame** and **Stop frame**; **Segment size** (frames per job; empty: one job for the task); **Sorting method**
@@ -344,15 +351,12 @@ step is one Ctrl+Z.
 
 ### Copy and paste a part
 
-Select a part and press **Ctrl+C**, go to another frame and press **Ctrl+V**: the part is put there in exactly the
-place it had when you copied it, with the same class (and, in segmentation projects, the same outline). Press
-Ctrl+V on as many frames as you like; each paste is one Ctrl+Z. On another frame of the same task it is the same
-part, as if you had placed it there yourself: if that part is already on the frame it moves to the copied place, it
-keeps the class it has now, and its propagated copies follow. Pasted on the same frame, in another task, or after
-the part was deleted from its task, it becomes a new part. The copy is kept in this browser tab for the project, so
-it also pastes in another job. After frames or tasks are deleted, or PartLabeler is restarted, an older copy always
-pastes as a new part: copy it again to move the same part. A frame of a different size than the one you copied
-from can't take it.
+As in CVAT: point at a part (or select it) and press **Ctrl+C**. On this frame or any other, press **Ctrl+V**: a
+see-through copy of the part, the same size and (in segmentation projects) the same outline, follows the mouse,
+centred on it. **Click** to place it there as a new part of the same class. **Ctrl+click** places it and keeps the
+copy on the mouse, to place another. **Esc** puts it away. Whatever hangs over the edge of the frame is cut off.
+Each placed part is one Ctrl+Z. The copy stays until you copy something else, also on other frames and in another
+job of the project (it is kept in this browser tab).
 
 Every drag adds a new part of the current class; to change an existing box, use its handles (below). Picking a class
 re-labels a part only when you selected it yourself (Ctrl+click, the Select tool, a click on the Parts tab, or a click
@@ -831,7 +835,7 @@ the projects. If a project with the same name exists, the restored one gets `_2`
 Tools: C click to outline · V select and adjust · B box (B again: drag / two clicks / four edge points) · O polygon ·
 P brush · , and . brush size. Outlines also: L ellipse · E eraser · Shift+P smart brush · Shift+E smart eraser.
 Click: new part · M: next larger outline · Shift/Alt+click: grow/shrink the selected part · Ctrl+click:
-select · Ctrl+C / Ctrl+V: copy the selected part / paste it in the same place on another frame · 1–9, 0, [ ]: class · Del: delete the selected part · Esc: deselect (or cancel a polygon) · Ctrl+Z: undo ·
+select · Ctrl+C: copy the part under the mouse · Ctrl+V: paste it, click to place (Ctrl+click: another, Esc: stop) · 1–9, 0, [ ]: class · Del: delete the selected part · Esc: deselect (or cancel a polygon) · Ctrl+Z: undo ·
 Polygon: Enter or double-click closes it, Backspace takes back a corner ·
 ← → (A / D): previous / next frame · Shift+→: next to check · K or Space: play / pause · Enter: confirm ·
 Shift+Delete: delete this frame for good (asks first) · T / Shift+T: track ahead /

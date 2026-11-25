@@ -16,6 +16,7 @@ import contextvars
 import io
 import json
 import os
+import re
 import shutil
 import string
 import subprocess
@@ -78,6 +79,7 @@ state: dict = {"home": Path("projects"), "sessions": {}, "clients": {}, "jobs": 
 UPDATE_CHECK_S = 6 * 3600                                    # ask GitHub at most this often
 COOKIE = "pl_session"
 USER: contextvars.ContextVar = contextvars.ContextVar("user", default=None)   # who is signed in, per request
+REMOTE: contextvars.ContextVar = contextvars.ContextVar("remote", default=False)   # the page is open on another computer
 
 
 # ---- accounts ---------------------------------------------------------------------------------
@@ -100,7 +102,8 @@ def themed(html: str) -> str:
     attrs = f' data-theme="{prefs["theme"]}" data-accent="{prefs["accent"]}"' + ("" if prefs["motion"] else ' data-motion="off"')
     data = json.dumps({"prefs": {k: v for k, v in prefs.items() if k != "projects"},
                        "user": accounts().profile(user) if user else None,
-                       "box_managed": box_managed()}).replace("<", "\\u003c")
+                       "box_managed": box_managed(),
+                       "remote": REMOTE.get()}).replace("<", "\\u003c")   # another computer: add files from it (uploads)
     return html.replace("%%THEME%%", attrs, 1).replace("%%PREFS%%", f"<script>window.PL = {data};</script>", 1)
 
 
@@ -227,7 +230,7 @@ def public(job: dict) -> dict:
 
 def classes_from(body: dict) -> list[str]:
     if body.get("classes_file"):
-        return read_classes(Path(body["classes_file"]))
+        return read_classes(server_path(body["classes_file"]))
     names = [c.strip() for c in str(body.get("classes", "")).replace(",", "\n").splitlines() if c.strip()]
     if not names:
         raise HTTPException(400, "Give the class names (one per line) or a classes.txt / data.yaml file")
@@ -298,12 +301,13 @@ async def signed_in(request, call_next):
             back = path + (f"?{request.url.query}" if request.url.query else "")
             return RedirectResponse(f"/login?next={quote(back)}", status_code=303)
         return JSONResponse({"detail": "Sign in first (open the start page)"}, status_code=401)
-    token, actor = USER.set(user), ACTOR.set(user)
+    token, actor, far = USER.set(user), ACTOR.set(user), REMOTE.set(_v1.remote(request))
     try:
         return await call_next(request)
     finally:
         USER.reset(token)
         ACTOR.reset(actor)
+        REMOTE.reset(far)
 
 
 def _https(request: Request) -> bool:
@@ -604,8 +608,13 @@ def create_tasks(name: str, body: dict = Body(...)) -> dict:
     file unless a name template with {{file_name}} / {{index}} is given)."""
     project_dir(name)
     # a source is a plain path, or {"path", "camera_id", "crop"} (the Recordings tab, cropping to a camera's ROI).
-    srcs = [{"path": str(s).strip().strip('"')} if isinstance(s, str) else
-            {"path": str(s.get("path", "")).strip().strip('"'), "camera_id": s.get("camera_id"), "crop": s.get("crop")}
+    # {"upload": id}: files a teammate uploaded from their own computer (new_upload / upload_part); {"recording": id}:
+    # a recording of the Recordings tab; else a path on this computer (server_path: not from another computer).
+    srcs = [{"path": str(server_path(s))} if isinstance(s, str) else
+            {"path": str(_uploaded(name, s["upload"]))} if s.get("upload") else
+            {"path": str(server_path(s["path"]) if s.get("path") and not REMOTE.get() else _recording(s["recording"])),
+             "camera_id": s.get("camera_id"), "crop": s.get("crop")} if s.get("recording") else
+            {"path": str(server_path(s.get("path", ""))), "camera_id": s.get("camera_id"), "crop": s.get("crop")}
             for s in (body.get("sources") or []) if s]
     srcs = [s for s in srcs if s["path"]]
     paths = [s["path"] for s in srcs]
@@ -641,6 +650,119 @@ def create_tasks(name: str, body: dict = Body(...)) -> dict:
         note("success", f"Created {len(res['tasks'])} task{'s' if len(res['tasks']) != 1 else ''} in {name}", "", name, open_action(name))
 
     return {"job": start_job("create task", job, done, f"Could not create the task in {name}")}
+
+
+def server_path(text) -> Path:
+    """A path on this computer taken from a request: refused from another computer (a team server's teammate). They
+    add files by uploading them; the server's own folders and files stay out of their reach."""
+    if REMOTE.get():
+        raise HTTPException(403, "From another computer, add files from your own computer (Add a video… / Add an image "
+                                 "folder…): paths on the server are only for the person at the server")
+    text = str(text).strip().strip('"')
+    if not text:                                          # Path("") would mean the folder PartLabeler runs in
+        raise HTTPException(400, "Select a video or an image folder")
+    return Path(text)
+
+
+# ---- uploads: a teammate on another computer adds a video or an image folder from that computer --------------
+UPLOAD_PART = 16 * 2**20       # bytes per request: a proxy in front of a team server (Cloudflare: 100 MB) caps a request
+
+
+def _file_name(text: str) -> str:
+    """A name safe to use as one file or folder name here: no folders, no characters Windows refuses."""
+    last = str(text).replace("\\", "/").rsplit("/", 1)[-1]           # the same on every system (pages.js serverName)
+    base = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", last).strip(" .") or "upload"
+    stem, ext = Path(base).stem, Path(base).suffix[:12]
+    return base if len(base) <= 120 else stem[:60] + stem[-(60 - len(ext)):] + ext   # a frame number at the end stays
+
+
+def _upload_dir(name: str, uid: str) -> Path:
+    d = project_dir(name) / "uploads" / str(uid)
+    if not re.fullmatch(r"[0-9a-f]{32}", str(uid)) or not (d / "upload.json").is_file():
+        raise HTTPException(404, "No such upload: add the files again")
+    return d
+
+
+UPLOAD_KEEP_S = 24 * 3600     # an upload no task uses is deleted after this long (a page left, a failed upload)
+
+
+def _sweep_uploads(name: str) -> None:
+    """Delete the project's uploads that no task uses and that were last touched over a day ago."""
+    up = project_dir(name) / "uploads"
+    if not up.is_dir():
+        return
+    used = {Path(t["source"]).resolve() for t in project(name).sources}
+    for d in up.iterdir():
+        try:
+            stale = time.time() - max(f.stat().st_mtime for f in [d, *d.rglob("*")]) > UPLOAD_KEEP_S
+        except OSError:
+            continue
+        if stale and not any(u == d.resolve() or d.resolve() in u.parents for u in used):
+            shutil.rmtree(d, ignore_errors=True)
+
+
+def _recording(rid) -> Path:
+    from engine import recordings
+    try:
+        p = recordings.resolve(str(rid))
+    except RuntimeError as e:                             # a box's recordings service not answering just now
+        raise HTTPException(503, str(e))
+    if p is None:
+        raise HTTPException(400, f"No such recording: {rid}")
+    return p
+
+
+def _uploaded(name: str, uid: str) -> Path:
+    """What an upload holds, ready for a task: its video file, or its image folder."""
+    d = _upload_dir(name, uid)
+    meta = json.loads((d / "upload.json").read_text(encoding="utf-8"))
+    if meta["kind"] == "images":
+        return d / meta["name"]
+    video = next((f for f in d.iterdir() if f.suffix.lower() in VIDEO_EXTS), None)
+    if video is None:
+        raise HTTPException(400, "The upload has no video in it: add the video again")
+    return video
+
+
+@app.post("/api/projects/{name}/uploads")
+def new_upload(name: str, body: dict = Body(...)) -> dict:
+    """Start an upload (kind "video" or "images", `name`: the file's or folder's name on that computer). The page then
+    sends each file in pieces (upload_part) and makes the task from {"upload": id}. Kept in the project's uploads
+    folder while a task uses it (deleting the task deletes it)."""
+    kind = body.get("kind")
+    if kind not in ("video", "images"):
+        raise HTTPException(400, "Upload a video or an image folder")
+    _sweep_uploads(name)
+    uid, title = uuid.uuid4().hex, _file_name(body.get("name") or kind)
+    d = project_dir(name) / "uploads" / uid
+    (d / title if kind == "images" else d).mkdir(parents=True)
+    (d / "upload.json").write_text(json.dumps({"kind": kind, "name": title}), encoding="utf-8")
+    return {"id": uid, "part": UPLOAD_PART}
+
+
+@app.put("/api/projects/{name}/uploads/{uid}/{filename}")
+async def upload_part(name: str, uid: str, filename: str, request: Request, offset: int = 0) -> dict:
+    """One piece (at most UPLOAD_PART bytes) of one file of an upload, added at `offset`: the bytes of that file
+    received so far, so a piece sent twice or out of order is refused instead of corrupting the file."""
+    d = _upload_dir(name, uid)
+    meta = json.loads((d / "upload.json").read_text(encoding="utf-8"))
+    fn, video = _file_name(filename), meta["kind"] == "video"
+    if Path(fn).suffix.lower() not in (VIDEO_EXTS if video else IMAGE_EXTS):
+        raise HTTPException(400, f"{fn} is not a {'video' if video else 'picture'} PartLabeler can read")
+    if video and any(f.suffix.lower() in VIDEO_EXTS and f.name != fn for f in d.iterdir()):
+        raise HTTPException(400, "One video per upload")
+    target = d / fn if video else d / meta["name"] / fn
+    have = target.stat().st_size if target.exists() else 0
+    if offset != have:
+        raise HTTPException(409, f"This file has {have} bytes so far: send the piece from there")
+    piece = bytearray()
+    async for chunk in request.stream():
+        piece += chunk
+        if len(piece) > UPLOAD_PART:
+            raise HTTPException(413, f"Send at most {UPLOAD_PART} bytes at a time")
+    with open(target, "ab") as f:
+        f.write(piece)
+    return {"size": have + len(piece)}
 
 
 @app.get("/api/projects/{name}/tasks/{tid}")
@@ -692,7 +814,7 @@ def patch_job(name: str, jid: int, body: dict = Body(...)) -> dict:
 def upload_annotations(name: str, body: dict = Body(...)) -> dict:
     """CVAT's "Upload annotations" into a task or a job: a YOLO labels folder, Replace or Append."""
     project_dir(name)
-    folder = Path(str(body.get("labels", "")).strip().strip('"'))
+    folder = server_path(body.get("labels", ""))
     if not folder.is_dir():
         raise HTTPException(400, f"Not a folder: {folder}")
     p = project(name)
@@ -812,7 +934,7 @@ def backup_task(name: str, tid: int) -> dict:
 def import_tasks(name: str, body: dict = Body(...)) -> dict:
     """Add the task(s) of a backup zip to this project, with their progress (a task or a project backup)."""
     project_dir(name)
-    path = Path(str(body.get("path", "")).strip().strip('"'))
+    path = server_path(body.get("path", ""))
     if not path.is_file():
         raise HTTPException(400, f"Not a file: {path}")
 
@@ -834,7 +956,7 @@ def import_tasks(name: str, body: dict = Body(...)) -> dict:
 def restore(body: dict = Body(...)) -> dict:
     """CVAT's "Create from backup": a project backup zip becomes a new project."""
     from engine.project import restore_project
-    path = Path(str(body.get("path", "")).strip().strip('"'))
+    path = server_path(body.get("path", ""))
     if not path.is_file():
         raise HTTPException(400, f"Not a file: {path}")
 
@@ -905,6 +1027,9 @@ def thumb(name: str, of: str, key: int):
     return Response(data, media_type="image/jpeg", headers={"Cache-Control": "no-cache"})
 
 
+SERVER_PATH_MESSAGES = {"add_task", "label_tasks"}      # annotator messages that name a path on the server
+
+
 @app.websocket("/ws/{name}")
 async def ws(sock: WebSocket, name: str):
     await sock.accept()
@@ -915,6 +1040,7 @@ async def ws(sock: WebSocket, name: str):
         return
     USER.set(user)                                            # this connection's task only
     ACTOR.set(user)                                           # whose undo and jobs (engine/api.py)
+    REMOTE.set(_v1.remote(sock))                              # no HTTP middleware runs for a websocket
     try:
         sess = await asyncio.to_thread(session, name)
     except HTTPException as e:
@@ -933,6 +1059,10 @@ async def ws(sock: WebSocket, name: str):
     try:
         while True:
             msg = await sock.receive_json()
+            if REMOTE.get() and msg.get("type") in SERVER_PATH_MESSAGES:
+                await sock.send_json({"type": "toast", "text": "From another computer, add files from your own "
+                                      "computer (Create a new task): paths on the server are only for the person there"})
+                continue
             await asyncio.to_thread(sess.handle, msg)
     except WebSocketDisconnect:
         pass
@@ -1066,6 +1196,8 @@ def create_project(body: dict = Body(...)) -> dict:
         classes = [] if body.get("task") == "classify" and not (body.get("classes") or "").strip() and not body.get("classes_file") \
             else classes_from(body)                          # image classes may be named later, while sorting
     video, images = body.get("video") or None, body.get("images") or None
+    if video or images:
+        server_path(video or images)
     if not (video or images):
         task = body.get("task") or "detect"
         if task not in ("detect", "segment", "classify"):
@@ -1219,7 +1351,7 @@ def teach(body: dict = Body(...)) -> dict:
             raise HTTPException(400, f"No task {bad[0] if bad else '(none given)'} in {body['project']}")
         dataset = runs_dir() / name / "source"
     else:
-        dataset = Path(body.get("dataset", ""))
+        dataset = server_path(body.get("dataset", ""))
         if not dataset.is_dir():
             raise HTTPException(400, "Pick the labeled dataset folder (with images/ and labels/)")
     kw = {k: body[k] for k in ("size", "epochs", "resolution") if body.get(k)}
@@ -1271,7 +1403,7 @@ def transfer(body: dict = Body(...)) -> dict:
     run = runs_dir() / safe_name(body.get("run", ""))
     if not (run / "settings.json").exists() or "checkpoint" not in json.loads((run / "settings.json").read_text(encoding="utf-8")):
         raise HTTPException(400, "Pick a finished Teach run")
-    sources = [s for s in body.get("sources", []) if s]
+    sources = [str(server_path(s)) for s in body.get("sources", []) if s]
     if not sources:
         raise HTTPException(400, "Add at least one video or image folder to label")
     every = int(body["every"]) if body.get("every") else None
@@ -1297,7 +1429,7 @@ def export_model(body: dict = Body(...)) -> dict:
     run = runs_dir() / safe_name(body.get("run", ""))
     if not (run / "settings.json").exists() or "checkpoint" not in json.loads((run / "settings.json").read_text(encoding="utf-8")):
         raise HTTPException(400, "Pick a finished Teach run")
-    out = Path(body["out"]) if body.get("out") else None
+    out = server_path(body["out"]) if body.get("out") else None
     batch = int(body.get("batch") or 1)
 
     def job(progress, should_stop):
@@ -1368,10 +1500,10 @@ def models_for_deploy() -> list:
 def quick(body: dict = Body(...)) -> dict:
     """Quick transfer, no training: match a labeled dataset's examples in other videos or folders."""
     from engine.quick import quick_transfer
-    dataset = Path(body.get("dataset", ""))
+    dataset = server_path(body.get("dataset", ""))
     if not (dataset / "images").is_dir():
         raise HTTPException(400, "Pick the labeled dataset folder (with images/ and labels/)")
-    sources = [s for s in body.get("sources", []) if s]
+    sources = [str(server_path(s)) for s in body.get("sources", []) if s]
     if not sources:
         raise HTTPException(400, "Add at least one video or image folder to label")
     name = safe_name(body.get("name") or f"quick_{dataset.name}")
@@ -1395,9 +1527,11 @@ def quick(body: dict = Body(...)) -> dict:
 def review(body: dict = Body(...)) -> dict:
     """Open transferred labels for checking: a project over the source with the labels imported."""
     out = Path(body.get("output", ""))
+    if REMOTE.get() and not out.resolve().is_relative_to(runs_dir().resolve()):   # another computer: a run's own output
+        raise HTTPException(403, "Pick a transfer result from the list")
     settings = json.loads((out.parent.parent / "settings.json").read_text(encoding="utf-8"))
     summ = json.loads((out / "summary.json").read_text(encoding="utf-8")) if (out / "summary.json").exists() else {}
-    source = summ.get("source") or body.get("source")
+    source = summ.get("source") or (None if REMOTE.get() else body.get("source"))
     if not source:
         raise HTTPException(400, "This output does not record its source video; create the project by hand")
     name = safe_name(body.get("name") or f"review_{out.name}")

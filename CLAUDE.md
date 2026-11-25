@@ -113,6 +113,12 @@
 - Team server (`"team": true` + `"host"` in ~/.partlabeler/app.json, or `app --team`): other machines get the whole
   app signed in; `ui/v1.py` TEAM_LOCAL_ONLY stays local (signup, open-folder, update, assistant key, projects folder);
   login attempt limit; engine/api.py `ACTOR` (set by the host) makes undo per person and lets a teammate's job wait.
+  The server's own files are never reachable from another computer: `/api/browse` and `/api/classes` are in
+  TEAM_LOCAL_ONLY, and every request field that names a path on the server goes through `host_fastapi.server_path()`
+  (refused when `REMOTE`, set per request by `signed_in` and by the annotator websocket itself; mcp.call refuses
+  `v1.LOCAL_ONLY_TOOLS` the same way). Teammates add tasks by uploading (`/api/projects/{name}/uploads`, 16 MB pieces
+  for Cloudflare's 100 MB request cap, kept in `<project>/uploads/<id>`, swept after a day unused, deleted with the
+  last task that reads them). Any new route or websocket message taking a path: use `server_path()`.
 - Annotate by text (`engine/textlabel.py`, `ConceptFinder.detect_texts`: one image encoding for all phrases): scopes
   frame / rest / task / project, finds stored as `imported` parts to check, never doubled, one undo step.
 - Cycle recordings (`engine/recordings.py`, "Recordings" tab): browse another local system's cameras/videos and add

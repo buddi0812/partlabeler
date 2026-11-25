@@ -555,7 +555,7 @@ export function page(root, args) {
         const { job } = await api(`/api/projects/${enc(name)}/tasks`, {
           sources: chosen.map((r) => {
             const roi = cropWanted && camRois[`${r.station_id}/${r.camera_id}`];
-            return roi ? { path: r.path, camera_id: r.camera_id, crop: roi } : r.path;
+            return roi ? { recording: r.id, path: r.path, camera_id: r.camera_id, crop: roi } : { recording: r.id, path: r.path };
           }),
           every: everyV, subset: main.querySelector(".rc-subset").value.trim(),
           start: startS ? Math.round(startS * fps) : undefined, stop: stopS ? Math.round(stopS * fps) : undefined,
@@ -570,7 +570,10 @@ export function page(root, args) {
   async function createTaskPage(name) {
     const d = await api(`/api/projects/${enc(name)}`);
     const multi = new URLSearchParams(location.search).has("multi");
-    let files = [];
+    // On another computer (a team server): pick files on THAT computer and upload them; the server's own folders
+    // stay out of sight. On the server itself: the server lists its folders (a path is used where it is).
+    const remote = !!window.PL?.remote;
+    let files = [];                                   // paths (on the server itself), or {kind, name, files, bytes} to upload
     main.innerHTML = `<div class="pg-bar"><a class="pg-back" href="/projects/${enc(name)}">‹ Back to project</a></div>
       <div class="pg-title"><h1>${multi ? "Create multi tasks" : "Create a new task"}</h1></div>
       <form class="pg-form h-form" autocomplete="off"><section class="h-panel"><h2>Basic configuration</h2>
@@ -584,8 +587,10 @@ export function page(root, args) {
           <div class="pg-labels">${d.labels.map((l, i) => `<span class="pg-lab"><i style="background:${esc(l.color || colorOf(i))}"></i>${esc(l.name)}</span>`).join("") || `<span class="h-sub">none yet</span>`}</div></div>
         <div class="h-field"><span>Select files *</span><div class="pg-files"></div>
           <div class="h-row"><button type="button" data-f="video">Add a video…</button><button type="button" data-f="folder">Add an image folder…</button>
-            <input type="text" class="pg-path" placeholder="or type a path and press Enter" aria-label="Path of a video or image folder"></div>
-          <small>${multi ? "Add several: each becomes a task." : "One video or one image folder."}</small></div></section>
+            ${remote ? `<input type="file" class="pg-upv" accept="video/*,.mp4,.avi,.mov,.mkv,.webm,.m4v,.mpg,.mpeg,.wmv" hidden${multi ? " multiple" : ""}>
+            <input type="file" class="pg-upf" webkitdirectory multiple hidden>`
+              : `<input type="text" class="pg-path" placeholder="or type a path and press Enter" aria-label="Path of a video or image folder">`}</div>
+          <small>${multi ? "Add several: each becomes a task." : "One video or one image folder."}${remote ? " They are uploaded from this computer when you submit." : ""}</small></div></section>
         <details class="h-panel h-more"><summary>Advanced configuration</summary><div class="pg-two" style="margin-top:14px">
           <label class="h-field"><span>Frames</span><select name="frames">${[["video", "In the video (no copies)"], ["jpg", "JPEG files"], ["webp", "Lossless WebP files"]]
             .map(([v, t]) => `<option value="${v}"${v === (d.frame_format || "video") ? " selected" : ""}>${t}</option>`).join("")}</select>
@@ -601,7 +606,8 @@ export function page(root, args) {
         <div class="pg-job"></div></form>`;
     const f = main.querySelector("form");
     const renderFiles = () => {
-      main.querySelector(".pg-files").innerHTML = files.map((p, i) => `<div class="h-src"><span title="${esc(p)}">${esc(p)}</span><button type="button" data-rm="${i}" aria-label="Remove">×</button></div>`).join("")
+      const label = (p) => (typeof p === "string" ? p : `${p.name} · ${p.kind === "images" ? `${p.files.length} pictures, ` : ""}${size(p.bytes)}`);
+      main.querySelector(".pg-files").innerHTML = files.map((p, i) => `<div class="h-src"><span title="${esc(label(p))}">${esc(label(p))}</span><button type="button" data-rm="${i}" aria-label="Remove">×</button></div>`).join("")
         || `<span class="h-sub">Nothing selected yet.</span>`;
       f.querySelector('[value="open"]').textContent = files.length > 1 ? `Submit ${files.length} tasks & Open` : "Submit & Open";
     };
@@ -610,16 +616,76 @@ export function page(root, args) {
     main.addEventListener("click", async (e) => {
       const b = e.target.closest("[data-f],[data-rm]"); if (!b) return;
       if (b.dataset.rm != null) { files.splice(+b.dataset.rm, 1); renderFiles(); return; }
+      if (remote) { main.querySelector(b.dataset.f === "video" ? ".pg-upv" : ".pg-upf").click(); return; }
       add(await pick(b.dataset.f === "video" ? { kind: "video", folder: false } : { kind: "images", folder: true }));
     });
-    main.querySelector(".pg-path").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); add(e.target.value.trim()); e.target.value = ""; } });
+    if (remote) {
+      const IMAGES = /\.(jpe?g|png|bmp|tiff?|webp)$/i, VIDEOS = /\.(mp4|avi|mov|mkv|webm|m4v|mpe?g|wmv)$/i;
+      main.querySelector(".pg-upv").addEventListener("change", (e) => {
+        const bad = [...e.target.files].filter((v) => !VIDEOS.test(v.name)).map((v) => v.name);
+        for (const v of e.target.files) if (VIDEOS.test(v.name)) add({ kind: "video", name: v.name, files: [v], bytes: v.size });
+        main.querySelector(".pg-msg").innerHTML = bad.length ? `<span class="h-err">Not a video PartLabeler can read: ${esc(bad.join(", "))}</span>` : "";
+        e.target.value = "";
+      });
+      main.querySelector(".pg-upf").addEventListener("change", (e) => {       // the pictures directly in the folder
+        const all = [...e.target.files], top = all[0]?.webkitRelativePath.split("/")[0] || "pictures";
+        const rel = (x) => x.webkitRelativePath || x.name;                // no folder paths (some phones): the files picked
+        const seen = new Set(), pics = all.filter((x) => rel(x).split("/").length <= 2 && IMAGES.test(x.name))
+          .filter((x) => { const k = serverName(x.name).toLowerCase(); return !seen.has(k) && seen.add(k); });   // one file there
+        e.target.value = "";
+        main.querySelector(".pg-msg").innerHTML = pics.length ? "" : `<span class="h-err">No pictures ${all.length ? `directly in ${esc(top)}` : "in that folder"}</span>`;
+        if (!pics.length) return;
+        add({ kind: "images", name: top, files: pics, bytes: pics.reduce((n, x) => n + x.size, 0) });
+      });
+    } else {
+      main.querySelector(".pg-path").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); add(e.target.value.trim()); e.target.value = ""; } });
+    }
+    // The name a file gets on the server (ui/host_fastapi.py _file_name): two files with one such name would clash.
+    function serverName(n) {
+      const last = n.replace(/\\/g, "/").split("/").pop();
+      const base = last.replace(/[<>:"/\\|?*\x00-\x1f]/g, "_").replace(/^[ .]+|[ .]+$/g, "") || "upload";
+      if (base.length <= 120) return base;
+      const dot = base.lastIndexOf("."), ext = dot > 0 ? base.slice(dot).slice(0, 12) : "", stem = dot > 0 ? base.slice(0, dot) : base;
+      return stem.slice(0, 60) + stem.slice(-(60 - ext.length)) + ext;
+    }
+    // Upload one picked video or folder in pieces the server takes (a proxy caps one request); its upload id.
+    async function upload(entry, onBytes) {
+      const { id, part } = await api(`/api/projects/${enc(name)}/uploads`, { kind: entry.kind, name: entry.name });
+      let failed = null;                                   // the first failure stops every worker
+      const one = async (file) => {
+        for (let off = 0; !failed && (off === 0 || off < file.size); off += part) {
+          const r = await fetch(`/api/projects/${enc(name)}/uploads/${id}/${encodeURIComponent(file.name)}?offset=${off}`,
+                                { method: "PUT", body: file.slice(off, off + part) });
+          if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || `Upload stopped (${r.status})`);
+          onBytes(Math.min(part, file.size - off));
+          if (!file.size) break;
+        }
+      };
+      const queue = [...entry.files];
+      await Promise.all(Array.from({ length: Math.min(4, queue.length) }, async () => {
+        while (queue.length && !failed) { try { await one(queue.shift()); } catch (err) { failed ||= err; } }
+      }));
+      if (failed) throw failed;
+      return id;
+    }
     f.addEventListener("submit", async (e) => {
       e.preventDefault();
       const open = e.submitter?.value !== "continue", msg = main.querySelector(".pg-msg");
       if (!files.length) { msg.innerHTML = `<span class="h-err">Select a video or an image folder</span>`; return; }
-      f.querySelectorAll("button[type=submit]").forEach((x) => (x.disabled = true));
+      const lock = (on) => main.querySelectorAll("[data-f],[data-rm],button[type=submit]").forEach((x) => (x.disabled = on));
+      lock(true);                                            // the list stays as it is while it uploads
       try {
-        const { job } = await api(`/api/projects/${enc(name)}/tasks`, { sources: files, name: f.name.value.trim(), subset: f.subset.value.trim(),
+        let sources = files;
+        if (remote) {                                         // upload first, then make the tasks from the uploads
+          const total = files.reduce((n, x) => n + x.bytes, 0) || 1;
+          let sent = 0;
+          const shown = () => { msg.textContent = `Uploading… ${size(sent)} of ${size(total)} (${Math.floor(100 * sent / total)} %)`; };
+          shown();
+          sources = [];
+          for (const entry of files) sources.push({ upload: await upload(entry, (n) => { sent += n; shown(); }) });
+          msg.textContent = "";
+        }
+        const { job } = await api(`/api/projects/${enc(name)}/tasks`, { sources, name: f.name.value.trim(), subset: f.subset.value.trim(),
           quality: f.quality.value, frames: f.frames.value, every: f.every.value, start: f.start.value, stop: f.stop.value,
           segment_size: f.segment.value, sorting: f.sorting.value });
         followJob(job, main.querySelector(".pg-job"), {
@@ -628,8 +694,8 @@ export function page(root, args) {
             else { files = []; renderFiles(); msg.innerHTML = `Created ${res.tasks.length} task${res.tasks.length === 1 ? "" : "s"}. <a href="/projects/${enc(name)}">Back to the project</a>`; }
             pollNotes();
           },
-          onEnd: () => f.querySelectorAll("button[type=submit]").forEach((x) => (x.disabled = false)) });
-      } catch (err) { msg.innerHTML = `<span class="h-err">${esc(err.message)}</span>`; f.querySelectorAll("button[type=submit]").forEach((x) => (x.disabled = false)); }
+          onEnd: () => lock(false) });
+      } catch (err) { msg.innerHTML = `<span class="h-err">${esc(err.message)}</span>`; lock(false); }
     });
   }
 
@@ -647,7 +713,7 @@ export function page(root, args) {
         ["Stored as", t.format === "video" ? `read from the video (${mb(i.stored)}, no image files)` : t.format === "webp" ? `lossless WebP, ${mb(i.stored)}` : `JPEG quality ${t.quality}, ${mb(i.stored)}`]]
         : [["Source", t.source], ["Resolution", i.width ? `${i.width} × ${i.height}${i.mixed_sizes ? " (mixed sizes)" : ""}` : "?"], ["Images", t.frames],
            ["Size", mb(i.size) || "?"], ["Sorting method", t.sorting || "lexicographical"]])
-        .filter(([label]) => label !== "Source" || !window.PL?.box_managed);  // the local file path is nobody's business but ours
+        .filter(([label]) => label !== "Source" || !(window.PL?.box_managed || window.PL?.remote));  // the server's own file path: not for a box operator or another computer
       main.innerHTML = `<div class="pg-bar"><a class="pg-back" href="/projects/${enc(name)}">‹ Back to project</a><span class="pg-sp"></span>
           <details class="h-menu" style="position:relative;top:auto;right:auto"><summary style="width:auto;padding:0 12px;border:1px solid var(--line);background:var(--paper)">Actions ▾</summary><div class="h-menu-list">
             <button type="button" data-t-upload="${t.id}" data-p="${esc(name)}">Upload annotations</button>

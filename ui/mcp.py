@@ -69,6 +69,9 @@ def call(name: str, args: dict):
     if name not in TOOLS:
         raise KeyError(f"no tool {name!r}")
     fn, _, schema = TOOLS[name]
+    from ui.v1 import LOCAL_ONLY_TOOLS                      # v1 imports this module: import here
+    if name in LOCAL_ONLY_TOOLS and H is not None and H.REMOTE.get():
+        raise HTTPException(403, f"{name} reads paths on the server: from another computer, upload the files instead")
     missing = [k for k in schema["required"] if args.get(k) in (None, "")]
     if missing:
         raise ValueError(f"missing {', '.join(missing)}")
@@ -618,7 +621,7 @@ def deploy_link(args):
       tasks=A("Task ids to label", {"type": "integer"}), wait_s=WAIT)
 def label_tasks(args):
     sess = _sess(args)
-    run = H.runs_dir() / str(args["run"])
+    run = H.runs_dir() / H.safe_name(str(args["run"]))   # a run by its name: never another folder
     said = _run(sess, {"type": "label_tasks", "run": str(run), "tasks": [int(t) for t in args["tasks"]]},
                 args.get("wait_s", 120))
     return {"finished": not sess.running, "messages": said}
