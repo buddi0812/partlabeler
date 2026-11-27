@@ -997,7 +997,8 @@ class Session:
     def on_propagate(self, msg):
         """CVAT's Propagate (Ctrl+B): copy parts of this frame (objs; none given = every part on it) to the next `count`
         frames of its task (-1: to its end), as the same parts. Moving a copy later makes it a keyframe and the copies
-        in between follow (Project.follow). Frames where a person placed that part, and confirmed frames, are kept."""
+        in between follow (Project.follow). Frames where a person placed that part are kept, and so are confirmed
+        frames unless `confirmed` is set (they get the copies and stay confirmed)."""
         item = msg["item"]
         objs = [int(o) for o in msg.get("objs") or []] or [b["obj"] for b in self.p.boxes(item) if b["source"] != "suggested"]
         if not objs:
@@ -1007,7 +1008,7 @@ class Session:
         if span is None:
             return
         self._remember(list(span), "propagate")
-        changed = sorted({k for o in objs for k in self.p.propagate(o, item, span)})
+        changed = sorted({k for o in objs for k in self.p.propagate(o, item, span, confirmed=bool(msg.get("confirmed")))})
         n = len(objs)
         self.notify("info", f"Propagated {n} part{'s' if n != 1 else ''} to {len(changed)} frame{'s' if len(changed) != 1 else ''}",
                     "Move it on a later frame and the frames in between follow. Ctrl+Z takes it back.", self._goto(item))

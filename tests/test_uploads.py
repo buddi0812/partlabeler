@@ -227,3 +227,28 @@ def test_the_annotator_connection_of_another_computer_gets_no_server_paths(tmp_p
                     seen.append(sock.receive_json())
             assert str(tmp_path) not in json.dumps([m for m in seen if m.get("type") in ("notify", "notifications")])
             assert far.get("/api/me").json()["home"] == ""
+
+
+def test_a_teammate_on_another_computer_keeps_getting_updates_after_propagate(tmp_path, monkeypatch, video):
+    """seen_from_afar once took the "items" (frame numbers) of item_changed for notifications and crashed the page's
+    update loop: after Propagate a remote teammate's page heard nothing until a reload."""
+    assert host.seen_from_afar({"type": "item_changed", "items": [1, 2]}) == {"type": "item_changed", "items": [1, 2]}
+    with app_client(tmp_path) as here:
+        here.post("/api/projects", json={"name": "line", "labels": [{"name": "bolt"}]})
+        assert wait(here, here.post("/api/projects/line/tasks", json={"sources": [str(video)], "every": 1}).json()["job"])["error"] is None
+        monkeypatch.setitem(host.state, "team", True)
+        with TestClient(host.app, client=FAR) as far:
+            far.post("/api/auth/login", json=TEST_LOGIN)
+            with far.websocket_connect("/ws/line") as sock:
+                def until(kind, **match):
+                    while True:
+                        m = sock.receive_json()
+                        if m.get("type") == kind and all(m.get(k) == v for k, v in match.items()):
+                            return m
+                sock.send_json({"type": "ready", "item": 0})
+                sock.send_json({"type": "box", "item": 0, "cls": 0, "box": [5, 5, 20, 20]})
+                until("item", item=0)
+                sock.send_json({"type": "propagate", "item": 0, "count": 5})
+                assert until("item_changed")["items"] == [1, 2, 3, 4, 5]
+                sock.send_json({"type": "goto", "item": 3})                          # the page still hears back
+                assert len(until("item", item=3)["boxes"]) == 1

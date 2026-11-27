@@ -154,11 +154,11 @@ def seen_from_afar(m: dict) -> dict:
     folder" (a folder on the server's own disk). Every way notifications reach a page goes through here."""
     def one(n):
         return scrub(dict(n, action=None) if (n.get("action") or {}).get("type") == "folder" else n)
-    if m.get("type") == "notify" and m.get("item"):
+    if m.get("type") == "notify" and isinstance(m.get("item"), dict):
         return {**m, "item": one(m["item"])}
-    if m.get("type") == "notifications" or "items" in m:
-        return {**m, "items": [one(n) for n in m.get("items") or []]}
-    return m
+    if m.get("type") == "notifications" or (m.get("type") is None and "unread" in m):   # REST snapshot: items + unread
+        return {**m, "items": [one(n) for n in m.get("items") or [] if isinstance(n, dict)]}
+    return m                                              # anything else (frames changed, status...) as it is
 
 
 def note(level: str, title: str, detail: str = "", project: str | None = None, action: dict | None = None) -> dict:
@@ -1085,7 +1085,12 @@ async def ws(sock: WebSocket, name: str):
     async def pump():
         while True:
             m = await q.get()
-            await sock.send_json(seen_from_afar(m) if far else m)
+            try:
+                m = seen_from_afar(m) if far else m
+            except Exception:                             # never let one message stop this page's updates
+                traceback.print_exc()
+                continue
+            await sock.send_json(m)
 
     sender = asyncio.create_task(pump())
     try:

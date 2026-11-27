@@ -998,7 +998,8 @@ function render({ model, el }) {
             <span class="pl-prop-l">Propagate</span>
             <button type="button" data-a="propagate" title="Copy the selected part (or every part on this frame) to the next frames, as many as Track uses (Ctrl+B). Move it on a later frame and the frames in between follow">Next <span class="pl-n-echo">20</span></button>
             <button type="button" data-a="propagateAll" title="Copy it to the end of the task (Ctrl+Shift+B)">To the end</button>
-            <button type="button" data-a="partEnds" title="The selected part leaves the picture after this frame: its copies on the later frames go">Ends here</button></span>
+            <button type="button" data-a="partEnds" title="The selected part leaves the picture after this frame: its copies on the later frames go">Ends here</button>
+            <label class="pl-chk" title="Also put the copies on frames you already confirmed (they stay confirmed). Parts you placed yourself are never replaced"><input type="checkbox" class="pl-pconf" name="propagate-confirmed"> Also confirmed frames</label></span>
           <label class="pl-brush" hidden>Size <input type="range" class="pl-bsize" min="1" max="120" value="${PREFS.brush || 12}" name="brush-size" aria-label="Brush size in pixels"><span class="pl-bsize-v">12 px</span></label>
           <span class="pl-howto"></span>
           <span class="pl-sp"></span>
@@ -1741,7 +1742,9 @@ function render({ model, el }) {
   const video = () => view().kind === "video";
   const track = (count, direction) => { if (video()) send({ type: "track", item: S.item, count, direction }); };
   // CVAT's Propagate: the selected part (or every part on this frame) copied ahead; moving a copy later is a keyframe
-  const propagate = (count) => { if (video()) send({ type: "propagate", item: S.item, count, objs: S.sel != null ? [S.sel] : undefined }); };
+  const propagate = (count) => {
+    if (video()) send({ type: "propagate", item: S.item, count, objs: S.sel != null ? [S.sel] : undefined, confirmed: $(".pl-pconf")?.checked || undefined });
+  };
   const actions = {
     prev: () => goto(S.target - 1), next: () => goto(S.target + 1), nextTodo, play: () => togglePlay(),
     track: () => track(trackN(), 1), trackAll: () => track(-1, 1),
@@ -2665,7 +2668,7 @@ function render({ model, el }) {
   // keep keyboard shortcuts working after clicking buttons, the list or the timeline
   document.addEventListener("mousedown", (e) => { S.canvasDown = !!e.target.closest?.(".pl-stage"); }, true);  // Ctrl+C: part over stray text
   el.addEventListener("mousedown", (e) => {                          // keys keep working after a click (not where one types)
-    if (!e.target.matches("input,select,option,textarea") && !e.target.closest(".pl-where")) setTimeout(() => el.focus(), 0);
+    if (!e.target.matches('input:not([type="checkbox"]):not([type="radio"]),select,option,textarea') && !e.target.closest(".pl-where")) setTimeout(() => el.focus(), 0);
   });
   new ResizeObserver(drawStrip).observe(strip);
   renderSide();

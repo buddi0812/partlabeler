@@ -346,8 +346,9 @@ In a video, a part placed by hand can follow it through the frames without the o
    last keyframe stay where you left it. Outlines keep the earlier keyframe's shape, fitted to the new box.
 3. Where the part leaves the picture, select it and press **Ends here**: its copies on the later frames go.
 
-Only the copies ever move: boxes you placed yourself, tracked parts and confirmed frames are never changed. Each
-step is one Ctrl+Z.
+Only the copies ever move: boxes you placed yourself, tracked parts and confirmed frames are never changed. To put
+the copies on frames you already confirmed too, tick **Also confirmed frames** next to the Propagate buttons before
+propagating (those frames stay confirmed; a part you placed yourself on them is still kept). Each step is one Ctrl+Z.
 
 ### Copy and paste a part
 

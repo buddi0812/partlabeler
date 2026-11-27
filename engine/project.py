@@ -1473,19 +1473,26 @@ class Project:
     def _row(self, item: int, obj: int) -> dict | None:
         return next((b for b in self.boxes(item) if b["obj"] == obj), None)
 
-    def propagate(self, obj: int, start: int, items) -> list[int]:
+    def propagate(self, obj: int, start: int, items, confirmed: bool = False) -> list[int]:
         """Copy part `obj` of frame `start` to each of `items` (the same part: id and class); returns the frames
-        changed. A frame where a person placed that part, or a confirmed frame, is left alone."""
-        src = self._row(start, obj)
-        if src is None:
+        changed. A frame where a person placed that part is left alone, and so is a confirmed frame unless
+        `confirmed` (it stays confirmed). One write for all frames: a long task takes a moment, not minutes."""
+        row = self.db.execute("SELECT cls, x1, y1, x2, y2, rle FROM boxes WHERE item=? AND obj=?", (start, obj)).fetchone()
+        if row is None:
             return []
-        mask, changed = self.mask(start, obj), []
-        for k in items:
-            cur = self._row(k, obj)
-            if self.is_reviewed(k) or (cur and cur["source"] == "manual"):
-                continue
-            self.put(k, obj, src["cls"], src["box"], "propagated", mask=mask)
-            changed.append(k)
+        cls, box, rle = row[0], [float(v) for v in row[1:5]], row[5]     # the stored outline as it is: no re-encoding
+        items = list(items)
+        if not items:
+            return []
+        lo, hi = min(items), max(items)
+        manual = {r[0] for r in self.db.execute("SELECT item FROM boxes WHERE obj=? AND source='manual' AND item BETWEEN ? AND ?",
+                                                (obj, lo, hi))}
+        done = set() if confirmed else {r[0] for r in self.db.execute("SELECT item FROM reviewed WHERE item BETWEEN ? AND ?", (lo, hi))}
+        changed = [k for k in items if k not in manual and k not in done]
+        with self.db:
+            self.db.executemany("INSERT OR REPLACE INTO boxes VALUES (?,?,?,?,?,?,?,?,?,?)",
+                                [(k, obj, cls, *box, "propagated", None, rle) for k in changed])
+            self._touch(changed)
         return changed
 
     def follow(self, obj: int, items) -> list[int]:
@@ -1495,9 +1502,11 @@ class Project:
         scope = set(items)
         rows = {k: r for k in self.items_with(obj) if k in scope and (r := self._row(k, obj))}
         keys = sorted(k for k, r in rows.items() if r["source"] == "manual")
-        changed = []
+        lo, hi = (min(scope), max(scope)) if scope else (0, -1)
+        done = {r[0] for r in self.db.execute("SELECT item FROM reviewed WHERE item BETWEEN ? AND ?", (lo, hi))}
+        keymask, fitted, out = {}, {}, []                 # each keyframe's outline decoded once; one encoding per box
         for k, r in sorted(rows.items()):
-            if r["source"] != "propagated" or self.is_reviewed(k):
+            if r["source"] != "propagated" or k in done:
                 continue
             prev = max((x for x in keys if x < k), default=None)
             if prev is None:
@@ -1509,10 +1518,19 @@ class Project:
             box = [p + (q - p) * t for p, q in zip(a, b)]
             if all(abs(p - q) < 0.01 for p, q in zip(box, r["box"])):
                 continue
-            mask = self.mask(prev, obj)
-            self.put(k, obj, r["cls"], box, "propagated", mask=None if mask is None else _fit_mask(mask, a, box))
-            changed.append(k)
-        return changed
+            if prev not in keymask:
+                keymask[prev] = self.mask(prev, obj)
+            rle, at = None, (round(box[0]), round(box[1]), round(box[2] - box[0]), round(box[3] - box[1]))   # _fit_mask's pixels
+            if keymask[prev] is not None:
+                if (prev, at) not in fitted:              # after the last keyframe every copy has the same box
+                    m = _fit_mask(keymask[prev], a, box)
+                    fitted[(prev, at)] = (M.encode(m), M.box_of(m) or box)
+                rle, box = fitted[(prev, at)]
+            out.append((k, obj, r["cls"], *map(float, box), "propagated", None, rle))
+        with self.db:                                     # one write for every frame
+            self.db.executemany("INSERT OR REPLACE INTO boxes VALUES (?,?,?,?,?,?,?,?,?,?)", out)
+            self._touch([row[0] for row in out])
+        return [row[0] for row in out]
 
     def items_with(self, obj: int) -> list[int]:
         return [r[0] for r in self.db.execute("SELECT item FROM boxes WHERE obj=? ORDER BY item", (obj,))]
