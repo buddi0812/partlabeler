@@ -2593,7 +2593,15 @@ function render({ model, el }) {
       const at = m.removed ? Math.max(0, Math.min(S.project.count - m.removed.length - 1, S.target - m.removed.filter((r) => r < S.target).length)) : S.target;
       if (!web) { S.target = at; model.send({ type: "ready", item: at }); }
       else if (!m.removed) location.reload();
-      else location.replace(`${model.homeUrl}p/${encodeURIComponent(S.project.name)}?item=${at}`);
+      else {
+        const t = view().task, mine = m.removed.filter((r) => r >= t.start && r < t.end), kind = t.kind === "video" ? "frame" : "image";
+        if (mine.length) try {                                  // said after the reload: the next frame looks the same
+          const n = mine[0] - t.start + 1, left = t.end - t.start - mine.length, many = mine.length > 1;
+          sessionStorage.setItem("pl-deleted", JSON.stringify({ title: many ? `${mine.length} ${kind}s deleted for good` : `${kind[0].toUpperCase() + kind.slice(1)} ${n} deleted for good`,
+            detail: `The ${kind}s after it moved up one place${many ? "" : `: ${kind} ${n} is the next one now`}. ${left} ${kind}${left === 1 ? "" : "s"} left in this task.` }));
+        } catch {}
+        location.replace(`${model.homeUrl}p/${encodeURIComponent(S.project.name)}?item=${at}`);
+      }
     }
     else if (m.type === "grid" && S.grid?.of === m.of) {
       S.grid.cards = new Map(m.cards.map((c) => [c.key, c])); S.grid.order = m.cards.map((c) => c.key); S.grid.loaded = true; renderGrid(); renderSide(); renderTop();
@@ -2673,6 +2681,11 @@ function render({ model, el }) {
   new ResizeObserver(drawStrip).observe(strip);
   renderSide();
   el.focus();
+  try {                                                          // a frame deleted for good just before this reload
+    const d = JSON.parse(sessionStorage.getItem("pl-deleted") || "null");
+    sessionStorage.removeItem("pl-deleted");
+    if (d) toast({ level: "warning", title: d.title, detail: d.detail, ms: 9000 });
+  } catch {}
   model.send({ type: "ready", item: model.startItem || 0 });
   if (model.startItem) S.target = model.startItem;
   // Notebooks: messages from the kernel's job threads wait until the page asks (Colab drops them otherwise).
